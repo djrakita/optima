@@ -27,22 +27,51 @@ impl RotationAndTranslation {
 
         return Self::new(rotation, Vector3::new(x, y, z));
     }
+    /// Returns the rotation component of the object.
     pub fn rotation(&self) -> &OptimaRotation {
         &self.rotation
     }
+    /// Returns the translation component of the object.
     pub fn translation(&self) -> &Vector3<f64> {
         &self.translation
     }
+    /// Multiplication
     pub fn multiply(&self, other: &RotationAndTranslation, conversion_if_necessary: bool) -> Result<RotationAndTranslation, OptimaError> {
         let rotation = self.rotation.multiply(&other.rotation, conversion_if_necessary)?;
         let translation = self.rotation.multiply_by_point(&other.translation) + &self.translation;
         return Ok(Self::new(rotation, translation));
     }
+    /// Multiplication by a point.
+    pub fn multiply_by_point(&self, point: &Vector3<f64>) -> Vector3<f64> {
+        return self.rotation().multiply_by_point(point) + self.translation();
+    }
+    /// Inverse multiplies by the given point.  inverse multiplication is useful for placing the
+    /// given point in the transform's local coordinate system.
+    pub fn inverse_multiply_by_point(&self, point: &Vector3<f64>) -> Vector3<f64> {
+        return self.rotation.inverse().multiply_by_point(&(point - &self.translation));
+    }
+    /// The inverse transform such that T * T^-1 = I.
     pub fn inverse(&self) -> RotationAndTranslation {
         let rotation = self.rotation.inverse();
         let translation = rotation.multiply_by_point(&-self.translation);
         return Self::new(rotation, translation);
     }
+    /// The displacement transform such that T_self * T_disp = T_other.
+    pub fn displacement(&self, other: &RotationAndTranslation, conversion_if_necessary: bool) -> Result<RotationAndTranslation, OptimaError> {
+        return self.inverse().multiply(&other, conversion_if_necessary);
+    }
+    /// Provides an approximate distance between two objects.  This is not an
+    /// official distance metric, but should still work in some optimization procedures.
+    pub fn approximate_distance(&self, other: &RotationAndTranslation, conversion_if_necessary: bool) -> Result<f64, OptimaError> {
+        let angle_between = self.rotation().angle_between(other.rotation(), conversion_if_necessary)?;
+        let translation_between = (self.translation() - other.translation()).norm();
+        return Ok(angle_between + translation_between);
+    }
+    /// Converts the internal rotation type of the object to another provided rotation type.
+    pub fn convert_rotation_type(&mut self, target_type: &OptimaRotationType) {
+        self.rotation = self.rotation.convert(target_type);
+    }
+    /// Converts the SE(3) pose to other supported pose types.
     pub fn convert(&self, target_type: &OptimaSE3PoseType) -> OptimaSE3Pose {
         return match target_type {
             OptimaSE3PoseType::ImplicitDualQuaternion => {

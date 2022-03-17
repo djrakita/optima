@@ -24,6 +24,8 @@ impl OptimaRotation {
         let q = UnitQuaternion::from_euler_angles(rx, ry, rz);
         return Self::new_unit_quaternion(q);
     }
+    /// Creates new rotation by exponentating the logarithm vector (the vector returned by ln()
+    /// function).
     pub fn new_from_exp(ln_vec: &Vector3<f64>, rotation_type: &OptimaRotationType) -> Self {
         return match rotation_type {
             OptimaRotationType::RotationMatrix => {
@@ -36,6 +38,7 @@ impl OptimaRotation {
             }
         }
     }
+    /// Converts the rotation to another provided rotation type.
     pub fn convert(&self, target_type: &OptimaRotationType) -> OptimaRotation {
         return match self {
             OptimaRotation::RotationMatrix { data, .. } => {
@@ -62,6 +65,7 @@ impl OptimaRotation {
             }
         }
     }
+    /// Inverse rotation such that R * R^-1 = I
     pub fn inverse(&self) -> OptimaRotation {
         return match self {
             OptimaRotation::RotationMatrix { data, .. } => {
@@ -74,12 +78,15 @@ impl OptimaRotation {
             }
         }
     }
+    /// The angle that is encoded by the given rotation
     pub fn angle(&self) -> f64 {
         return match self {
             OptimaRotation::RotationMatrix { data, .. } => { data.angle() }
             OptimaRotation::UnitQuaternion { data, .. } => { data.angle() }
         }
     }
+    /// Natural logarithm of the rotation.  This can be thought of as the rotation axis that is
+    /// scaled by the length of the angle of rotation.
     pub fn ln(&self) -> Vector3<f64> {
         return match self {
             OptimaRotation::RotationMatrix { data, .. } => {
@@ -92,6 +99,7 @@ impl OptimaRotation {
             }
         }
     }
+    /// Rotation multiplication.
     pub fn multiply(&self, other: &OptimaRotation, conversion_if_necessary: bool) -> Result<OptimaRotation, OptimaError> {
         if self.get_rotation_type() != other.get_rotation_type() {
             return if conversion_if_necessary {
@@ -125,6 +133,7 @@ impl OptimaRotation {
             }
         }
     }
+    /// Rotation multiplication by a point.
     pub fn multiply_by_point(&self, point: &Vector3<f64>) -> Vector3<f64> {
         return match self {
             OptimaRotation::RotationMatrix { data, .. } => {
@@ -135,6 +144,7 @@ impl OptimaRotation {
             }
         }
     }
+    /// Returns true if the rotation is identity.
     pub fn is_identity(&self) -> bool {
         return match self {
             OptimaRotation::RotationMatrix { data, .. } => {
@@ -145,6 +155,7 @@ impl OptimaRotation {
             }
         }
     }
+    /// The displacement between two rotations such that R_self * R_displacement = R_other
     pub fn displacement(&self, other: &OptimaRotation, conversion_if_necessary: bool) -> Result<OptimaRotation, OptimaError> {
         if self.get_rotation_type() != other.get_rotation_type() {
             return if conversion_if_necessary {
@@ -178,6 +189,7 @@ impl OptimaRotation {
             }
         }
     }
+    /// The angle between two rotations.
     pub fn angle_between(&self, other: &OptimaRotation, conversion_if_necessary: bool) -> Result<f64, OptimaError> {
         if self.get_rotation_type() != other.get_rotation_type() {
             return if conversion_if_necessary {
@@ -211,6 +223,8 @@ impl OptimaRotation {
             }
         }
     }
+    /// Returns the 3x3 rotation matrix encoded by the rotation object.  Returns error if the
+    /// underlying representation is not a RotationMatrix.
     pub fn unwrap_rotation_matrix(&self) -> Result<&Rotation3<f64>, OptimaError> {
         return match self {
             OptimaRotation::RotationMatrix { data, .. } => {
@@ -221,6 +235,8 @@ impl OptimaRotation {
             }
         }
     }
+    /// Returns the Unit Quaternion encoded by the rotation object.  Returns error if the
+    /// underlying representation is not a UnitQuaternion.
     pub fn unwrap_unit_quaternion(&self) -> Result<&UnitQuaternion<f64>, OptimaError> {
         return match self {
             OptimaRotation::RotationMatrix { .. } => {
