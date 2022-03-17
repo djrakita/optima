@@ -5,3 +5,5 @@
 //! The core library is written in Rust, though high quality ports to high-level languages such as
 //! Python and Javascript are available via PyO3 and WebAssembly, respectively.
 
+pub mod robot_modules;
+pub mod utils;
