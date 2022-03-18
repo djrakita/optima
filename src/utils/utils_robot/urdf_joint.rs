@@ -3,7 +3,7 @@ use nalgebra::{Vector3};
 use serde::{Serialize, Deserialize};
 
 /// This struct holds all information provided by a URDF file on a Joint when parsed by urdf_rs.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct URDFJoint {
     name: String,
     joint_type: JointTypeWrapper,
@@ -84,12 +84,10 @@ impl URDFJoint {
     pub fn joint_type(&self) -> &JointTypeWrapper {
         &self.joint_type
     }
-    pub fn origin_xyz(&self) -> Vector3<f64> {
-        self.origin_xyz
+    pub fn origin_xyz(&self) -> &Vector3<f64> {
+        &self.origin_xyz
     }
-    pub fn origin_rpy(&self) -> Vector3<f64> {
-        self.origin_rpy
-    }
+    pub fn origin_rpy(&self) -> &Vector3<f64> {&self.origin_rpy }
     pub fn parent_link(&self) -> &str {
         &self.parent_link
     }

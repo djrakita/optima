@@ -84,8 +84,29 @@ impl RotationAndTranslation {
                 let data = HomogeneousMatrix::new(matrix);
                 OptimaSE3Pose::new_homogeneous_matrix(data)
             }
-            OptimaSE3PoseType::RotationAndTranslation => {
-                OptimaSE3Pose::new_rotation_and_translation(self.clone())
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => {
+                return match self.rotation() {
+                    OptimaRotation::RotationMatrix { .. } => {
+                        let mut out_rt = self.clone();
+                        out_rt.convert_rotation_type(&OptimaRotationType::UnitQuaternion);
+                        OptimaSE3Pose::new_rotation_and_translation(out_rt)
+                    }
+                    OptimaRotation::UnitQuaternion { .. } => {
+                        OptimaSE3Pose::new_rotation_and_translation(self.clone())
+                    }
+                }
+            }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => {
+                return match self.rotation() {
+                    OptimaRotation::RotationMatrix { .. } => {
+                        OptimaSE3Pose::new_rotation_and_translation(self.clone())
+                    }
+                    OptimaRotation::UnitQuaternion { .. } => {
+                        let mut out_rt = self.clone();
+                        out_rt.convert_rotation_type(&OptimaRotationType::RotationMatrix);
+                        OptimaSE3Pose::new_rotation_and_translation(out_rt)
+                    }
+                }
             }
         }
     }

@@ -161,10 +161,16 @@ impl HomogeneousMatrix {
             OptimaSE3PoseType::HomogeneousMatrix => {
                 OptimaSE3Pose::new_homogeneous_matrix(self.clone())
             }
-            OptimaSE3PoseType::RotationAndTranslation => {
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => {
                 let rotation = OptimaRotation::new_unit_quaternion(UnitQuaternion::from_rotation_matrix(&self.rotation()));
                 let translation = self.translation();
                 let data = RotationAndTranslation::new(rotation, translation);
+                OptimaSE3Pose::new_rotation_and_translation(data)
+            }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => {
+                let rotation_matrix = self.rotation();
+                let translation = self.translation();
+                let data = RotationAndTranslation::new(OptimaRotation::new_rotation_matrix(rotation_matrix), translation);
                 OptimaSE3Pose::new_rotation_and_translation(data)
             }
         }

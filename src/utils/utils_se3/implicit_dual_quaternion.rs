@@ -215,9 +215,17 @@ impl ImplicitDualQuaternion {
                 let homogeneous_matrix = HomogeneousMatrix::new(matrix);
                 OptimaSE3Pose::new_homogeneous_matrix(homogeneous_matrix)
             }
-            OptimaSE3PoseType::RotationAndTranslation => {
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => {
                 let rotation = OptimaRotation::new_unit_quaternion(self.rotation().clone());
                 OptimaSE3Pose::new_rotation_and_translation(RotationAndTranslation::new(rotation, self.translation().clone()))
+            }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => {
+                let rotation = OptimaRotation::new_unit_quaternion(self.rotation().clone());
+                let mut rt =  RotationAndTranslation::new(rotation, self.translation().clone());
+                rt.convert_rotation_type(&OptimaRotationType::RotationMatrix);
+                let mut out_pose = OptimaSE3Pose::new_rotation_and_translation(rt);
+                out_pose
+
             }
         }
     }

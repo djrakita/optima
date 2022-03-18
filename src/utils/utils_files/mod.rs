@@ -1,6 +1,6 @@
 use std::env;
 use std::ffi::OsStr;
-use std::fs::File;
+use std::fs::{DirEntry, File, read_dir};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
@@ -17,7 +17,6 @@ impl FileUtils {
         let path_buf = env::current_dir().expect("error");
         return path_buf;
     }
-
     /// Reads contents of file and outputs it to a string.
     pub fn read_file_contents_to_string(p: &PathBuf) -> Result<String, OptimaError> {
         let mut file_res = File::open(p);
@@ -32,7 +31,6 @@ impl FileUtils {
             }
         }
     }
-
     /// Returns file extension of path as string.
     pub fn get_file_extension_string(p: &PathBuf) -> Option<String> {
         let e = p.extension();
@@ -41,7 +39,23 @@ impl FileUtils {
             Some(o) => { Some(o.to_str().expect("error").to_string()) }
         }
     }
-
+    /// Returns the paths of all files within a directory.
+    pub fn get_all_files_in_directory(p: &PathBuf) -> Result<Vec<PathBuf>, OptimaError> {
+        let mut out: Vec<PathBuf> = Vec::new();
+        let it_res = read_dir(p.clone());
+        match it_res {
+            Ok(it) => {
+                for i in it {
+                    let path = i.expect("error").path();
+                    out.push(path);
+                }
+            }
+            Err(_) => {
+                return Err(OptimaError::new_string_descriptor_error("filepath does not exist."));
+            }
+        }
+        Ok(out)
+    }
     /// Saves given object to a file as a JSON string.  The object must be serializable using serde json.
     pub fn save_object_to_file_as_json<T: Serialize>(object: &T, p: &PathBuf) -> Result<(), OptimaError> {
         let mut file_res = File::create(p);
@@ -55,7 +69,6 @@ impl FileUtils {
             }
         }
     }
-
     /// Reads object that was serialized by serde JSON from a file.
     /// ## Example
     /// ```
@@ -178,7 +191,7 @@ impl AssetFolderLocation {
     pub fn get_path_wrt_asset_folder(&self) -> PathBuf {
         return match self {
             AssetFolderLocation::Robots => {
-                Path::new("robots").to_path_buf()
+                Path::new("optima_robots").to_path_buf()
             }
             AssetFolderLocation::Robot { robot_name } => {
                 let mut out_path = Self::Robots.get_path_wrt_asset_folder();
@@ -228,5 +241,23 @@ impl Default for PathToAssetsDir {
         Self {
             path_to_assets_dir: path
         }
+    }
+}
+
+/// Convenience struct that holds many class functions related to the robot folder within assets.
+pub struct RobotFolderUtils;
+impl RobotFolderUtils {
+    pub fn get_path_to_urdf_file(robot_name: &str) -> Result<PathBuf, OptimaError> {
+        let path = AssetFolderUtils::get_path_to_asset_dir_location(AssetFolderLocation::Robot { robot_name: robot_name.to_string() })?;
+        let all_files = FileUtils::get_all_files_in_directory(&path)?;
+        for f in &all_files {
+            let ext_option = f.extension();
+            if let Some(ext) = ext_option {
+                if ext == "urdf" || ext == "URDF" {
+                    return Ok(f.clone());
+                }
+            }
+        }
+        return Err(OptimaError::new_string_descriptor_error(format!("Robot directory for robot {:?} does not contain a urdf.", robot_name).as_str()))
     }
 }
