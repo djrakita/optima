@@ -8,6 +8,16 @@ use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
 
+/// The RobotModelModule is the base description level for a robot.  It reflects component and
+/// connectivity information about the robot as specified directly by the URDF.
+/// Many other robot modules depend on this module.
+///
+/// The primary components of the RobotModelModule object are the lists of Link and Joint objects.
+/// These links and joints are taken in top-down order from the URDF.  In other words, the URDF
+/// is read from top to bottom and links and joints are stored in the order that they are seen.
+/// Thus, the first link specified in the the URDF will have index 0, the second link specified in the
+/// URDF will have index 1, and so on.  This order convention of links and joints is pervasive throughout
+/// the whole library.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotModelModule {
     robot_name: String,
@@ -22,6 +32,14 @@ pub struct RobotModelModule {
     joint_name_to_idx_hashmap: HashMap<String, usize>
 }
 impl RobotModelModule {
+    /// Creates a new RobotModelModule.  The robot_name string is the name of the folder in the
+    /// optima_assets/optima_robots directory.
+    ///
+    /// ## Example
+    /// ```
+    /// use optima::robot_modules::robot_model_module::RobotModelModule;
+    /// let mut r = RobotModelModule::new("ur5");
+    /// ```
     pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
         let mut joints = vec![];
         let mut links = vec![];
@@ -48,7 +66,7 @@ impl RobotModelModule {
                 }
             }
             Err(_) => {
-                return Err(OptimaError::new_string_descriptor_error("Error when parsing urdf."))
+                return Err(OptimaError::new_generic_error_str("Error when parsing urdf."))
             }
         }
 
@@ -104,6 +122,126 @@ impl RobotModelModule {
             self.joints[i].set_child_link_idx(link_idx);
         }
     }
+
+    /// Returns the name of the robot
+    pub fn robot_name(&self) -> &str {
+        &self.robot_name
+    }
+
+    /// Returns the list of robot links.  Links are stored in top-down order from the URDF.
+    pub fn links(&self) -> &Vec<Link> {
+        &self.links
+    }
+
+    /// Returns the link by link idx.  If the index is too high for the given link, the
+    /// function will return an error.
+    pub fn get_link_by_idx(&self, idx: usize) -> Result<&Link, OptimaError> {
+        if idx >= self.links().len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(idx, self.links().len(), "get_link_by_idx()"));
+        }
+
+        return Ok(&self.links[idx]);
+    }
+
+    /// Returns the list of robot joints.  Joints are stored in top-down order from the URDF.
+    pub fn joints(&self) -> &Vec<Joint> {
+        &self.joints
+    }
+
+    /// Returns the joint by link idx.  If the index is too high for the given joint, the
+    /// function will return an error.
+    pub fn get_joint_by_idx(&self, idx: usize) -> Result<&Joint, OptimaError> {
+        if idx >= self.joints().len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(idx, self.joints().len(), "get_joint_by_idx()"));
+        }
+
+        return Ok(&self.joints[idx]);
+    }
+
+    /// Returns the link index that represents the root global world as specified by the URDF.
+    pub fn world_link_idx(&self) -> usize {
+        self.world_link_idx
+    }
+
+    /// Returns the link index that represents the base of the robot.
+    pub fn robot_base_link_idx(&self) -> usize {
+        self.robot_base_link_idx
+    }
+
+    /// Returns the link tree traversal layers.  Each list in this ordered list specifies the links
+    /// that are at a given layer in the robot's hierarchy.  For instance, suppose this diagram specifies
+    /// a robot's link hierarchy:
+    /// ```text
+    ///         0
+    ///        / \
+    ///      2    3
+    ///     / \    \
+    ///    1  4     5
+    /// ```
+    /// Here, the numbers are link indices, and the lines represent joints that connect links together
+    /// in the hierarchical chain.  In this case, the output of this function will be:
+    /// [[0], [2,3], [1,4,5]].
+    pub fn link_tree_traversal_layers(&self) -> &Vec<Vec<usize>> {
+        &self.link_tree_traversal_layers
+    }
+
+    /// Returns the depth of the link tree traversal layers.  For instance, suppose this diagram specifies
+    /// a robot's link hierarchy:
+    /// ```text
+    ///         0
+    ///        / \
+    ///      2    3
+    ///     / \    \
+    ///    1  4     5
+    /// ```
+    /// this function would return 2 (as it is zero-indexed and there are three layers in the tree).
+    pub fn link_tree_max_depth(&self) -> usize {
+        self.link_tree_max_depth
+    }
+
+    /// Returns the link tree traversal layer index that contains the given link.
+    /// For instance,suppose this diagram specifies a robot's link hierarchy:
+    /// ```text
+    ///         0
+    ///        / \
+    ///      2    3
+    ///     / \    \
+    ///    1  4     5
+    /// ```
+    /// In this case, we would have the following:
+    /// ## Example
+    /// ```
+    /// use optima::robot_modules::robot_model_module::RobotModelModule;
+    /// let mut r = RobotModelModule::new("ur5");
+    /// let l = r.get_link_tree_traveral_layer(2);
+    /// assert!(l.unwrap() == 1);
+    /// ```
+    /// In this case, link 2 is in the "second" layer, which would return 1 from this function
+    /// because it is zero-indexed.
+    pub fn get_link_tree_traversal_layer(&self, link_idx: usize) -> Result<usize, OptimaError> {
+        for (i, l) in self.link_tree_traversal_layers.iter().enumerate() {
+            if l.contains(&link_idx) { return Ok(i); }
+        }
+        return Err(OptimaError::new_generic_error_str("link_idx not found in get_link_tree_traversal_layer()"));
+    }
+    pub fn get_link_with_highest_tree_traversal_layer(&self, link_idxs: &Vec<usize>) -> Result<usize, OptimaError> {
+        if link_idxs.len() == 1 { return Ok(link_idxs[0]); }
+        if link_idxs.len() == 0 { return Err(OptimaError::new_generic_error_string(format!("cannot have link_idxs with length 0 in get_link_with_highest_tree_traversal_layer()"))); }
+
+        let mut highest_layer = 0;
+        let mut highest_layer_link_idx = 0;
+        for l in link_idxs {
+            let layer = self.get_link_tree_traversal_layer(*l)?;
+            if layer >= highest_layer {
+                highest_layer = layer;
+                highest_layer_link_idx = *l;
+            }
+        }
+        return Ok(highest_layer_link_idx);
+    }
+
+    /// Function used during setup.  It is public since other modules may need to access it,
+    /// but this should not need to be used by end users.
     fn set_world_link_idx_manual(&mut self) {
         let l = self.links.len();
         for i in 0..l {
@@ -114,6 +252,9 @@ impl RobotModelModule {
             }
         }
     }
+
+    /// Function used during setup.  It is public since other modules may need to access it,
+    /// but this should not need to be used by end users.
     pub fn set_link_tree_traversal_info(&mut self) {
         self.link_tree_traversal_layers = Vec::new();
         self.link_tree_traversal_layers.push( vec![ self.world_link_idx ] );
@@ -142,6 +283,52 @@ impl RobotModelModule {
         }
     }
 
+    /// Function used during setup.  It is public since other modules may need to access it,
+    /// but this should not need to be used by end users.
+    pub fn set_preceding_actuated_joint_idxs(&mut self) {
+        self.preceding_actuated_joint_idxs = vec![];
+        let num_links = self.links.len();
+        for i in 0..num_links {
+            let res = self.get_preceding_actuated_joint_idx(i);
+            self.preceding_actuated_joint_idxs.push(res);
+        }
+    }
+
+    /// Returns the closest preceding actuated joint index (i.e., a joint that has >0 DOFs) behind the
+    /// given link.
+    pub fn get_preceding_actuated_joint_idx(&self, link_idx: usize) -> Option<usize> {
+        let links = &self.links;
+        let joints = &self.joints;
+
+        let mut curr_link_idx = link_idx;
+
+        loop {
+            let mut joint_idx = links[curr_link_idx].preceding_joint_idx();
+            if joint_idx.is_none() { return None; }
+
+            let joint_idx_unwrap = joint_idx.unwrap();
+            let num_dofs = joints[joint_idx_unwrap].num_dofs();
+            if num_dofs > 0 { return joint_idx; }
+
+            let preceding_link_idx = joints[joint_idx_unwrap].preceding_link_idx();
+            if preceding_link_idx.is_some() { return None; }
+
+            curr_link_idx = preceding_link_idx.unwrap();
+        }
+    }
+
+    /// Returns all links (by index) that have the given joint index as their closest preceding
+    /// actuated joint index.
+    pub fn get_all_link_idxs_with_given_preceding_actuated_joint_idx(&self, joint_idx: usize) -> Vec<usize> {
+        let mut out_vec = vec![];
+        for (i, a) in self.preceding_actuated_joint_idxs.iter().enumerate() {
+            if a.is_some() && a.unwrap() == joint_idx {
+                out_vec.push(i);
+            }
+        }
+        out_vec
+    }
+
     fn get_link_idx_from_name(&self, link_name: &String) -> Option<usize> {
         let res = self.link_name_to_idx_hashmap.get(link_name);
         match res {
@@ -157,3 +344,23 @@ impl RobotModelModule {
         }
     }
 }
+
+/*
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[pyclass]
+pub struct RobotModelModulePy {
+    robot_model_module: RobotModelModule
+}
+#[pymethods]
+impl RobotModelModulePy {
+    #[new]
+    pub fn new(robot_name: &str) -> Self {
+        Self {
+            robot_model_module: RobotModelModule::new(robot_name).expect("error")
+        }
+    }
+}
+*/
+
+
+

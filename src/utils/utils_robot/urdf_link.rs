@@ -2,14 +2,21 @@ use urdf_rs::*;
 use nalgebra::{Vector3, Matrix3};
 use serde::{Serialize, Deserialize};
 
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 /// This struct holds all information provided by a URDF file on a Link when parsed by urdf_rs.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct URDFLink {
     name: String,
     inertial_origin_xyz: Vector3<f64>,
-    intertial_origin_rpy: Vector3<f64>,
+    inertial_origin_rpy: Vector3<f64>,
     inertial_matrix: Matrix3<f64>,
-    intertial_mass: f64,
+    inertial_mass: f64,
     visual_origin_xyz: Option<Vector3<f64>>,
     visual_origin_rpy: Option<Vector3<f64>>,
     visual_mesh_filename: Option<String>,
@@ -77,9 +84,9 @@ impl URDFLink {
         Self {
             name: link.name.clone(),
             inertial_origin_xyz: Vector3::new(link.inertial.origin.xyz[0], link.inertial.origin.xyz[1], link.inertial.origin.xyz[2]),
-            intertial_origin_rpy: Vector3::new(link.inertial.origin.rpy[0], link.inertial.origin.rpy[1], link.inertial.origin.rpy[2]),
+            inertial_origin_rpy: Vector3::new(link.inertial.origin.rpy[0], link.inertial.origin.rpy[1], link.inertial.origin.rpy[2]),
             inertial_matrix: Matrix3::new(link.inertial.inertia.ixx, link.inertial.inertia.ixy, link.inertial.inertia.ixz, link.inertial.inertia.ixy, link.inertial.inertia.iyy, link.inertial.inertia.iyz, link.inertial.inertia.ixz, link.inertial.inertia.iyz, link.inertial.inertia.izz),
-            intertial_mass: link.inertial.mass.value,
+            inertial_mass: link.inertial.mass.value,
             visual_origin_xyz: if link.visual.len() > 0 { Some( Vector3::new(link.visual[0].origin.xyz[0], link.visual[0].origin.xyz[1], link.visual[0].origin.xyz[2])) } else { None } ,
             visual_origin_rpy: if link.visual.len() > 0 { Some( Vector3::new(link.visual[0].origin.rpy[0], link.visual[0].origin.rpy[1], link.visual[0].origin.rpy[2])) } else { None },
             visual_mesh_filename,
@@ -94,9 +101,9 @@ impl URDFLink {
         Self {
             name: "".to_string(),
             inertial_origin_xyz: Default::default(),
-            intertial_origin_rpy: Default::default(),
+            inertial_origin_rpy: Default::default(),
             inertial_matrix: Default::default(),
-            intertial_mass: 0.0,
+            inertial_mass: 0.0,
             visual_origin_xyz: None,
             visual_origin_rpy: None,
             visual_mesh_filename: None,
@@ -114,13 +121,13 @@ impl URDFLink {
         self.inertial_origin_xyz
     }
     pub fn intertial_origin_rpy(&self) -> Vector3<f64> {
-        self.intertial_origin_rpy
+        self.inertial_origin_rpy
     }
     pub fn inertial_matrix(&self) -> Matrix3<f64> {
         self.inertial_matrix
     }
     pub fn intertial_mass(&self) -> f64 {
-        self.intertial_mass
+        self.inertial_mass
     }
     pub fn visual_origin_xyz(&self) -> Option<Vector3<f64>> {
         self.visual_origin_xyz
@@ -146,4 +153,22 @@ impl URDFLink {
     pub fn collision_mesh_scale(&self) -> Option<Vector3<f64>> {
         self.collision_mesh_scale
     }
+}
+
+/// Functions supported in Python.
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl URDFLink {
+    pub fn name_py(&self) -> PyResult<String> {
+        Ok(self.name.clone())
+    }
+    pub fn inertial_origin_xyz_py(&self) -> PyResult<Vec<f64>> { Ok(self.inertial_origin_xyz.data.as_slice().to_vec()) }
+    pub fn inertial_origin_rpy_py(&self) -> PyResult<Vec<f64>> { Ok(self.inertial_origin_rpy.data.as_slice().to_vec()) }
+}
+
+/// Functions supported in WASM.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl URDFLink {
+    pub fn name_wasm(&self) -> String { self.name.clone() }
 }

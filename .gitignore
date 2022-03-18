@@ -21,3 +21,5 @@ Cargo.lock
 .idea/
 path_to_optima_toolbox_assets.json
 bin/
+pkg/
+env/

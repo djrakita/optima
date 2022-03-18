@@ -1,12 +1,11 @@
 use std::env;
-use std::ffi::OsStr;
-use std::fs::{DirEntry, File, read_dir};
+use std::fs::{File, read_dir};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
-use termion::{style, color};
-use crate::utils::utils_console_output::{print_termion_string, PrintMode};
+// use termion::{style, color};
+// use crate::utils::utils_console_output::{print_termion_string, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 
 /// Convenience struct that holds many class functions related to file utils.
@@ -27,7 +26,7 @@ impl FileUtils {
                 Ok(contents)
             }
             Err(e) => {
-                Err(OptimaError::new_string_descriptor_error(e.to_string().as_str()))
+                Err(OptimaError::new_generic_error_str(e.to_string().as_str()))
             }
         }
     }
@@ -51,7 +50,7 @@ impl FileUtils {
                 }
             }
             Err(_) => {
-                return Err(OptimaError::new_string_descriptor_error("filepath does not exist."));
+                return Err(OptimaError::new_generic_error_string(format!("filepath {:?} does not exist.", p)));
             }
         }
         Ok(out)
@@ -65,13 +64,17 @@ impl FileUtils {
                 Ok(())
             }
             Err(e) => {
-                Err(OptimaError::new_string_descriptor_error(e.to_string().as_str()))
+                Err(OptimaError::new_generic_error_str(e.to_string().as_str()))
             }
         }
     }
     /// Reads object that was serialized by serde JSON from a file.
     /// ## Example
     /// ```
+    /// use std::path::Path;
+    /// use nalgebra::Vector3;
+    /// use optima::utils::utils_files::FileUtils;
+    ///
     /// let res = FileUtils::load_object_from_json_file::<Vector3<f64>>(&Path::new("data.json").to_path_buf());
     /// ```
     pub fn load_object_from_json_file<T: DeserializeOwned>(p: &PathBuf) -> Result<T, OptimaError> {
@@ -119,12 +122,13 @@ impl AssetFolderUtils {
                                 ];
 
                                 for s in &console_strings {
-                                    print_termion_string(s.as_str(),
-                                                         PrintMode::Println,
-                                                         color::Red,
-                                                         true);
+                                    // print_termion_string(s.as_str(),
+                                    //                     PrintMode::Println,
+                                    //                     color::Red,
+                                    //                     true);
+                                    println!("{}", s);
                                 }
-                                Err(OptimaError::new_string_descriptor_error("The path specified in path_to_optima_toolbox_assets.json is incorrect."))
+                                Err(OptimaError::new_generic_error_str("The path specified in path_to_optima_toolbox_assets.json is incorrect."))
                             }
                         }
                     }
@@ -135,10 +139,11 @@ impl AssetFolderUtils {
                         ];
 
                         for s in &console_strings {
-                            print_termion_string(s.as_str(),
-                                                 PrintMode::Println,
-                                                 color::Red,
-                                                 true);
+                            // print_termion_string(s.as_str(),
+                            //                      PrintMode::Println,
+                            //                      color::Red,
+                            //                      true);
+                            println!("{}", s);
                         }
                         Err(e.clone())
                     }
@@ -152,15 +157,16 @@ impl AssetFolderUtils {
                 ];
 
                 for s in &console_strings {
-                    print_termion_string(s.as_str(),
-                                         PrintMode::Println,
-                                         color::Cyan,
-                                         true);
+                    // print_termion_string(s.as_str(),
+                    //                      PrintMode::Println,
+                    //                      color::Cyan,
+                    //                      true);
+                    println!("{}", s);
                 }
 
                 let pp = PathToAssetsDir::default();
                 FileUtils::save_object_to_file_as_json(&pp, &path_to_assets_dir_file);
-                Err(OptimaError::new_string_descriptor_error("path_to_optima_toolbox_assets.json file did not exist yet."))
+                Err(OptimaError::new_generic_error_str("path_to_optima_toolbox_assets.json file did not exist yet."))
             }
         }
     }
@@ -258,6 +264,6 @@ impl RobotFolderUtils {
                 }
             }
         }
-        return Err(OptimaError::new_string_descriptor_error(format!("Robot directory for robot {:?} does not contain a urdf.", robot_name).as_str()))
+        return Err(OptimaError::new_generic_error_str(format!("Robot directory for robot {:?} does not contain a urdf.", robot_name).as_str()))
     }
 }

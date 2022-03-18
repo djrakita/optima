@@ -7,3 +7,13 @@
 
 pub mod robot_modules;
 pub mod utils;
+
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::prelude::*;
+
+#[cfg(not(target_arch = "wasm32"))]
+#[pymodule]
+fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<utils::utils_robot::urdf_link::URDFLink>()?;
+    Ok(())
+}

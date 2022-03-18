@@ -1,3 +1,5 @@
+
+/*
 use std::fmt::Display;
 use termion::color::Color;
 use termion::{style, color};
@@ -6,6 +8,7 @@ use termion::{style, color};
 ///
 /// ## Example
 /// ```
+/// use optima::utils::utils_console_output::{print_termion_string, PrintMode};
 /// print_termion_string("test", PrintMode::Print, termion::color::Blue, false);
 /// ```
 pub fn print_termion_string<T: Color + Clone>(s: &str, mode: PrintMode, color: T, bolded: bool) {
@@ -27,3 +30,4 @@ pub enum PrintMode {
     Println,
     Print
 }
+*/

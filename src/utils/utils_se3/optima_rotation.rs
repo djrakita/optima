@@ -106,7 +106,7 @@ impl OptimaRotation {
                 let new_operand = other.convert(self.get_rotation_type());
                 self.multiply(&new_operand, conversion_if_necessary)
             } else {
-                Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply."))
+                Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply."))
             }
         }
 
@@ -118,7 +118,7 @@ impl OptimaRotation {
                         let new_data = data0 * data;
                         Ok(Self::new_rotation_matrix(new_data))
                     }
-                    _ => { Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
             OptimaRotation::UnitQuaternion { data, rotation_type } => {
@@ -128,7 +128,7 @@ impl OptimaRotation {
                         let new_data = data0 * data;
                         Ok(Self::new_unit_quaternion(new_data))
                     }
-                    _ => { Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
         }
@@ -162,7 +162,7 @@ impl OptimaRotation {
                 let new_operand = other.convert(self.get_rotation_type());
                 self.displacement(&new_operand, conversion_if_necessary)
             } else {
-                Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply."))
+                Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply."))
             }
         }
 
@@ -174,7 +174,7 @@ impl OptimaRotation {
                         let new_data = data0.inverse() * data;
                         Ok(Self::new_rotation_matrix(new_data))
                     }
-                    _ => { Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
             OptimaRotation::UnitQuaternion { data, rotation_type } => {
@@ -184,7 +184,7 @@ impl OptimaRotation {
                         let new_data = data0.inverse() * data;
                         Ok(Self::new_unit_quaternion(new_data))
                     }
-                    _ => { Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
         }
@@ -196,7 +196,7 @@ impl OptimaRotation {
                 let new_operand = other.convert(self.get_rotation_type());
                 self.angle_between(&new_operand, conversion_if_necessary)
             } else {
-                Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply."))
+                Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply."))
             }
         }
 
@@ -208,7 +208,7 @@ impl OptimaRotation {
                         let angle_between = data0.angle_to(data);
                         Ok(angle_between)
                     }
-                    _ => { Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
             OptimaRotation::UnitQuaternion { data, rotation_type } => {
@@ -218,7 +218,7 @@ impl OptimaRotation {
                         let angle_between = data0.angle_to(data);
                         Ok(angle_between)
                     }
-                    _ => { Err(OptimaError::new_string_descriptor_error("incompatible rotation types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
         }
@@ -231,7 +231,7 @@ impl OptimaRotation {
                 Ok(data)
             }
             OptimaRotation::UnitQuaternion { .. } => {
-                Err(OptimaError::new_string_descriptor_error("tried to unwrap unit quaternion as rotation matrix."))
+                Err(OptimaError::new_generic_error_str("tried to unwrap unit quaternion as rotation matrix."))
             }
         }
     }
@@ -240,7 +240,7 @@ impl OptimaRotation {
     pub fn unwrap_unit_quaternion(&self) -> Result<&UnitQuaternion<f64>, OptimaError> {
         return match self {
             OptimaRotation::RotationMatrix { .. } => {
-                Err(OptimaError::new_string_descriptor_error("tried to unwrap rotation matrix as unit quaternion."))
+                Err(OptimaError::new_generic_error_str("tried to unwrap rotation matrix as unit quaternion."))
             }
             OptimaRotation::UnitQuaternion { data, .. } => {
                 Ok(data)
