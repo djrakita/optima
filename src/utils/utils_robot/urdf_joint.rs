@@ -2,8 +2,15 @@ use urdf_rs::*;
 use nalgebra::{Vector3};
 use serde::{Serialize, Deserialize};
 
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 /// This struct holds all information provided by a URDF file on a Joint when parsed by urdf_rs.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct URDFJoint {
     name: String,
     joint_type: JointTypeWrapper,
@@ -141,7 +148,20 @@ impl URDFJoint {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl URDFJoint {
+
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl URDFJoint {
+
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub enum JointTypeWrapper {
     Revolute,
     Continuous,

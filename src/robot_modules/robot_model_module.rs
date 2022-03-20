@@ -1,12 +1,18 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use urdf_rs::read_file;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::RobotFolderUtils;
-use crate::utils::utils_robot::joint::Joint;
+use crate::utils::utils_robot::joint::{Joint};
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
+
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 
 /// The RobotModelModule is the base description level for a robot.  It reflects component and
 /// connectivity information about the robot as specified directly by the URDF.
@@ -18,7 +24,8 @@ use crate::utils::utils_robot::urdf_link::URDFLink;
 /// Thus, the first link specified in the the URDF will have index 0, the second link specified in the
 /// URDF will have index 1, and so on.  This order convention of links and joints is pervasive throughout
 /// the whole library.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotModelModule {
     robot_name: String,
     links: Vec<Link>,
@@ -90,6 +97,7 @@ impl RobotModelModule {
 
         Ok(out_self)
     }
+
     fn assign_all_link_connections_manual(&mut self) {
         let l1 = self.links.len();
         let l2 = self.joints.len();
@@ -112,6 +120,7 @@ impl RobotModelModule {
             }
         }
     }
+
     fn assign_all_joint_connections_manual(&mut self) {
         let l = self.joints.len();
 
@@ -212,7 +221,7 @@ impl RobotModelModule {
     /// ## Example
     /// ```
     /// use optima::robot_modules::robot_model_module::RobotModelModule;
-    /// let mut r = RobotModelModule::new("ur5");
+    /// let r = RobotModelModule::new("fake_robot"); // pretend that fake_robot exists and its hierarchy matches the diagram.
     /// let l = r.get_link_tree_traveral_layer(2);
     /// assert!(l.unwrap() == 1);
     /// ```
@@ -224,6 +233,7 @@ impl RobotModelModule {
         }
         return Err(OptimaError::new_generic_error_str("link_idx not found in get_link_tree_traversal_layer()"));
     }
+
     pub fn get_link_with_highest_tree_traversal_layer(&self, link_idxs: &Vec<usize>) -> Result<usize, OptimaError> {
         if link_idxs.len() == 1 { return Ok(link_idxs[0]); }
         if link_idxs.len() == 0 { return Err(OptimaError::new_generic_error_string(format!("cannot have link_idxs with length 0 in get_link_with_highest_tree_traversal_layer()"))); }
@@ -303,7 +313,7 @@ impl RobotModelModule {
         let mut curr_link_idx = link_idx;
 
         loop {
-            let mut joint_idx = links[curr_link_idx].preceding_joint_idx();
+            let joint_idx = links[curr_link_idx].preceding_joint_idx();
             if joint_idx.is_none() { return None; }
 
             let joint_idx_unwrap = joint_idx.unwrap();
@@ -329,38 +339,76 @@ impl RobotModelModule {
         out_vec
     }
 
-    fn get_link_idx_from_name(&self, link_name: &String) -> Option<usize> {
+    /// Returns link index by name.  If link with given name doesn't exist, this will return an error.
+    pub fn get_link_idx_from_name(&self, link_name: &str) -> Option<usize> {
         let res = self.link_name_to_idx_hashmap.get(link_name);
         match res {
             None => { return None }
             Some(u) => { return Some(*u) }
         }
     }
-    fn get_joint_idx_from_name(&self, joint_name: &String) -> Option<usize> {
+
+    /// Returns joint index by name.  If joint with given name doesn't exist, this will return an error.
+    pub fn get_joint_idx_from_name(&self, joint_name: &str) -> Option<usize> {
         let res = self.joint_name_to_idx_hashmap.get(joint_name);
         match res {
             None => { return None }
             Some(u) => { return Some(*u) }
         }
     }
-}
 
-/*
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[pyclass]
-pub struct RobotModelModulePy {
-    robot_model_module: RobotModelModule
-}
-#[pymethods]
-impl RobotModelModulePy {
-    #[new]
-    pub fn new(robot_name: &str) -> Self {
-        Self {
-            robot_model_module: RobotModelModule::new(robot_name).expect("error")
+    /// Prints the link tree traversal layers with link name descriptions.
+    pub fn print_link_tree_traversal_layers_with_link_names(&self) {
+        for i in 0..self.link_tree_max_depth {
+            let l = self.link_tree_traversal_layers[i].len();
+            // print!("layer {}: ", i);
+            optima_print(&format!("layer {}: ", i), PrintMode::Print, PrintColor::Blue, true);
+            for j in 0..l {
+                let idx = self.link_tree_traversal_layers[i][j];
+                // print!("{}, ", self.links[idx].name());
+                optima_print(&format!("{}, ", self.links[idx].name()), PrintMode::Print, PrintColor::None, false);
+            }
+            optima_print("\n", PrintMode::Print, PrintColor::None, false);
         }
     }
+
+    pub fn print_link_order(&self) {
+        let num_links = self.links.len();
+        for i in 0..num_links {
+            optima_print(&format!("link {} ---> ", i), PrintMode::Print, PrintColor::Blue, true);
+            optima_print(&format!(" {} --- active: {}\n", self.links[i].name(), self.links[i].active()), PrintMode::Print, PrintColor::None, false);
+        }
+        println!();
+    }
 }
-*/
+
+/// Methods supported by python.
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotModelModule {
+    #[new]
+    pub fn new_py(robot_name: &str) -> Self {
+        return Self::new(robot_name).expect("error");
+    }
+    pub fn robot_name_py(&self) -> String { self.robot_name().to_string() }
+    pub fn print_link_order_py(&self) {
+        self.print_link_order();
+    }
+}
+
+/// Methods supported by WASM.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl RobotModelModule {
+    #[wasm_bindgen(constructor)]
+    pub fn new_wasm(robot_name: &str) -> Self {
+        return Self::new(robot_name).expect("error")
+    }
+    pub fn robot_name_wasm(&self) -> String { self.robot_name.clone() }
+    pub fn print_link_order_wasm(&self) {
+        self.print_link_order();
+    }
+}
 
 
 

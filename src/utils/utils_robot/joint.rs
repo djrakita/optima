@@ -1,12 +1,18 @@
 use nalgebra::{Vector3, Unit};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_robot::urdf_joint::{JointTypeWrapper, URDFJoint};
-use crate::utils::utils_se3::implicit_dual_quaternion::ImplicitDualQuaternion;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
+
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 /// A Joint holds all necessary information about a robot joint (specified by a robot URDF file)
 /// in order to do kinematic and dynamic computations on a robot model.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct Joint {
     name: String,
     active: bool,
@@ -144,4 +150,18 @@ impl Joint {
     pub fn set_child_link_idx(&mut self, child_link_idx: Option<usize>) {
         self.child_link_idx = child_link_idx;
     }
+}
+
+/// Methods supported by python.
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl Joint {
+
+}
+
+/// Methods supported by WASM.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl Joint {
+
 }

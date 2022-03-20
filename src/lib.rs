@@ -14,6 +14,6 @@ use pyo3::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 #[pymodule]
 fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<utils::utils_robot::urdf_link::URDFLink>()?;
+    m.add_class::<robot_modules::robot_model_module::RobotModelModule>()?;
     Ok(())
 }

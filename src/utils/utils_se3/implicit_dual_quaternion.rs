@@ -1,6 +1,5 @@
 use nalgebra::{Quaternion, UnitQuaternion, Vector3, Vector6};
 use serde::{Serialize, Deserialize};
-use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
 use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
@@ -50,8 +49,8 @@ impl ImplicitDualQuaternion {
         let c = phi.cos();
         let gamma = w.dot(&v);
 
-        let mut mu_r = 0.0;
-        let mut mu_d = 0.0;
+        let mu_r;
+        let mu_d;
 
         if phi < 0.00000001 {
             mu_r = 1.0 - phi.powi(2)/6.0 + phi.powi(4) / 120.0;
@@ -62,10 +61,10 @@ impl ImplicitDualQuaternion {
         }
 
         let h_v: Vector3<f64> = mu_r * w;
-        let mut quat_ = Quaternion::new(c, h_v[0], h_v[1], h_v[2]);
-        let mut rotation = UnitQuaternion::from_quaternion(quat_);
+        let quat_ = Quaternion::new(c, h_v[0], h_v[1], h_v[2]);
+        let rotation = UnitQuaternion::from_quaternion(quat_);
 
-        let mut translation = 2.0 * mu_r * (&h_v.cross(&v)) + c*(2.0*mu_r)*v + mu_d*gamma*w;
+        let translation = 2.0 * mu_r * (&h_v.cross(&v)) + c*(2.0*mu_r)*v + mu_d*gamma*w;
 
         return ImplicitDualQuaternion::new(rotation, translation);
     }
@@ -98,8 +97,8 @@ impl ImplicitDualQuaternion {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     /// Implicit dual quaternion multiplication
     pub fn multiply(&self, other: &ImplicitDualQuaternion) -> ImplicitDualQuaternion {
-        let mut out_rot = self.rotation * &other.rotation;
-        let mut out_translation = self.rotation * &other.translation + &self.translation;
+        let out_rot = self.rotation * &other.rotation;
+        let out_translation = self.rotation * &other.translation + &self.translation;
         return ImplicitDualQuaternion::new(out_rot, out_translation);
     }
     /// Returns same result as multiply, but checks if any component of the implicit dual quaternion
@@ -156,8 +155,8 @@ impl ImplicitDualQuaternion {
     }
     /// The inverse transform such that T * T^-1 = I.
     pub fn inverse(&self) -> ImplicitDualQuaternion {
-        let mut new_quat = self.rotation.inverse();
-        let mut new_translation = &new_quat * -self.translation.clone();
+        let new_quat = self.rotation.inverse();
+        let new_translation = &new_quat * -self.translation.clone();
         return ImplicitDualQuaternion::new(new_quat, new_translation);
     }
     /// The displacement transform such that T_self * T_disp = T_other.
@@ -176,8 +175,8 @@ impl ImplicitDualQuaternion {
         if s > 0.0 { a = phi / s; }
         let rot_vec_diff = a * &h_v;
 
-        let mut mu_r = 0.0;
-        let mut mu_d = 0.0;
+        let mu_r;
+        let mu_d;
 
         if s < 0.00000000000001 {
             mu_r = 1.0 - (phi.powi(2) / 3.0) - (phi.powi(4) / 45.0);
@@ -191,10 +190,10 @@ impl ImplicitDualQuaternion {
             mu_d = (1.0 - mu_r) / (phi.powi(2));
         }
 
-        let tmp = (&self.translation / 2.0);
-        let mut translation_diff = mu_d * ( &tmp.dot(&rot_vec_diff) ) * &rot_vec_diff + mu_r * &tmp + &tmp.cross(&rot_vec_diff);
+        let tmp = &self.translation / 2.0;
+        let translation_diff = mu_d * ( &tmp.dot(&rot_vec_diff) ) * &rot_vec_diff + mu_r * &tmp + &tmp.cross(&rot_vec_diff);
 
-        let mut out_vec = Vector6::new(rot_vec_diff[0], rot_vec_diff[1], rot_vec_diff[2], translation_diff[0], translation_diff[1], translation_diff[2]);
+        let out_vec = Vector6::new(rot_vec_diff[0], rot_vec_diff[1], rot_vec_diff[2], translation_diff[0], translation_diff[1], translation_diff[2]);
 
         out_vec
     }
@@ -223,7 +222,7 @@ impl ImplicitDualQuaternion {
                 let rotation = OptimaRotation::new_unit_quaternion(self.rotation().clone());
                 let mut rt =  RotationAndTranslation::new(rotation, self.translation().clone());
                 rt.convert_rotation_type(&OptimaRotationType::RotationMatrix);
-                let mut out_pose = OptimaSE3Pose::new_rotation_and_translation(rt);
+                let out_pose = OptimaSE3Pose::new_rotation_and_translation(rt);
                 out_pose
 
             }

@@ -14,14 +14,29 @@ repository = "https://github.com/djrakita/optima_toolbox"
 nalgebra = {version="0.30.1", features=["serde-serialize"]}
 serde = "1.0.136"
 serde_json = "1.0.79"
-# termion = "1.5.6"
 urdf-rs = "0.6.2"
+vfs = {version="0.6.2", features=["embedded-fs"], optional = true}
+rust-embed = { version="6.2.0", features=["debug-embed", "interpolate-folder-path", "compression", "include-exclude"], optional = true}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.79"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pyo3 = { version = "0.16.2", features = ["extension-module"] }
+termion = "1.5.6"
+
+[features]
+default = ["embed_robots_group_1"]
+do_not_embed_anything = []
+do_not_embed_any_robot_data = []
+do_not_embed_robot_meshes = []
+embed_all_robots = ["embed_robots_group_3"]
+embed_robots_group_3 = ["embed_robots_group_2"]
+embed_robots_group_2 = ["embed_robots_group_1"]
+embed_robots_group_1 = ["ur5", "sawyer"]
+ur5 = ["vfs", "rust-embed"]
+sawyer = ["vfs", "rust-embed"]
+
 
 [lib]
 name = "optima"
@@ -29,6 +44,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.docs.rs]
+targets = ["x86_64-apple-darwin", "wasm32-unknown-unknown"]
 rustdoc-args = [ "--html-in-header", "./src/docs-header.html" ]
 
 [profile.dev]

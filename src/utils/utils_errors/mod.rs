@@ -13,7 +13,7 @@ impl OptimaError {
         Self::GenericError(s)
     }
     pub fn new_idx_out_of_bound_error(given_idx: usize, length_of_array: usize, function_name: &str) -> Self {
-        let mut s = format!("Index {:?} is too large for the array of length {:?} in function {}", given_idx, length_of_array, function_name);
+        let s = format!("Index {:?} is too large for the array of length {:?} in function {}", given_idx, length_of_array, function_name);
         Self::IdxOutOfBoundError(s)
     }
 }

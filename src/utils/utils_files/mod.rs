@@ -22,7 +22,7 @@ impl FileUtils {
         return match &mut file_res {
             Ok(f) => {
                 let mut contents = String::new();
-                f.read_to_string(&mut contents);
+                f.read_to_string(&mut contents).expect("error");
                 Ok(contents)
             }
             Err(e) => {
@@ -60,7 +60,7 @@ impl FileUtils {
         let mut file_res = File::create(p);
         return match &mut file_res {
             Ok(f) => {
-                serde_json::to_writer(f, object);
+                serde_json::to_writer(f, object).expect("error");
                 Ok(())
             }
             Err(e) => {
@@ -94,6 +94,17 @@ impl FileUtils {
 /// Convenience struct that holds many class functions related to the assets folder utils.
 pub struct AssetFolderUtils;
 impl AssetFolderUtils {
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_path_to_assets_dir() -> Result<PathBuf, OptimaError> {
+        let mut path = FileUtils::get_path_to_src();
+        path.push("..");
+        path.push("optima_assets");
+
+        Ok(path)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     /// Returns file path to the Optima toolbox assets directory.
     /// This is read in from a file, path_to_optima_toolbox_assets.json, which is stored in the folder
     /// that the program is being executed from.
@@ -109,7 +120,18 @@ impl AssetFolderUtils {
                 let path_to_assets_dir_res = FileUtils::load_object_from_json_file::<PathToAssetsDir>(&path_to_assets_dir_file);
                 match &path_to_assets_dir_res {
                     Ok(p) => {
-                        let path_buffer = p.path_to_assets_dir.clone();
+                        let path_buffer = match p.path_type {
+                            PathType::Absolute => {
+                                p.path_to_assets_dir.clone()
+                            }
+                            PathType::Relative => {
+                                let mut path = FileUtils::get_path_to_src();
+                                path.push(p.path_to_assets_dir.clone());
+                                path
+                            }
+                        };
+
+                        // let path_buffer = p.path_to_assets_dir.clone();
                         let path_exists = path_buffer.exists();
                         match path_exists {
                             true => {
@@ -165,7 +187,7 @@ impl AssetFolderUtils {
                 }
 
                 let pp = PathToAssetsDir::default();
-                FileUtils::save_object_to_file_as_json(&pp, &path_to_assets_dir_file);
+                FileUtils::save_object_to_file_as_json(&pp, &path_to_assets_dir_file)?;
                 Err(OptimaError::new_generic_error_str("path_to_optima_toolbox_assets.json file did not exist yet."))
             }
         }
@@ -237,17 +259,27 @@ impl AssetFolderLocation {
 /// Convenience class that will be used for path_to_assets_dir.json file.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PathToAssetsDir {
+    path_type: PathType,
     path_to_assets_dir: PathBuf
 }
 impl Default for PathToAssetsDir {
     fn default() -> Self {
-        let mut path = FileUtils::get_path_to_src();
+        // let mut path = FileUtils::get_path_to_src();
+        let mut path = PathBuf::new();
         path.push("..");
         path.push("optima_assets");
         Self {
+            path_type: PathType::Relative,
             path_to_assets_dir: path
         }
     }
+}
+
+/// Convenience enum that will be used for path_to_assets_dir.json file.
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+enum PathType {
+    Absolute,
+    Relative
 }
 
 /// Convenience struct that holds many class functions related to the robot folder within assets.

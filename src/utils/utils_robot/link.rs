@@ -1,9 +1,16 @@
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_robot::urdf_link::URDFLink;
 
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 /// A Link holds all necessary information about a robot link (specified by a robot URDF file)
 /// in order to do kinematic and dynamic computations on a robot model.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct Link {
     name: String,
     active: bool,
@@ -77,4 +84,18 @@ impl Link {
     pub fn add_child_link_idx(&mut self, idx: usize) {
         self.children_link_idxs.push(idx);
     }
+}
+
+/// Methods supported by python.
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl Link {
+
+}
+
+/// Methods supported by WASM.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl Link {
+
 }

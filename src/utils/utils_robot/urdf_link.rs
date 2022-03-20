@@ -28,18 +28,9 @@ pub struct URDFLink {
 }
 impl URDFLink {
     pub fn new_from_urdf_link(link: &Link) -> Self {
-        /*
-        match link.visual[0].geometry {
-            Geometry::Box { .. } => {}
-            Geometry::Cylinder { .. } => {}
-            Geometry::Capsule { .. } => {}
-            Geometry::Sphere { .. } => {}
-            Geometry::Mesh { filename, scale } => {}
-        }
-        */
         let visual_mesh_filename = if link.visual.len() > 0 {
             match &link.visual[0].geometry {
-                Geometry::Mesh { filename, scale } => { Some(filename.clone()) }
+                Geometry::Mesh { filename, scale: _ } => { Some(filename.clone()) }
                 _ => { None }
             }
         } else {
@@ -47,7 +38,7 @@ impl URDFLink {
         };
         let visual_mesh_scale: Option<Vector3<f64>> = if link.visual.len() > 0 {
             match &link.visual[0].geometry {
-                Geometry::Mesh { filename, scale } => {
+                Geometry::Mesh { filename: _, scale } => {
                     match scale {
                         None => { None }
                         Some(v) => { Some(Vector3::new(v[0], v[1], v[2])) }
@@ -61,7 +52,7 @@ impl URDFLink {
 
         let collision_mesh_filename = if link.collision.len() > 0 {
             match &link.collision[0].geometry {
-                Geometry::Mesh { filename, scale } => { Some(filename.clone()) }
+                Geometry::Mesh { filename, scale: _ } => { Some(filename.clone()) }
                 _ => { None }
             }
         } else {
@@ -69,7 +60,7 @@ impl URDFLink {
         };
         let collision_mesh_scale: Option<Vector3<f64>> = if link.collision.len() > 0 {
             match &link.collision[0].geometry {
-                Geometry::Mesh { filename, scale } => {
+                Geometry::Mesh { filename: _, scale } => {
                     match scale {
                         None => { None }
                         Some(v) => { Some(Vector3::new(v[0], v[1], v[2])) }

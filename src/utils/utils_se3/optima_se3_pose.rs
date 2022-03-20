@@ -253,9 +253,9 @@ impl OptimaSE3Pose {
     }
     fn get_pose_type(&self) -> &OptimaSE3PoseType {
         return match self {
-            OptimaSE3Pose::ImplicitDualQuaternion { data, pose_type } => { pose_type }
-            OptimaSE3Pose::HomogeneousMatrix { data, pose_type } => { pose_type }
-            OptimaSE3Pose::RotationAndTranslation { data, pose_type } => { pose_type }
+            OptimaSE3Pose::ImplicitDualQuaternion { data: _, pose_type } => { pose_type }
+            OptimaSE3Pose::HomogeneousMatrix { data: _, pose_type } => { pose_type }
+            OptimaSE3Pose::RotationAndTranslation { data: _, pose_type } => { pose_type }
         }
     }
 }

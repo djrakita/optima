@@ -121,7 +121,7 @@ impl OptimaRotation {
                     _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
-            OptimaRotation::UnitQuaternion { data, rotation_type } => {
+            OptimaRotation::UnitQuaternion { data, rotation_type: _ } => {
                 let data0 = data;
                 match other {
                     OptimaRotation::UnitQuaternion { data, .. } => {
@@ -177,7 +177,7 @@ impl OptimaRotation {
                     _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
-            OptimaRotation::UnitQuaternion { data, rotation_type } => {
+            OptimaRotation::UnitQuaternion { data, rotation_type: _ } => {
                 let data0 = data;
                 match other {
                     OptimaRotation::UnitQuaternion { data, .. } => {
@@ -211,7 +211,7 @@ impl OptimaRotation {
                     _ => { Err(OptimaError::new_generic_error_str("incompatible rotation types in multiply.")) }
                 }
             }
-            OptimaRotation::UnitQuaternion { data, rotation_type } => {
+            OptimaRotation::UnitQuaternion { data, rotation_type: _ } => {
                 let data0 = data;
                 match other {
                     OptimaRotation::UnitQuaternion { data, .. } => {
@@ -249,8 +249,8 @@ impl OptimaRotation {
     }
     fn get_rotation_type(&self) -> &OptimaRotationType {
         return match &self {
-            OptimaRotation::RotationMatrix { data, rotation_type } => { rotation_type }
-            OptimaRotation::UnitQuaternion { data, rotation_type } => { rotation_type }
+            OptimaRotation::RotationMatrix { data: _, rotation_type } => { rotation_type }
+            OptimaRotation::UnitQuaternion { data: _, rotation_type } => { rotation_type }
         }
     }
 }

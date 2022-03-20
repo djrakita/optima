@@ -1,4 +1,4 @@
-use nalgebra::{Matrix3, Matrix4, Rotation, Rotation3, UnitQuaternion, Vector3, Vector4};
+use nalgebra::{Matrix3, Matrix4, Rotation3, UnitQuaternion, Vector3, Vector4};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_se3::implicit_dual_quaternion::ImplicitDualQuaternion;
 use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
@@ -42,7 +42,7 @@ impl HomogeneousMatrix {
     }
     /// Returns the translation component of the homogeneous matrix.
     pub fn translation(&self) -> Vector3<f64> {
-        let mut out_vec = Vector3::new(self.matrix[(0,3)], self.matrix[(1,3)], self.matrix[(2,3)]);
+        let out_vec = Vector3::new(self.matrix[(0,3)], self.matrix[(1,3)], self.matrix[(2,3)]);
         return out_vec;
     }
     /// multiplication
@@ -143,8 +143,8 @@ impl HomogeneousMatrix {
         mat3[(2,1)] = mat[(2,1)];
         mat3[(2,2)] = mat[(2,2)];
 
-        let mut rot3 = Rotation3::from_matrix(&mat3);
-        let mut quat = UnitQuaternion::from_rotation_matrix(&rot3);
+        let rot3 = Rotation3::from_matrix(&mat3);
+        let quat = UnitQuaternion::from_rotation_matrix(&rot3);
         let rotation = OptimaRotation::new_unit_quaternion(quat);
         let translation = Vector3::new(mat[(0,3)], mat[(1,3)], mat[(2,3)]);
         return (rotation, translation);
