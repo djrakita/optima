@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::RobotFolderUtils;
+use crate::utils::utils_files::{FileUtils, RobotDirUtils, RobotModuleJsonType};
 use crate::utils::utils_robot::joint::{Joint};
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
+use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 
 /// The RobotModelModule is the base description level for a robot.  It reflects component and
 /// connectivity information about the robot as specified directly by the URDF.
@@ -57,7 +57,7 @@ impl RobotModelModule {
         let mut link_name_to_idx_hashmap = HashMap::new();
         let mut joint_name_to_idx_hashmap = HashMap::new();
 
-        let path_to_urdf = RobotFolderUtils::get_path_to_urdf_file(robot_name)?;
+        let path_to_urdf = RobotDirUtils::get_path_to_urdf_file(robot_name)?;
         let urdf_robot_res = urdf_rs::read_file(path_to_urdf);
         match &urdf_robot_res {
             Ok(urdf_robot) => {
@@ -96,6 +96,19 @@ impl RobotModelModule {
         out_self.set_link_tree_traversal_info();
 
         Ok(out_self)
+    }
+
+    /// Loads module from a json string.  Will throw an error if the json string is not compatible.
+    pub fn new_from_json_string(json_string: &str) -> Result<Self, OptimaError> {
+        FileUtils::load_object_from_json_string::<Self>(json_string)
+    }
+
+    /// Serializes and saves module to json file.
+    /// The file is in the optima_assets/optima_robots/<robot name>/
+    pub fn save_to_json(&self) -> Result<(), OptimaError> {
+        let p = RobotDirUtils::get_path_to_robot_module_json(self.robot_name(), RobotModuleJsonType::ModelModule)?;
+        FileUtils::save_object_to_file_as_json(self, &p)?;
+        Ok(())
     }
 
     fn assign_all_link_connections_manual(&mut self) {
@@ -394,6 +407,9 @@ impl RobotModelModule {
     pub fn print_link_order_py(&self) {
         self.print_link_order();
     }
+    pub fn print_link_tree_traversal_layers_with_link_names_py(&self) {
+        self.print_link_tree_traversal_layers_with_link_names()
+    }
 }
 
 /// Methods supported by WASM.
@@ -401,12 +417,15 @@ impl RobotModelModule {
 #[wasm_bindgen]
 impl RobotModelModule {
     #[wasm_bindgen(constructor)]
-    pub fn new_wasm(robot_name: &str) -> Self {
-        return Self::new(robot_name).expect("error")
+    pub fn new_from_json_string_wasm(json_string: &str) -> Self {
+        Self::new_from_json_string(json_string).expect("error")
     }
     pub fn robot_name_wasm(&self) -> String { self.robot_name.clone() }
     pub fn print_link_order_wasm(&self) {
         self.print_link_order();
+    }
+    pub fn print_link_tree_traversal_layers_with_link_names_wasm(&self) {
+        self.print_link_tree_traversal_layers_with_link_names()
     }
 }
 
