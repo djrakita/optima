@@ -25,6 +25,11 @@ pub fn optima_print(s: &str, mode: PrintMode, color: PrintColor, bolded: bool) {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn optima_print_new_line() {
+    optima_print("\n", PrintMode::Print, PrintColor::None, false);
+}
+
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -36,13 +41,16 @@ extern "C" {
 }
 
 #[cfg(target_arch = "wasm32")]
-#[warn(unused_variables)]
 #[allow(unused)]
 pub fn optima_print(s: &str, mode: PrintMode, color: PrintColor, bolded: bool) {
     println!("{}", s);
     log(s);
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn optima_print_new_line() {
+    optima_print("\n", PrintMode::Print, PrintColor::None, false);
+}
 
 /// Enum that is used in print_termion_string function.
 /// Println will cause a new line after each line, while Print will not.

@@ -260,10 +260,45 @@ impl OptimaSE3Pose {
     }
 }
 
+/// An Enum that encodes a pose type.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum OptimaSE3PoseType {
     ImplicitDualQuaternion,
     HomogeneousMatrix,
     UnitQuaternionAndTranslation,
     RotationMatrixAndTranslation
+}
+
+/// A container object that holds all OPtimaSE3 types.  This is useful for functions that may need
+/// to handle many pose types, so this allows all to be initialized and saved at once to avoid
+/// many transform conversions at run-time.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimaSE3PoseAll {
+    implicit_dual_quaternion: OptimaSE3Pose,
+    homogeneous_matrix: OptimaSE3Pose,
+    unit_quaternion_and_translation: OptimaSE3Pose,
+    rotation_matrix_and_translation: OptimaSE3Pose
+}
+impl OptimaSE3PoseAll {
+    pub fn new(p: &OptimaSE3Pose) -> Self {
+        Self {
+            implicit_dual_quaternion: p.convert(&OptimaSE3PoseType::ImplicitDualQuaternion),
+            homogeneous_matrix: p.convert(&OptimaSE3PoseType::HomogeneousMatrix),
+            unit_quaternion_and_translation: p.convert(&OptimaSE3PoseType::UnitQuaternionAndTranslation),
+            rotation_matrix_and_translation: p.convert(&OptimaSE3PoseType::RotationMatrixAndTranslation)
+        }
+    }
+
+    pub fn new_identity() -> Self {
+        return Self::new(&OptimaSE3Pose::new_unit_quaternion_and_translation_from_euler_angles(0.,0.,0.,0.,0.,0.));
+    }
+
+    pub fn get_pose_by_type(&self, t: &OptimaSE3PoseType) -> &OptimaSE3Pose {
+        return match t {
+            OptimaSE3PoseType::ImplicitDualQuaternion => { &self.implicit_dual_quaternion }
+            OptimaSE3PoseType::HomogeneousMatrix => { &self.homogeneous_matrix }
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => { &self.unit_quaternion_and_translation }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => { &self.rotation_matrix_and_translation }
+        }
+    }
 }

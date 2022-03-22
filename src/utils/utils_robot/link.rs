@@ -1,11 +1,12 @@
-use serde::{Serialize, Deserialize};
-use crate::utils::utils_robot::urdf_link::URDFLink;
-
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+use serde::{Serialize, Deserialize};
+use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_robot::urdf_link::URDFLink;
 
 /// A Link holds all necessary information about a robot link (specified by a robot URDF file)
 /// in order to do kinematic and dynamic computations on a robot model.
@@ -34,6 +35,21 @@ impl Link {
             children_joint_idxs: vec![],
             is_mobile_base_link: false,
             urdf_link
+        }
+    }
+    /// Returns a link that can serve as a mobile base link.  This will be automatically used by the
+    /// RobotConfigurationModule, so it will almost never need to be called by the end user.
+    pub fn new_mobile_base_link(link_idx: usize, world_link_idx: usize, newly_created_joint_idx: usize) -> Self {
+        Self {
+            name: "mobile_base_link".to_string(),
+            active: true,
+            link_idx,
+            preceding_link_idx: None,
+            children_link_idxs: vec![world_link_idx],
+            preceding_joint_idx: None,
+            children_joint_idxs: vec![newly_created_joint_idx],
+            is_mobile_base_link: true,
+            urdf_link: URDFLink::new_empty()
         }
     }
     pub fn name(&self) -> &str {
@@ -83,6 +99,21 @@ impl Link {
     }
     pub fn add_child_link_idx(&mut self, idx: usize) {
         self.children_link_idxs.push(idx);
+    }
+    pub fn print_summary(&self) {
+        optima_print(&format!("  Link index: "), PrintMode::Print, PrintColor::Blue, true);
+        optima_print(&format!(" {} ", self.link_idx), PrintMode::Print, PrintColor::None, false);
+        optima_print(&format!("  Link name: "), PrintMode::Print, PrintColor::Blue, true);
+        optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false);
+        optima_print(&format!("  Active: "), PrintMode::Print, PrintColor::Blue, true);
+        let color = match self.active {
+            true => { PrintColor::Green }
+            false => { PrintColor::Red }
+        };
+        optima_print(&format!(" {} ", self.active), PrintMode::Print, color, false);
+    }
+    pub fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 }
 

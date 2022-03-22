@@ -1,18 +1,20 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::{FileUtils, RobotDirUtils, RobotModuleJsonType};
-use crate::utils::utils_robot::joint::{Joint};
-use crate::utils::utils_robot::link::Link;
-use crate::utils::utils_robot::urdf_joint::URDFJoint;
-use crate::utils::utils_robot::urdf_link::URDFLink;
-use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
-
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
+use crate::robot_modules::robot_configuration_module::MobileBaseInfo;
+use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::{RobotDirUtils, RobotModuleJsonType};
+use crate::utils::utils_robot::joint::{Joint};
+use crate::utils::utils_robot::link::Link;
+use crate::utils::utils_robot::urdf_joint::URDFJoint;
+use crate::utils::utils_robot::urdf_link::URDFLink;
+use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
 
 /// The RobotModelModule is the base description level for a robot.  It reflects component and
 /// connectivity information about the robot as specified directly by the URDF.
@@ -98,6 +100,7 @@ impl RobotModelModule {
         Ok(out_self)
     }
 
+    /*
     /// Loads module from a json string.  Will throw an error if the json string is not compatible.
     pub fn new_from_json_string(json_string: &str) -> Result<Self, OptimaError> {
         FileUtils::load_object_from_json_string::<Self>(json_string)
@@ -110,6 +113,7 @@ impl RobotModelModule {
         FileUtils::save_object_to_file_as_json(self, &p)?;
         Ok(())
     }
+    */
 
     fn assign_all_link_connections_manual(&mut self) {
         let l1 = self.links.len();
@@ -247,6 +251,7 @@ impl RobotModelModule {
         return Err(OptimaError::new_generic_error_str("link_idx not found in get_link_tree_traversal_layer()"));
     }
 
+    /// Returns the link index of the given link indices that is in the highest tree traveral layer.
     pub fn get_link_with_highest_tree_traversal_layer(&self, link_idxs: &Vec<usize>) -> Result<usize, OptimaError> {
         if link_idxs.len() == 1 { return Ok(link_idxs[0]); }
         if link_idxs.len() == 0 { return Err(OptimaError::new_generic_error_string(format!("cannot have link_idxs with length 0 in get_link_with_highest_tree_traversal_layer()"))); }
@@ -261,6 +266,23 @@ impl RobotModelModule {
             }
         }
         return Ok(highest_layer_link_idx);
+    }
+
+    /// Returns all links that are successors of link_idx in the kinematic chain (including link_idx itself).
+    pub fn get_all_downstream_links(&self, link_idx: usize) -> Result<Vec<usize>, OptimaError> {
+        let mut out_vec = vec![link_idx];
+
+        let curr_link = self.get_link_by_idx(link_idx)?;
+        let mut stack = curr_link.children_link_idxs().clone();
+
+        loop {
+            if stack.is_empty() { return Ok(out_vec) }
+
+            let p = stack.remove(0);
+            out_vec.push(p);
+            let link = self.get_link_by_idx(p)?;
+            for c in link.children_link_idxs() { stack.push(*c); }
+        }
     }
 
     /// Function used during setup.  It is public since other modules may need to access it,
@@ -340,6 +362,32 @@ impl RobotModelModule {
         }
     }
 
+    /// Adds mobile base funtionality to the robot model.  This will likely be set automatically
+    /// by RobotConfigurationModule, so there will very rarely be a need for the end user to
+    /// call this function.
+    pub fn add_mobile_base_link_and_joint(&mut self, mobile_base_mode: &MobileBaseInfo) {
+        match mobile_base_mode {
+            MobileBaseInfo::Static => { /* Do nothing */ }
+            _ => {
+                let new_link_idx = self.links().len();
+                let new_joint_idx = self.joints().len();
+
+                let new_link = Link::new_mobile_base_link(new_link_idx, self.world_link_idx, new_joint_idx);
+                let new_joint = Joint::new_mobile_base_connector_joint(mobile_base_mode, new_joint_idx, new_link_idx, self.world_link_idx);
+
+                self.link_name_to_idx_hashmap.insert(new_link.name().to_string(), new_link_idx);
+                self.joint_name_to_idx_hashmap.insert(new_joint.name().to_string(), new_joint_idx);
+
+                self.links.push(new_link);
+                self.joints.push(new_joint);
+
+                self.robot_base_link_idx = new_link_idx;
+
+                self.set_link_tree_traversal_info();
+            }
+        }
+    }
+
     /// Returns all links (by index) that have the given joint index as their closest preceding
     /// actuated joint index.
     pub fn get_all_link_idxs_with_given_preceding_actuated_joint_idx(&self, joint_idx: usize) -> Vec<usize> {
@@ -385,13 +433,77 @@ impl RobotModelModule {
         }
     }
 
-    pub fn print_link_order(&self) {
-        let num_links = self.links.len();
-        for i in 0..num_links {
-            optima_print(&format!("link {} ---> ", i), PrintMode::Print, PrintColor::Blue, true);
-            optima_print(&format!(" {} --- active: {}\n", self.links[i].name(), self.links[i].active()), PrintMode::Print, PrintColor::None, false);
+    /// Sets given link as inactive.
+    pub fn set_link_as_inactive(&mut self, link_idx: usize) -> Result<(), OptimaError> {
+        if link_idx >= self.links().len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(link_idx, self.links().len(), "set_link_as_inactive()"));
+        }
+
+        self.links[link_idx].set_active(false);
+
+        Ok(())
+    }
+
+    pub fn set_fixed_joint_sub_dof(&mut self, joint_idx: usize, joint_sub_idx: usize, fixed_value: Option<f64>) -> Result<(), OptimaError> {
+        if joint_idx >= self.joints.len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints.len(), "set_fixed_joint_sub_dof"));
+        }
+
+        return self.joints[joint_idx].set_fixed_joint_sub_dof(joint_sub_idx, fixed_value);
+    }
+
+    pub fn set_fixed_joint(&mut self, joint_idx: usize, fixed_value: Option<f64>) -> Result<(), OptimaError> {
+        if joint_idx >= self.joints.len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints.len(), "set_fixed_joint"));
+        }
+
+        let j = &mut self.joints[joint_idx];
+        for d in 0..j.num_dofs() {
+            j.set_fixed_joint_sub_dof(d, fixed_value)?;
+        }
+        Ok(())
+    }
+
+    pub fn print_links(&self) {
+        for l in self.links.iter() {
+            l.print_summary();
+            print!("\n");
+        }
+    }
+
+    pub fn print_joints(&self) {
+        for j in self.joints.iter() {
+            j.print_summary();
+            print!("\n");
+        }
+    }
+
+    pub fn print_summary(&self) {
+        self.print_links();
+        print!("\n");
+        self.print_joints();
+        print!("\n");
+    }
+
+    /*
+
+
+    pub fn print_joint_order(&self) {
+        for (i, j) in self.joints.iter().enumerate() {
+            optima_print(&format!("joint {} ---> ", i), PrintMode::Print, PrintColor::Blue, true);
+            optima_print(&format!(" {} --- active: {} --- num dofs: {} \n", self.joints[i].name(), self.joints[i].active(), self.joints[i].num_dofs()), PrintMode::Print, PrintColor::None, false);
         }
         println!();
+    }
+    */
+}
+impl RobotModuleSaveAndLoad for RobotModelModule {
+    fn get_robot_name(&self) -> &str {
+        self.robot_name()
+    }
+
+    fn get_robot_module_json_type(&self) -> RobotModuleJsonType {
+        RobotModuleJsonType::ModelModule
     }
 }
 
@@ -405,7 +517,7 @@ impl RobotModelModule {
     }
     pub fn robot_name_py(&self) -> String { self.robot_name().to_string() }
     pub fn print_link_order_py(&self) {
-        self.print_link_order();
+        self.print_links();
     }
     pub fn print_link_tree_traversal_layers_with_link_names_py(&self) {
         self.print_link_tree_traversal_layers_with_link_names()
@@ -422,7 +534,7 @@ impl RobotModelModule {
     }
     pub fn robot_name_wasm(&self) -> String { self.robot_name.clone() }
     pub fn print_link_order_wasm(&self) {
-        self.print_link_order();
+        self.print_links();
     }
     pub fn print_link_tree_traversal_layers_with_link_names_wasm(&self) {
         self.print_link_tree_traversal_layers_with_link_names()

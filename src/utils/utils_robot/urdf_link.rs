@@ -1,12 +1,12 @@
-use urdf_rs::*;
-use nalgebra::{Vector3, Matrix3};
-use serde::{Serialize, Deserialize};
-
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+use urdf_rs::*;
+use nalgebra::{Vector3, Matrix3};
+use serde::{Serialize, Deserialize};
 
 /// This struct holds all information provided by a URDF file on a Link when parsed by urdf_rs.
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]

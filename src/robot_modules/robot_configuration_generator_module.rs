@@ -1,40 +1,133 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_model_module::RobotModelModule;
-use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
-
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+use std::collections::HashMap;
+use std::io;
+use std::io::BufRead;
+use serde::{Deserialize, Serialize};
+use crate::robot_modules::robot_model_module::RobotModelModule;
+use crate::robot_modules::robot_configuration_module::{RobotConfigurationIdentifier, RobotConfigurationInfo, RobotConfigurationModule};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::{RobotDirUtils, RobotModuleJsonType};
+use crate::utils::utils_files::{FileUtils, RobotDirUtils, RobotModuleJsonType};
+use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
+use crate::utils::utils_console_output::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotConfigurationGeneratorModule {
     robot_configuration_infos: HashMap<String, RobotConfigurationInfo>,
-    robot_model_module: RobotModelModule
+    base_robot_model_module: RobotModelModule
 }
 impl RobotConfigurationGeneratorModule {
     pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
         let path = RobotDirUtils::get_path_to_robot_module_json(robot_name, RobotModuleJsonType::ConfigurationGeneratorModule)?;
         if path.exists() {
-            todo!()
+            let loaded_self = FileUtils::load_object_from_json_file::<Self>(&path)?;
+            return Ok(loaded_self);
         } else {
             let robot_model_module = RobotModelModule::new(robot_name)?;
-            let mut out_self = Self {
+            let out_self = Self {
                 robot_configuration_infos: Default::default(),
-                robot_model_module
+                base_robot_model_module: robot_model_module
             };
-            out_self.save_to_json();
+            out_self.save_to_json_file()?;
             Ok(out_self)
         }
     }
 
-    pub fn save_to_json(&self) {
+    pub fn save_robot_configuration_module(&mut self, robot_configuration_info: &RobotConfigurationInfo) -> Result<(), OptimaError> {
+        match robot_configuration_info.configuration_identifier() {
+            RobotConfigurationIdentifier::NamedConfiguration(name) => {
+                let robot_configuration_info_option = self.robot_configuration_infos.get(name);
+                match robot_configuration_info_option {
+                    None => {
+                        self.robot_configuration_infos.insert(name.clone(), robot_configuration_info.clone());
 
+                        self.save_to_json_file()?;
+                    }
+                    Some(_) => {
+                        optima_print(&format!("Robot configuration with name {:?} already exits.  Overwrite?  (y or n)", name), PrintMode::Println, PrintColor::Blue, true);
+                        let stdin = io::stdin();
+                        let line = stdin.lock().lines().next().unwrap().unwrap();
+                        if &line == "y" {
+                            optima_print("Configuration saved.", PrintMode::Println, PrintColor::Blue, false);
+                            self.robot_configuration_infos.insert(name.clone(), robot_configuration_info.clone());
+                            self.save_to_json_file()?;
+                        } else {
+                            optima_print("Configuration not saved.", PrintMode::Println, PrintColor::Yellow, true);
+                        }
+
+                        self.save_to_json_file()?;
+                    }
+                }
+            }
+            _ => {  }
+        }
+        Ok(())
+    }
+
+    pub fn delete_named_robot_configuration_module(&mut self, name: &str) -> Result<(), OptimaError> {
+        let res = self.robot_configuration_infos.remove(name);
+        if res.is_some() {
+            optima_print(&format!("Ready to delete configuration {:?}.  Confirm?  (y or n)", name), PrintMode::Println, PrintColor::Blue, true);
+            let stdin = io::stdin();
+            let line = stdin.lock().lines().next().unwrap().unwrap();
+            if &line == "y" {
+                self.save_to_json_file()?;
+            } else {
+                optima_print(&format!("Did not delete configuration."), PrintMode::Println, PrintColor::Yellow, true);
+            }
+        } else {
+            optima_print(&format!("Configuration with name {:?} does not exist.  Nothing deleted.", name), PrintMode::Println, PrintColor::Yellow, true);
+        }
+        Ok(())
+    }
+
+    pub fn generate_configuration_module(&self, identifier: RobotConfigurationIdentifier) -> Result<RobotConfigurationModule, OptimaError> {
+        return match &identifier {
+            RobotConfigurationIdentifier::BaseModel => {
+                RobotConfigurationModule::new_base_model(self.base_robot_model_module.robot_name())
+            }
+            RobotConfigurationIdentifier::NamedConfiguration(name) => {
+                let info_option = self.robot_configuration_infos.get(name);
+                match info_option {
+                    None => {
+                        Err(OptimaError::new_generic_error_str(&format!("configuration with name {:?} does not exist.", name)))
+                    }
+                    Some(info) => {
+                        RobotConfigurationModule::new_from_base_model_module_and_info(self.base_robot_model_module.clone(), info.clone())
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn generate_named_configuration(&self, name: &str) -> Result<RobotConfigurationModule, OptimaError> {
+        return self.generate_configuration_module(RobotConfigurationIdentifier::NamedConfiguration(name.to_string()));
+    }
+
+    pub fn generate_base_configuration(&self) -> Result<RobotConfigurationModule, OptimaError> {
+        return self.generate_configuration_module(RobotConfigurationIdentifier::BaseModel);
+    }
+    
+    pub fn print_saved_configurations(&self) {
+        optima_print("Saved Configurations ---> ", PrintMode::Println, PrintColor::Blue, true);
+        for (k, _) in &self.robot_configuration_infos {
+            optima_print(&format!("   {}", k), PrintMode::Println, PrintColor::None, false);
+        }
+        optima_print_new_line();
+    }
+}
+impl RobotModuleSaveAndLoad for RobotConfigurationGeneratorModule {
+    fn get_robot_name(&self) -> &str {
+        self.base_robot_model_module.robot_name()
+    }
+
+    fn get_robot_module_json_type(&self) -> RobotModuleJsonType {
+        RobotModuleJsonType::ConfigurationGeneratorModule
     }
 }
 
@@ -48,63 +141,5 @@ impl RobotConfigurationGeneratorModule {
 #[wasm_bindgen]
 impl RobotConfigurationGeneratorModule {
 
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RobotConfigurationInfo {
-    configuration_name: String,
-    description: Option<String>,
-    dead_end_link_idxs: Vec<usize>,
-    inactive_joint_idxs: Vec<usize>,
-    base_offset: OptimaSE3Pose,
-    mobile_base_mode: MobileBaseMode
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct InactiveJointInfo {
-    joint_idx: usize,
-    num_joint_dofs: usize,
-    fixed_joint_values: Vec<f64>
-}
-impl InactiveJointInfo {
-    pub fn joint_idx(&self) -> usize {
-        self.joint_idx
-    }
-    pub fn num_joint_dofs(&self) -> usize {
-        self.num_joint_dofs
-    }
-    pub fn fixed_joint_values(&self) -> &Vec<f64> {
-        &self.fixed_joint_values
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MobileBaseMode {
-    Static,
-    Floating { x_bounds: (f64, f64), y_bounds: (f64, f64), z_bounds: (f64, f64), xr_bounds: (f64, f64), yr_bounds: (f64, f64), zr_bounds: (f64, f64) },
-    PlanarTranslation { x_bounds: (f64, f64), y_bounds: (f64, f64) },
-    PlanarRotation { zr_bounds: (f64, f64) },
-    PlanarTranslationAndRotation { x_bounds: (f64, f64), y_bounds: (f64, f64), zr_bounds: (f64, f64) }
-}
-impl MobileBaseMode {
-    pub fn get_bounds(&self) -> Vec<(f64, f64)> {
-        match self {
-            MobileBaseMode::Static => {
-                vec![]
-            }
-            MobileBaseMode::Floating { x_bounds, y_bounds, z_bounds, xr_bounds, yr_bounds, zr_bounds } => {
-                vec![x_bounds.clone(), y_bounds.clone(), z_bounds.clone(), xr_bounds.clone(), yr_bounds.clone(), zr_bounds.clone()]
-            }
-            MobileBaseMode::PlanarTranslation { x_bounds, y_bounds } => {
-                vec![ x_bounds.clone(), y_bounds.clone() ]
-            }
-            MobileBaseMode::PlanarRotation { zr_bounds } => {
-                vec![ zr_bounds.clone() ]
-            }
-            MobileBaseMode::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds } => {
-                vec![ x_bounds.clone(), y_bounds.clone(), zr_bounds.clone() ]
-            }
-        }
-    }
 }
 
