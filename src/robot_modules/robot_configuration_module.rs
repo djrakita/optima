@@ -21,8 +21,8 @@ use crate::utils::utils_errors::OptimaError;
 ///
 /// In many cases, the RobotConfigurationInfo will reflect a default base model configuration, meaning
 /// its respective configuration will be the base robot model given directly by the robot's URDF.
-#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotConfigurationModule {
     robot_configuration_info: RobotConfigurationInfo,
     robot_model_module: RobotModelModule,
@@ -40,6 +40,7 @@ impl RobotConfigurationModule {
             base_robot_model_module: robot_model_module
         })
     }
+
     /// Returns a robot configuration based on the given base model module and robot configuration info.
     /// The end user should not need to use this function as it is called automatically by the
     /// RobotConfigurationGeneratorModule.  It is recommended to use the RobotConfigurationGeneratorModule
@@ -55,6 +56,7 @@ impl RobotConfigurationModule {
 
         return Ok(out_self);
     }
+
     fn update(&mut self) -> Result<(), OptimaError> {
         let mut robot_model_module = self.base_robot_model_module.clone();
         let robot_configuration_info = &self.robot_configuration_info;
@@ -77,15 +79,18 @@ impl RobotConfigurationModule {
         self.robot_model_module = robot_model_module;
         Ok(())
     }
+
     /// Returns a reference to the RobotConfigurationInfo that was used to change the configuration's
     /// underlying model module.
     pub fn robot_configuration_info(&self) -> &RobotConfigurationInfo {
         &self.robot_configuration_info
     }
+
     /// Returns a reference to the robot model module that reflects the configuration's RobotConfigurationInfo.
     pub fn robot_model_module(&self) -> &RobotModelModule {
         &self.robot_model_module
     }
+
     /// Sets the given link as a "dead end" link.  A dead end link is a link such that it and all
     /// links that occur as successors in the kinematic chain will be inactive (essentially, removed)
     /// from the robot model.
@@ -93,6 +98,7 @@ impl RobotConfigurationModule {
         self.robot_configuration_info.dead_end_link_idxs.push(link_idx);
         return self.update();
     }
+
     /// Removes the given link as a dead end link.
     pub fn remove_dead_end_link(&mut self, link_idx: usize) -> Result<(), OptimaError> {
         self.robot_configuration_info.dead_end_link_idxs =
@@ -100,6 +106,7 @@ impl RobotConfigurationModule {
             .iter().filter_map(|s| if *s == link_idx { None } else { Some(*s) } ).collect();
         return self.update();
     }
+
     /// Fixes the given joint to the given value.  Thus, this joint will not be a degree of freedom
     /// in the current configuration.
     pub fn set_fixed_joint(&mut self, joint_idx: usize, joint_sub_idx: usize, fixed_joint_value: f64) -> Result<(), OptimaError> {
@@ -110,6 +117,7 @@ impl RobotConfigurationModule {
         });
         return self.update();
     }
+
     /// Removes the given joint as a fixed joint.  Thus, this joint will become a degree of freedom.
     pub fn remove_fixed_joint(&mut self, joint_idx: usize, joint_sub_idx: usize) -> Result<(), OptimaError> {
         self.robot_configuration_info.fixed_joint_infos =
@@ -118,20 +126,24 @@ impl RobotConfigurationModule {
 
         return self.update();
     }
+
     /// Sets the mobile base mode of the robot configuration.
     pub fn set_mobile_base_mode(&mut self, mobile_base_mode: MobileBaseInfo) -> Result<(), OptimaError> {
         self.robot_configuration_info.mobile_base_mode = mobile_base_mode;
         return self.update();
     }
+
     /// sets the base offset of the robot configuration.
     pub fn set_base_offset(&mut self, p: &OptimaSE3Pose) -> Result<(), OptimaError> {
         self.robot_configuration_info.base_offset = OptimaSE3PoseAll::new(p);
         return self.update();
     }
+
     /// Sets the name of the robot configuration.
     pub fn set_configuration_name(&mut self, name: &str) {
         self.robot_configuration_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(name.to_string());
     }
+
     /// Saves the RobotConfigurationModule to its robot's RobotConfigurationGeneratorModule.
     /// The configuration will be saved to a json file such that the RobotConfigurationGeneratorModule
     /// will be able to load this configuration in the future.
@@ -140,6 +152,121 @@ impl RobotConfigurationModule {
         let mut r = RobotConfigurationGeneratorModule::new(self.robot_model_module.robot_name())?;
         r.save_robot_configuration_module(&self.robot_configuration_info)?;
         Ok(())
+    }
+
+    /// Prints summary of underlying robot model module.
+    pub fn print_summary(&self) {
+        self.robot_model_module.print_summary();
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug))]
+pub struct RobotConfigurationModulePy {
+    pub robot_configuration_module: RobotConfigurationModule,
+    #[cfg(not(target_arch = "wasm32"))]
+    #[pyo3(get)]
+    pub robot_model_module_py: Py<RobotModelModule>
+}
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotConfigurationModulePy {
+    #[cfg(not(target_arch = "wasm32"))]
+    #[new]
+    pub fn new(robot_name: &str, py: Python) -> Self {
+        let robot_configuration_module = RobotConfigurationModule::new_base_model(robot_name).expect("error");
+        let robot_model_module_py = Py::new(py, robot_configuration_module.robot_model_module.clone()).expect("error");
+        Self {
+            robot_configuration_module,
+            robot_model_module_py
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn copy_robot_model_module_to_py(&mut self, py: Python) {
+        self.robot_model_module_py = Py::new(py, self.robot_configuration_module.robot_model_module.clone()).expect("error");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn print_summary(&self) {
+        self.robot_configuration_module.print_summary();
+    }
+
+    /// Sets the given link as a "dead end" link.  A dead end link is a link such that it and all
+    /// links that occur as successors in the kinematic chain will be inactive (essentially, removed)
+    /// from the robot model.
+    pub fn set_dead_end_link(&mut self, link_idx: usize, py: Python) {
+        self.robot_configuration_module.set_dead_end_link(link_idx).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
+    /// Removes the given link as a dead end link.
+    pub fn remove_dead_end_link(&mut self, link_idx: usize, py: Python) {
+        self.robot_configuration_module.remove_dead_end_link(link_idx).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
+    /// Fixes the given joint to the given value.  Thus, this joint will not be a degree of freedom
+    /// in the current configuration.
+    pub fn set_fixed_joint(&mut self, joint_idx: usize, joint_sub_idx: usize, fixed_joint_value: f64, py: Python) {
+        self.robot_configuration_module.set_fixed_joint(joint_idx, joint_sub_idx, fixed_joint_value).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
+    /// Removes the given joint as a fixed joint.  Thus, this joint will become a degree of freedom.
+    pub fn remove_fixed_joint(&mut self, joint_idx: usize, joint_sub_idx: usize, py: Python) {
+        self.robot_configuration_module.remove_fixed_joint(joint_idx, joint_sub_idx).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
+    /*
+    pub fn set_mobile_base_mode(&mut self, mobile_base_mode: MobileBaseInfo, py: Python) {
+        self.robot_configuration_module.set_mobile_base_mode(mobile_base_mode).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+    */
+
+    /*
+    /// Sets the mobile base mode of the robot configuration.
+    pub fn set_mobile_base_mode(&mut self, mobile_base_mode: MobileBaseInfo, py: Python) {
+        self.robot_configuration_module.set_mobile_base_mode(mobile_base_mode).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
+    /// sets the base offset of the robot configuration.
+    pub fn set_base_offset(&mut self, p: &OptimaSE3Pose) {
+        self.robot_configuration_info.base_offset = OptimaSE3PoseAll::new(p);
+        return self.update();
+    }
+    */
+
+    /// sets the base offset of the robot configuration.
+    pub fn set_base_offset_euler_angles(&mut self, rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64, py: Python) {
+        self.robot_configuration_module.set_base_offset(&OptimaSE3Pose::new_unit_quaternion_and_translation_from_euler_angles(rx, ry, rz, x, y, z)).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
+    /// Sets the name of the robot configuration.
+    pub fn set_configuration_name(&mut self, name: &str, py: Python) {
+        // self.robot_configuration_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(name.to_string());
+        self.robot_configuration_module.set_configuration_name(name);
+        self.copy_robot_model_module_to_py(py)
+    }
+
+    /// Saves the RobotConfigurationModule to its robot's RobotConfigurationGeneratorModule.
+    /// The configuration will be saved to a json file such that the RobotConfigurationGeneratorModule
+    /// will be able to load this configuration in the future.
+    pub fn save(&mut self, configuration_name: &str) {
+        self.robot_configuration_module.save(configuration_name).expect("error");
+    }
+
+}
+
+/// Methods supported by WASM.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl RobotConfigurationModule {
+    pub fn print_summary_wasm(&self) {
+        self.print_summary();
     }
 }
 
@@ -205,12 +332,23 @@ pub struct FixedJointInfo {
     pub fixed_joint_value: f64
 }
 
+/// Enum that characterizes the mobility of a robot's base.  Enum variants take as inputs boundary values
+/// along any relevant dimensions.
+/// Note that this enum does not implicitly handle something like differential drive constraints,
+/// this would have to be handled separately.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MobileBaseInfo {
+    /// The robot's base is immobile.
     Static,
+    /// The robot's base is floating and can move along any spatial dimension (including rotation).
+    /// This mobile base type is useful for humanoid robots where the robot's hips can move freely
+    /// through space.
     Floating { x_bounds: (f64, f64), y_bounds: (f64, f64), z_bounds: (f64, f64), xr_bounds: (f64, f64), yr_bounds: (f64, f64), zr_bounds: (f64, f64) },
+    /// The robot's base can translate in space along the x and y axis (assuming z is up).
     PlanarTranslation { x_bounds: (f64, f64), y_bounds: (f64, f64) },
+    /// The robot's base can rotate in space along the z axis.
     PlanarRotation { zr_bounds: (f64, f64) },
+    /// The robot's base can translate in space along the x and y axis and rotate along the z axis.
     PlanarTranslationAndRotation { x_bounds: (f64, f64), y_bounds: (f64, f64), zr_bounds: (f64, f64) }
 }
 impl MobileBaseInfo {
@@ -272,6 +410,7 @@ impl MobileBaseInfo {
     }
 }
 
+/// An Enum that describes the robot base mode without any of the underlying data (e.g., bounds).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum MobileBaseType {
     Static,

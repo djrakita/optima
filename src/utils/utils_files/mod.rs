@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
+use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 
 /// Convenience struct that holds many class functions related to file utils.
@@ -63,10 +64,13 @@ impl FileUtils {
             }
         }
 
+        if p.exists() { fs::remove_file(p).expect("error"); }
+
         let mut file_res = OpenOptions::new()
             .write(true)
             .create(true)
             .open(p);
+
         return match &mut file_res {
             Ok(f) => {
                 serde_json::to_writer(f, object).expect("error");
@@ -101,8 +105,12 @@ impl FileUtils {
     pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Result<T, OptimaError> {
         let o_res = serde_json::from_str(json_str);
         return match o_res {
-            Ok(o) => { Ok(o) }
+            Ok(o) => {
+                // optima_print(json_str, PrintMode::Println, PrintColor::Green, false);
+                Ok(o)
+            }
             Err(_) => {
+                optima_print(json_str, PrintMode::Println, PrintColor::Red, false);
                 Err(OptimaError::new_generic_error_str("load_object_from_json_string() failed.  The given json_string is incompatible with the requested type."))
             }
         }

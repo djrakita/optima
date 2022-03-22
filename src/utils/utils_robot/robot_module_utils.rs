@@ -18,7 +18,7 @@ impl RobotModuleUtils {
         return Self::new_load_from_json_string_generic(&json_string);
     }
 
-    fn new_load_from_json_string_generic<T: DeserializeOwned>(json_string: &str) -> Result<T, OptimaError> {
+    pub fn new_load_from_json_string_generic<T: DeserializeOwned>(json_string: &str) -> Result<T, OptimaError> {
         FileUtils::load_object_from_json_string::<T>(json_string)
     }
 }
@@ -32,10 +32,10 @@ pub trait RobotModuleSaveAndLoad where Self: Serialize + DeserializeOwned {
     fn save_to_json_file(&self) -> Result<(), OptimaError> where Self: Sized {
         return RobotModuleUtils::save_to_json_file_generic(self, self.get_robot_name(), self.get_robot_module_json_type());
     }
-    fn new_from_json_file(&self, robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<Self, OptimaError>  {
+    fn new_from_json_file(robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<Self, OptimaError>  {
         return RobotModuleUtils::new_load_from_json_file_generic::<Self>(robot_name, robot_module_json_type);
     }
-    fn new_load_from_json_string(&self, json_string: &str) -> Result<Self, OptimaError> {
+    fn new_load_from_json_string(json_string: &str) -> Result<Self, OptimaError> {
         return RobotModuleUtils::new_load_from_json_string_generic::<Self>(json_string);
     }
 }

@@ -14,7 +14,7 @@ use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
 use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
-use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
+use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad};
 
 /// The RobotModelModule is the base description level for a robot.  It reflects component and
 /// connectivity information about the robot as specified directly by the URDF.
@@ -530,7 +530,7 @@ impl RobotModelModule {
 impl RobotModelModule {
     #[wasm_bindgen(constructor)]
     pub fn new_from_json_string_wasm(json_string: &str) -> Self {
-        Self::new_from_json_string(json_string).expect("error")
+        Self::new_load_from_json_string(json_string).expect("error")
     }
     pub fn robot_name_wasm(&self) -> String { self.robot_name.clone() }
     pub fn print_link_order_wasm(&self) {
