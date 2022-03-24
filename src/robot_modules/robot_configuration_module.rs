@@ -10,16 +10,16 @@ use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll};
 use crate::utils::utils_errors::OptimaError;
 
-/// A RobotConfigurationModule is a description of a robot model one abstraction layer above the
-/// RobotModelModule.  A robot configuration affords extra specificity and functionality over a robot
+/// A `RobotConfigurationModule` is a description of a robot model one abstraction layer above the
+/// `RobotModelModule`.  A robot configuration affords extra specificity and functionality over a robot
 /// model.  For example, a robot configuration can include a mobile base, a base offset, removed links,
 /// as well as fixed joint values that will not be considered degrees of freedom.
 ///
 /// A robot configuration consists of two components:
-/// - A RobotConfigurationInfo object that describes key features of the particular configuration.
-/// - The given robot's model that has been modified based on a given RobotConfigurationInfo.
+/// - A `RobotConfigurationInfo` object that describes key features of the particular configuration.
+/// - The given robot's model that has been modified based on a given `RobotConfigurationInfo`.
 ///
-/// In many cases, the RobotConfigurationInfo will reflect a default base model configuration, meaning
+/// In many cases, the `RobotConfigurationInfo` will reflect a default base model configuration, meaning
 /// its respective configuration will be the base robot model given directly by the robot's URDF.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug, Serialize, Deserialize))]
@@ -30,10 +30,10 @@ pub struct RobotConfigurationModule {
 }
 impl RobotConfigurationModule {
     /// Returns the robot's base model configuration.  It is possible to initialize a
-    /// RobotConfigurationModel using this function, but it is recommended to use the
-    /// RobotConfigurationGeneratorModule for all initializations.
-    pub fn new_base_model(robot_name: &str) -> Result<Self, OptimaError> {
-        let robot_model_module = RobotModelModule::new(robot_name)?;
+    /// `RobotConfigurationModel` using this function, but it is recommended to use the
+    /// `RobotConfigurationGeneratorModule` for all initializations.
+    pub fn new_base_model_from_absolute_paths(robot_name: &str) -> Result<Self, OptimaError> {
+        let robot_model_module = RobotModelModule::new_from_absolute_paths(robot_name)?;
         Ok(Self {
             robot_configuration_info: Default::default(),
             robot_model_module: robot_model_module.clone(),
@@ -43,7 +43,7 @@ impl RobotConfigurationModule {
 
     /// Returns a robot configuration based on the given base model module and robot configuration info.
     /// The end user should not need to use this function as it is called automatically by the
-    /// RobotConfigurationGeneratorModule.  It is recommended to use the RobotConfigurationGeneratorModule
+    /// `RobotConfigurationGeneratorModule`.  It is recommended to use the `RobotConfigurationGeneratorModule`
     /// for all initializations.
     pub fn new_from_base_model_module_and_info(base_model_module: RobotModelModule, robot_configuration_info: RobotConfigurationInfo) -> Result<Self, OptimaError> {
         let mut out_self = Self {
@@ -80,13 +80,13 @@ impl RobotConfigurationModule {
         Ok(())
     }
 
-    /// Returns a reference to the RobotConfigurationInfo that was used to change the configuration's
+    /// Returns a reference to the `RobotConfigurationInfo` that was used to change the configuration's
     /// underlying model module.
     pub fn robot_configuration_info(&self) -> &RobotConfigurationInfo {
         &self.robot_configuration_info
     }
 
-    /// Returns a reference to the robot model module that reflects the configuration's RobotConfigurationInfo.
+    /// Returns a reference to the robot model module that reflects the configuration's `RobotConfigurationInfo`.
     pub fn robot_model_module(&self) -> &RobotModelModule {
         &self.robot_model_module
     }
@@ -144,8 +144,8 @@ impl RobotConfigurationModule {
         self.robot_configuration_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(name.to_string());
     }
 
-    /// Saves the RobotConfigurationModule to its robot's RobotConfigurationGeneratorModule.
-    /// The configuration will be saved to a json file such that the RobotConfigurationGeneratorModule
+    /// Saves the `RobotConfigurationModule` to its robot's `RobotConfigurationGeneratorModule`.
+    /// The configuration will be saved to a json file such that the `RobotConfigurationGeneratorModule`
     /// will be able to load this configuration in the future.
     pub fn save(&mut self, configuration_name: &str) -> Result<(), OptimaError> {
         self.set_configuration_name(configuration_name);
@@ -173,7 +173,7 @@ impl RobotConfigurationModulePy {
     #[cfg(not(target_arch = "wasm32"))]
     #[new]
     pub fn new(robot_name: &str, py: Python) -> Self {
-        let robot_configuration_module = RobotConfigurationModule::new_base_model(robot_name).expect("error");
+        let robot_configuration_module = RobotConfigurationModule::new_base_model_from_absolute_paths(robot_name).expect("error");
         let robot_model_module_py = Py::new(py, robot_configuration_module.robot_model_module.clone()).expect("error");
         Self {
             robot_configuration_module,
@@ -271,7 +271,7 @@ impl RobotConfigurationModule {
 }
 
 /// Stores information about the robot configuration that will be used to modify the configuration's
-/// underlying RobotModelModule.
+/// underlying `RobotModelModule`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotConfigurationInfo {
     configuration_identifier: RobotConfigurationIdentifier,
@@ -323,7 +323,7 @@ pub enum RobotConfigurationIdentifier {
 }
 
 /// An object that describes a fixed joint.  The joint_sub_idx refers to the index of a joint's
-/// joint_axes list of JointAxis objects.  The fixed_joint_value will be the floating point value
+/// joint_axes list of `JointAxis` objects.  The fixed_joint_value will be the floating point value
 /// that the given joint axis will be locked to.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FixedJointInfo {

@@ -7,13 +7,13 @@ use crate::utils::utils_files::{FileUtils, RobotDirUtils, RobotModuleJsonType};
 pub struct RobotModuleUtils;
 impl RobotModuleUtils {
     fn save_to_json_file_generic<T: Serialize>(save_obj: &T, robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<(), OptimaError> {
-        let p = RobotDirUtils::get_path_to_robot_module_json(robot_name, robot_module_json_type)?;
+        let p = RobotDirUtils::get_absolute_path_to_robot_module_json(robot_name, robot_module_json_type)?;
         FileUtils::save_object_to_file_as_json(save_obj, &p)?;
         Ok(())
     }
 
     fn new_load_from_json_file_generic<T: DeserializeOwned>(robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<T, OptimaError> {
-        let p = RobotDirUtils::get_path_to_robot_module_json(robot_name, robot_module_json_type)?;
+        let p = RobotDirUtils::get_absolute_path_to_robot_module_json(robot_name, robot_module_json_type)?;
         let json_string = FileUtils::read_file_contents_to_string(&p)?;
         return Self::new_load_from_json_string_generic(&json_string);
     }

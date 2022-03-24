@@ -1,11 +1,49 @@
+pub mod optima_path;
+
 use std::{env, fs};
 use std::fs::{File, read_dir, OpenOptions};
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
 use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
+
+/*
+#[derive(Clone, Debug)]
+pub enum FileSystemPath {
+    Physical(PathBuf),
+    Virtual(VfsPath)
+}
+impl FileSystemPath {
+    pub fn new_physical_path(p: PathBuf) -> Self {
+        Self::new_physical_path(p)
+    }
+    pub fn new_virtual_path(p: VfsPath) -> Self {
+        Self::new_virtual_path(p)
+    }
+    pub fn map_to_type(&self) -> FileSystemPathType {
+        match self {
+            FileSystemPath::Physical(_) => { FileSystemPathType::Physical }
+            FileSystemPath::Virtual(_) => { FileSystemPathType::Virtual }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum FileSystemPathType {
+    Physical,
+    Virtual
+}
+impl FileSystemPathType {
+    pub fn get_path_to_src(&self) -> FileSystemPath {
+        match self {
+            FileSystemPathType::Physical => { FileSystemPath::new_physical_path(FileUtils::get_path_to_src()) }
+            FileSystemPathType::Virtual => { todo!() }
+        }
+    }
+}
+*/
 
 /// Convenience struct that holds many class functions related to file utils.
 pub struct FileUtils;
@@ -15,6 +53,7 @@ impl FileUtils {
         let path_buf = env::current_dir().expect("error");
         return path_buf;
     }
+
     /// Reads contents of file and outputs it to a string.
     pub fn read_file_contents_to_string(p: &PathBuf) -> Result<String, OptimaError> {
         let mut file_res = File::open(p);
@@ -29,14 +68,31 @@ impl FileUtils {
             }
         }
     }
-    /// Returns file extension of path as string.
-    pub fn get_file_extension_string(p: &PathBuf) -> Option<String> {
-        let e = p.extension();
-        return match e {
-            None => { None }
-            Some(o) => { Some(o.to_str().expect("error").to_string()) }
+
+    /// Returns filename at the end of the given path.
+    /// For example, a path /test/path/for/example/filename.txt will return
+    /// filename.txt if `with_file_extension` is true and filename if `with_file_extension`
+    /// is false.
+    pub fn get_filename(path: &PathBuf, with_file_extension: bool) -> Result<PathBuf, OptimaError> {
+        let components: Vec<Component> = path.components().collect();
+        if components.len() == 0 {
+            return Err(OptimaError::new_generic_error_str(&format!("The given path in get_filename() has no components.")))
+        }
+        let last_component = components[components.len() - 1];
+        return match last_component {
+            Component::Normal(n) => {
+                let mut path = Path::new(n).to_path_buf();
+                if !with_file_extension {
+                    path.set_extension("");
+                }
+                Ok(path)
+            }
+            _ => {
+                Err(OptimaError::new_generic_error_str(&format!("The last component in get_filename() is not Normal.  Here is the path: {:?}", path)))
+            }
         }
     }
+
     /// Returns the paths of all files within a directory.
     pub fn get_all_files_in_directory(p: &PathBuf) -> Result<Vec<PathBuf>, OptimaError> {
         let mut out: Vec<PathBuf> = Vec::new();
@@ -54,6 +110,7 @@ impl FileUtils {
         }
         Ok(out)
     }
+
     /// Saves given object to a file as a JSON string.  The object must be serializable using serde json.
     pub fn save_object_to_file_as_json<T: Serialize>(object: &T, p: &PathBuf) -> Result<(), OptimaError> {
         let parent_option = p.parent();
@@ -81,6 +138,7 @@ impl FileUtils {
             }
         }
     }
+
     /// Reads object that was serialized by serde JSON from a file.
     /// ## Example
     /// ```
@@ -117,6 +175,10 @@ impl FileUtils {
     }
 }
 
+pub struct VirtualFileUtils {
+
+}
+
 /// Convenience struct that holds many class functions related to the assets folder utils.
 pub struct AssetDirUtils;
 impl AssetDirUtils {
@@ -150,10 +212,10 @@ impl AssetDirUtils {
                 match &path_to_assets_dir_res {
                     Ok(p) => {
                         let path_buffer = match p.path_type {
-                            PathType::Absolute => {
+                            AssetDirPathType::Absolute => {
                                 p.path_to_assets_dir.clone()
                             }
-                            PathType::Relative => {
+                            AssetDirPathType::Relative => {
                                 let mut path = FileUtils::get_path_to_src();
                                 path.push(p.path_to_assets_dir.clone());
                                 path
@@ -223,12 +285,30 @@ impl AssetDirUtils {
     }
 
     /// Returns file path to the given location in the Optima toolbox assets directory
-    pub fn get_path_to_asset_dir_location(l: AssetDirLocation) -> Result<PathBuf, OptimaError> {
+    pub fn get_path_to_location(l: AssetDirLocation, asset_file_mode: AssetFileMode) -> Result<PathBuf, OptimaError> {
+        match asset_file_mode {
+            AssetFileMode::Absolute => { Self::get_absolute_path_to_location(l) }
+            AssetFileMode::WRTAssetDir => { Self::get_path_to_location_wrt_asset_dir(l) }
+        }
+    }
+
+    fn get_absolute_path_to_location(l: AssetDirLocation) -> Result<PathBuf, OptimaError> {
         let mut p = Self::get_path_to_assets_dir()?;
         let a = l.get_path_wrt_asset_folder();
         p = p.join(a);
         return Ok(p);
     }
+
+    fn get_path_to_location_wrt_asset_dir(l: AssetDirLocation) -> Result<PathBuf, OptimaError> {
+        let p = l.get_path_wrt_asset_folder();
+        return Ok(p);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum AssetFileMode {
+    Absolute,
+    WRTAssetDir
 }
 
 /// Asset folder location.  Will be used to easily access paths to these locations with respect to
@@ -294,7 +374,7 @@ impl AssetDirLocation {
 /// Convenience class that will be used for path_to_assets_dir.json file.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PathToAssetsDir {
-    path_type: PathType,
+    path_type: AssetDirPathType,
     path_to_assets_dir: PathBuf
 }
 impl Default for PathToAssetsDir {
@@ -304,15 +384,15 @@ impl Default for PathToAssetsDir {
         path.push("..");
         path.push("optima_assets");
         Self {
-            path_type: PathType::Relative,
+            path_type: AssetDirPathType::Relative,
             path_to_assets_dir: path
         }
     }
 }
 
-/// Convenience enum that will be used for path_to_assets_dir.json file.
+/// Convenience Enum that will be used for path_to_assets_dir.json file.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-enum PathType {
+enum AssetDirPathType {
     Absolute,
     Relative
 }
@@ -320,8 +400,8 @@ enum PathType {
 /// Convenience struct that holds many class functions related to the robot folder within assets.
 pub struct RobotDirUtils;
 impl RobotDirUtils {
-    pub fn get_path_to_urdf_file(robot_name: &str) -> Result<PathBuf, OptimaError> {
-        let path = AssetDirUtils::get_path_to_asset_dir_location(AssetDirLocation::Robot { robot_name: robot_name.to_string() })?;
+    pub fn get_absolute_path_to_urdf_file(robot_name: &str) -> Result<PathBuf, OptimaError> {
+        let path = AssetDirUtils::get_absolute_path_to_location(AssetDirLocation::Robot { robot_name: robot_name.to_string() })?;
         let all_files = FileUtils::get_all_files_in_directory(&path)?;
         for f in &all_files {
             let ext_option = f.extension();
@@ -333,8 +413,8 @@ impl RobotDirUtils {
         }
         return Err(OptimaError::new_generic_error_str(format!("Robot directory for robot {:?} does not contain a urdf.", robot_name).as_str()))
     }
-    pub fn get_path_to_robot_module_json(robot_name: &str, robot_module_json: RobotModuleJsonType) -> Result<PathBuf, OptimaError> {
-        let mut p = AssetDirUtils::get_path_to_asset_dir_location(AssetDirLocation::RobotPreprocessedData { robot_name: robot_name.to_string() })?;
+    pub fn get_absolute_path_to_robot_module_json(robot_name: &str, robot_module_json: RobotModuleJsonType) -> Result<PathBuf, OptimaError> {
+        let mut p = AssetDirUtils::get_absolute_path_to_location(AssetDirLocation::RobotPreprocessedData { robot_name: robot_name.to_string() })?;
         p.push("robot_module_jsons");
         p.push(robot_module_json.filename());
         return Ok(p);
@@ -356,3 +436,4 @@ impl RobotModuleJsonType {
         }
     }
 }
+

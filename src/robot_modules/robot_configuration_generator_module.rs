@@ -16,10 +16,10 @@ use crate::utils::utils_files::{FileUtils, RobotDirUtils, RobotModuleJsonType};
 use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
 use crate::utils::utils_console_output::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 
-/// The RobotConfigurationGeneratorModule is used to generate RobotConfigurationModules.  This generator
+/// The `RobotConfigurationGeneratorModule` is used to generate `RobotConfigurationModule`s.  This generator
 /// object can be easily stored on the end user's computer in a JSON file, meaning configurations
 /// can be saved by name and re-generated at a later time.  It is recommended to always use the
-/// RobotConfigurationGeneratorModule to generate RobotConfigurationModules, even when just
+/// `RobotConfigurationGeneratorModule` to generate `RobotConfigurationModule`s, even when just
 /// generating a default base model configuration.
 ///
 /// # Example
@@ -49,12 +49,12 @@ pub struct RobotConfigurationGeneratorModule {
 impl RobotConfigurationGeneratorModule {
     /// Initializes the RobotConfigurationGeneratorModule corresponding to the given robot.
     pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
-        let path = RobotDirUtils::get_path_to_robot_module_json(robot_name, RobotModuleJsonType::ConfigurationGeneratorModule)?;
+        let path = RobotDirUtils::get_absolute_path_to_robot_module_json(robot_name, RobotModuleJsonType::ConfigurationGeneratorModule)?;
         if path.exists() {
             let loaded_self = FileUtils::load_object_from_json_file::<Self>(&path)?;
             return Ok(loaded_self);
         } else {
-            let robot_model_module = RobotModelModule::new(robot_name)?;
+            let robot_model_module = RobotModelModule::new_from_absolute_paths(robot_name)?;
             let out_self = Self {
                 robot_configuration_infos: vec![],
                 base_robot_model_module: robot_model_module
@@ -124,7 +124,7 @@ impl RobotConfigurationGeneratorModule {
     fn generate_configuration_module(&self, identifier: RobotConfigurationIdentifier) -> Result<RobotConfigurationModule, OptimaError> {
         return match &identifier {
             RobotConfigurationIdentifier::BaseModel => {
-                RobotConfigurationModule::new_base_model(self.base_robot_model_module.robot_name())
+                RobotConfigurationModule::new_base_model_from_absolute_paths(self.base_robot_model_module.robot_name())
             }
             RobotConfigurationIdentifier::NamedConfiguration(name) => {
                 // let info_option = self.robot_configuration_infos.get(name);

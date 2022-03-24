@@ -16,7 +16,7 @@ use crate::utils::utils_robot::urdf_link::URDFLink;
 use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad};
 
-/// The RobotModelModule is the base description level for a robot.  It reflects component and
+/// The `RobotModelModule` is the base description level for a robot.  It reflects component and
 /// connectivity information about the robot as specified directly by the URDF.
 /// Many other robot modules depend on this module.
 ///
@@ -41,15 +41,15 @@ pub struct RobotModelModule {
     joint_name_to_idx_hashmap: HashMap<String, usize>
 }
 impl RobotModelModule {
-    /// Creates a new RobotModelModule.  The robot_name string is the name of the folder in the
+    /// Creates a new `RobotModelModule`.  The robot_name string is the name of the folder in the
     /// optima_assets/optima_robots directory.
     ///
     /// ## Example
     /// ```
     /// use optima::robot_modules::robot_model_module::RobotModelModule;
-    /// let mut r = RobotModelModule::new("ur5");
+    /// let mut r = RobotModelModule::new_from_absolute_paths("ur5");
     /// ```
-    pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
+    pub fn new_from_absolute_paths(robot_name: &str) -> Result<Self, OptimaError> {
         let mut joints = vec![];
         let mut links = vec![];
 
@@ -59,7 +59,7 @@ impl RobotModelModule {
         let mut link_name_to_idx_hashmap = HashMap::new();
         let mut joint_name_to_idx_hashmap = HashMap::new();
 
-        let path_to_urdf = RobotDirUtils::get_path_to_urdf_file(robot_name)?;
+        let path_to_urdf = RobotDirUtils::get_absolute_path_to_urdf_file(robot_name)?;
         let urdf_robot_res = urdf_rs::read_file(path_to_urdf);
         match &urdf_robot_res {
             Ok(urdf_robot) => {
@@ -238,7 +238,7 @@ impl RobotModelModule {
     /// ## Example
     /// ```
     /// use optima::robot_modules::robot_model_module::RobotModelModule;
-    /// let r = RobotModelModule::new("fake_robot"); // pretend that fake_robot exists and its hierarchy matches the diagram.
+    /// let r = RobotModelModule::new_from_absolute_paths("fake_robot"); // pretend that fake_robot exists and its hierarchy matches the diagram.
     /// let l = r.get_link_tree_traveral_layer(2);
     /// assert!(l.unwrap() == 1);
     /// ```
@@ -513,7 +513,7 @@ impl RobotModuleSaveAndLoad for RobotModelModule {
 impl RobotModelModule {
     #[new]
     pub fn new_py(robot_name: &str) -> Self {
-        return Self::new(robot_name).expect("error");
+        return Self::new_from_absolute_paths(robot_name).expect("error");
     }
     pub fn robot_name_py(&self) -> String { self.robot_name().to_string() }
     pub fn print_link_order_py(&self) {
