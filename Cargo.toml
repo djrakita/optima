@@ -16,8 +16,8 @@ serde = "1.0.136"
 serde_json = "1.0.79"
 urdf-rs = "0.6.2"
 # vfs = {version="0.6.2", features=["embedded-fs"], optional = true}
-vfs = { git = "https://github.com/manuel-woelker/rust-vfs", rev = "40fe15a947479054d98b8303f11db123ffd723cc", features=["embedded-fs"], optional = true }
-rust-embed = { version="6.2.0", features=["debug-embed", "interpolate-folder-path", "compression", "include-exclude"], optional = true}
+vfs = { git = "https://github.com/manuel-woelker/rust-vfs", rev = "40fe15a947479054d98b8303f11db123ffd723cc", features=["embedded-fs"] }
+rust-embed = { version="6.2.0", features=["debug-embed", "interpolate-folder-path", "compression", "include-exclude"] }
 dae-parser = "0.8.5"
 stl_io = "0.6.0"
 walkdir = "2.3.2"
@@ -31,17 +31,21 @@ pyo3 = { version = "0.16.2", features = ["extension-module"] }
 termion = "1.5.6"
 
 [features]
-default = ["embed_robots_group_1"]
-do_not_embed_anything = []
-do_not_embed_any_robot_data = []
-do_not_embed_robot_meshes = []
-embed_all_robots = ["embed_robots_group_3"]
-embed_robots_group_3 = ["embed_robots_group_2"]
-embed_robots_group_2 = ["embed_robots_group_1"]
-embed_robots_group_1 = ["ur5", "sawyer"]
-ur5 = ["vfs", "rust-embed"]
-sawyer = ["vfs", "rust-embed"]
-
+default = []
+do_not_embed_assets = []
+only_use_embedded_assets = []
+exclude_all_robot_asset_embedding = []
+exclude_robot_visual_meshes_embedding = []
+# ----------- robot embeddeding groups -------- #
+all_robots = ["robot_group_3", "fetch"]
+robot_group_3 = ["robot_group_2", "hubo"]
+robot_group_2 = ["robot_group_1", "sawyer"]
+robot_group_1 = ["ur5"]
+# ----------- robots -------------------------- #
+ur5 = []
+sawyer = []
+fetch = []
+hubo = []
 
 [lib]
 name = "optima"

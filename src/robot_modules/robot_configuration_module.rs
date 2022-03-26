@@ -33,7 +33,7 @@ impl RobotConfigurationModule {
     /// `RobotConfigurationModel` using this function, but it is recommended to use the
     /// `RobotConfigurationGeneratorModule` for all initializations.
     pub fn new_base_model_from_absolute_paths(robot_name: &str) -> Result<Self, OptimaError> {
-        let robot_model_module = RobotModelModule::new_from_absolute_paths(robot_name)?;
+        let robot_model_module = RobotModelModule::new(robot_name)?;
         Ok(Self {
             robot_configuration_info: Default::default(),
             robot_model_module: robot_model_module.clone(),

@@ -1,3 +1,4 @@
+/*
 use std::path::{Component, Path, PathBuf};
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
@@ -8,7 +9,6 @@ use wasm_bindgen::prelude::*;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::{AssetDirLocation, AssetDirUtils, AssetFileMode, FileUtils, RobotModuleJsonType};
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
 
@@ -161,3 +161,4 @@ pub enum LinkMeshType {
     Visual,
     Collision
 }
+*/

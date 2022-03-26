@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::robot_modules::robot_configuration_module::{RobotConfigurationIdentifier, RobotConfigurationInfo, RobotConfigurationModule};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::{FileUtils, RobotDirUtils, RobotModuleJsonType};
 use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
 use crate::utils::utils_console_output::{optima_print, optima_print_new_line, PrintColor, PrintMode};
+use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath, RobotModuleJsonType};
 
 /// The `RobotConfigurationGeneratorModule` is used to generate `RobotConfigurationModule`s.  This generator
 /// object can be easily stored on the end user's computer in a JSON file, meaning configurations
@@ -48,13 +48,15 @@ pub struct RobotConfigurationGeneratorModule {
 }
 impl RobotConfigurationGeneratorModule {
     /// Initializes the RobotConfigurationGeneratorModule corresponding to the given robot.
+
     pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
-        let path = RobotDirUtils::get_absolute_path_to_robot_module_json(robot_name, RobotModuleJsonType::ConfigurationGeneratorModule)?;
-        if path.exists() {
-            let loaded_self = FileUtils::load_object_from_json_file::<Self>(&path)?;
-            return Ok(loaded_self);
+        let mut p = OptimaStemCellPath::new_asset_path()?;
+        p.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ConfigurationGeneratorModule });
+        if p.exists() {
+            let loaded_self = p.load_object_from_json_file();
+            return loaded_self;
         } else {
-            let robot_model_module = RobotModelModule::new_from_absolute_paths(robot_name)?;
+            let robot_model_module = RobotModelModule::new(robot_name)?;
             let out_self = Self {
                 robot_configuration_infos: vec![],
                 base_robot_model_module: robot_model_module
@@ -63,6 +65,7 @@ impl RobotConfigurationGeneratorModule {
             Ok(out_self)
         }
     }
+
 
     /// A function that is automatically called by RobotConfigurationModule.
     /// Should not need to be called by end user.

@@ -8,12 +8,12 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_configuration_module::MobileBaseInfo;
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::{RobotDirUtils, RobotModuleJsonType};
 use crate::utils::utils_robot::joint::{Joint};
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
 use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
 use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad};
 
 /// The `RobotModelModule` is the base description level for a robot.  It reflects component and
@@ -41,6 +41,7 @@ pub struct RobotModelModule {
     joint_name_to_idx_hashmap: HashMap<String, usize>
 }
 impl RobotModelModule {
+    /*
     /// Creates a new `RobotModelModule`.  The robot_name string is the name of the folder in the
     /// optima_assets/optima_robots directory.
     ///
@@ -98,6 +99,78 @@ impl RobotModelModule {
         out_self.set_link_tree_traversal_info();
 
         Ok(out_self)
+    }
+    */
+
+    /// Creates a new `RobotModelModule`.  The robot_name string is the name of the folder in the
+    /// optima_assets/optima_robots directory.
+    ///
+    /// ## Example
+    /// ```
+    /// use optima::robot_modules::robot_model_module::RobotModelModule;
+    /// let mut r = RobotModelModule::new_from_absolute_paths("ur5");
+    /// ```
+    pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
+        let mut joints = vec![];
+        let mut links = vec![];
+
+        let mut urdf_robot_joints = vec![];
+        let mut urdf_robot_links = vec![];
+
+        let mut link_name_to_idx_hashmap = HashMap::new();
+        let mut joint_name_to_idx_hashmap = HashMap::new();
+
+        let mut path_to_robot = OptimaStemCellPath::new_asset_path()?;
+        path_to_robot.append_file_location(&OptimaAssetLocation::Robot {robot_name: robot_name.to_string()});
+        let path_to_urdf_vec = path_to_robot.walk_directory_and_match(OptimaPathMatchingPattern::Extension("urdf".to_string()), OptimaPathMatchingStopCondition::First);
+        if path_to_urdf_vec.is_empty() {
+            return Err(OptimaError::new_generic_error_str(format!("Robot directory for robot {:?} does not contain a urdf.", robot_name).as_str()))
+        }
+        let path_to_urdf = path_to_urdf_vec[0].clone();
+        let urdf_robot = path_to_urdf.load_urdf()?;
+        for (i, j) in urdf_robot.joints.iter().enumerate() {
+            joint_name_to_idx_hashmap.insert(j.name.clone(), i);
+            joints.push(Joint::new(URDFJoint::new_from_urdf_joint(j), i));
+            urdf_robot_joints.push(j);
+        }
+        for (i, l) in urdf_robot.links.iter().enumerate() {
+            link_name_to_idx_hashmap.insert(l.name.clone(), i);
+            links.push(Link::new(URDFLink::new_from_urdf_link(l), i));
+            urdf_robot_links.push(l);
+        }
+
+        let mut out_self = Self {
+            robot_name: robot_name.to_string(),
+            links,
+            joints,
+            world_link_idx: 0,
+            robot_base_link_idx: 0,
+            link_tree_traversal_layers: vec![],
+            link_tree_max_depth: 0,
+            preceding_actuated_joint_idxs: vec![],
+            link_name_to_idx_hashmap,
+            joint_name_to_idx_hashmap
+        };
+
+        out_self.assign_all_link_connections_manual();
+        out_self.assign_all_joint_connections_manual();
+        out_self.set_world_link_idx_manual();
+        out_self.set_link_tree_traversal_info();
+
+        Ok(out_self)
+    }
+
+    /// Loads module from a json string.  Will throw an error if the json string is not compatible.
+    pub fn new_from_json_string(json_string: &str) -> Result<Self, OptimaError> {
+        load_object_from_json_string(json_string)
+    }
+
+    /// Serializes and saves module to json file.
+    /// The file is in the optima_assets/optima_robots/<robot name>/
+    pub fn save_to_json(&self) -> Result<(), OptimaError> {
+        let mut p = OptimaStemCellPath::new_asset_path()?;
+        p.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_name.clone(), t: RobotModuleJsonType::ModelModule });
+        return p.save_object_to_file_as_json(self);
     }
 
     /*
@@ -513,7 +586,7 @@ impl RobotModuleSaveAndLoad for RobotModelModule {
 impl RobotModelModule {
     #[new]
     pub fn new_py(robot_name: &str) -> Self {
-        return Self::new_from_absolute_paths(robot_name).expect("error");
+        return Self::new(robot_name).expect("error");
     }
     pub fn robot_name_py(&self) -> String { self.robot_name().to_string() }
     pub fn print_link_order_py(&self) {
@@ -528,9 +601,15 @@ impl RobotModelModule {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl RobotModelModule {
+    /*
     #[wasm_bindgen(constructor)]
     pub fn new_from_json_string_wasm(json_string: &str) -> Self {
         Self::new_load_from_json_string(json_string).expect("error")
+    }
+    */
+    #[wasm_bindgen(constructor)]
+    pub fn new_wasm(robot_name: &str) -> Self {
+        Self::new(robot_name).expect("error")
     }
     pub fn robot_name_wasm(&self) -> String { self.robot_name.clone() }
     pub fn print_link_order_wasm(&self) {
