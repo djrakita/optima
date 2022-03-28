@@ -19,9 +19,14 @@ urdf-rs = "0.6.2"
 vfs = { git = "https://github.com/manuel-woelker/rust-vfs", rev = "40fe15a947479054d98b8303f11db123ffd723cc", features=["embedded-fs"] }
 rust-embed = { version="6.2.0", features=["debug-embed", "interpolate-folder-path", "compression", "include-exclude"] }
 dae-parser = "0.8.5"
+collada = "0.14.0"
 stl_io = "0.6.0"
 walkdir = "2.3.2"
 dirs = "4.0.0"
+hyperdual = "1.0.0"
+num-dual = "0.5.1"
+simba = "0.7.0"
+num-traits = "0.2.14"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2.79"

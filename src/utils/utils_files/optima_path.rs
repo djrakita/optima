@@ -4,6 +4,10 @@ use std::{fs};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{PathBuf};
+use std::str::FromStr;
+// use dae_parser::Document;
+use collada::document::ColladaDocument;
+use dae_parser::Document;
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use urdf_rs::Robot;
@@ -11,6 +15,20 @@ use walkdir::WalkDir;
 use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 
+/// An `OptimaStemCellPath` has the same functionality as an `OptimaPath`, but it
+/// will try to automatically select whether it should use a physical or virtual file path based on
+/// your target (rust executable, web-assembly, python module, etc).  When in doubt, use this over
+/// an `OptimaPath`.
+///
+/// # Example
+///```
+/// use optima::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath};
+///
+/// let mut p = OptimaStemCellPath::new_asset_path().expect("error");
+/// p.append_file_location(&OptimaAssetLocation::RobotMeshes {robot_name: "ur5".to_string()});
+/// p.append("0.dae");
+///
+///```
 #[derive(Clone, Debug)]
 pub struct OptimaStemCellPath {
     optima_file_paths: Vec<OptimaPath>
@@ -46,6 +64,11 @@ impl OptimaStemCellPath {
     pub fn append(&mut self, s: &str) {
         for p in &mut self.optima_file_paths {
             p.append(s);
+        }
+    }
+    pub fn append_vec(&mut self, v: &Vec<String>) {
+        for p in &mut self.optima_file_paths {
+            p.append_vec(v);
         }
     }
     pub fn append_file_location(&mut self, location: &OptimaAssetLocation) {
@@ -84,6 +107,9 @@ impl OptimaStemCellPath {
             p.set_extension(extension);
         }
     }
+    pub fn split_path_into_string_components(&self) -> Vec<String> {
+        return self.optima_file_paths[0].split_path_into_string_components();
+    }
     pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
         for p in &self.optima_file_paths {
             let res = p.save_object_to_file_as_json(object);
@@ -106,128 +132,65 @@ impl OptimaStemCellPath {
         return vec![];
     }
     pub fn load_urdf(&self) -> Result<Robot, OptimaError> {
+        /*
         for p in &self.optima_file_paths {
             let res = p.load_urdf();
             if res.is_ok() { return res; }
         }
         return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_urdf()"));
+        */
+        return self.load_file(OptimaPath::load_urdf, "load_urdf");
+    }
+    pub fn load_dae(&self) -> Result<Document, OptimaError> {
+        /*
+        for p in &self.optima_file_paths {
+            let res = p.load_dae();
+            if res.is_ok() { return res; }
+        }
+        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_dae()"));
+        */
+        return self.load_file(OptimaPath::load_dae, "load_dae");
+    }
+    pub fn load_collada_dae(&self) -> Result<ColladaDocument, OptimaError> {
+        /*
+        for p in &self.optima_file_paths {
+            let res = p.load_collada_dae();
+            if res.is_ok() { return res; }
+        }
+        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_collada_dae()"));
+        */
+        return self.load_file(OptimaPath::load_collada_dae, "load_collada_dae");
+    }
+    fn load_file<T>(&self, f: fn(&OptimaPath) -> Result<T, OptimaError>, function_name: &str) -> Result<T, OptimaError> {
+        for p in &self.optima_file_paths {
+            let res = f(p);
+            if res.is_ok() { return res; }
+        }
+        return Err(OptimaError::new_generic_error_str(&format!("No valid optima_path in function {:?}", function_name)));
     }
 }
 
-/*
-#[derive(Clone, Debug)]
-pub struct OptimaFilePath {
-    root_path: VfsPath,
-    path: VfsPath
-}
-impl OptimaFilePath {
-    pub fn new_asset_dir_from_env() -> Self {
-        let root_path = VfsPath::new(PhysicalFS::new(env::current_dir()
-                .expect("error")
-                .join("..")
-                .join("optima_assets")));
-        Self {
-            root_path: root_path.clone(),
-            path: root_path
-        }
-    }
-    pub fn new_asset_dir_from_json_file() -> Self {
-        todo!()
-    }
-    pub fn append(&mut self, s: &str) {
-        self.path = self.path.join(s).expect("error");
-    }
-    pub fn append_file_location(&mut self, location: &OptimaFilePathLocation) {
-        let v = location.get_path_wrt_asset_folder();
-        for s in v {
-            self.path = self.path.join(s).expect("error");
-        }
-    }
-    pub fn revert_to_root_path(&mut self) {
-        self.path = self.root_path.clone();
-    }
-    pub fn path(&self) -> &VfsPath {
-        &self.path
-    }
-    pub fn read_file_contents_to_string(&self) -> Result<String, OptimaError> {
-        let mut content = String::new();
-
-        let mut seek_and_read_res = self.path.open_file();
-        match &mut seek_and_read_res {
-            Ok(seek_and_read) => {
-                seek_and_read.read_to_string(&mut content).expect("error");
-                return Ok(content);
-            }
-            Err(e) => {
-                return Err(OptimaError::new_generic_error_str(&format!("Could not read file.  Error is {:?}.", e.to_string())))
-            }
-        }
-    }
-    pub fn read_file_contents_to_bytes(&self) -> Result<Vec<u8>, OptimaError> {
-        let mut content = vec![];
-
-        let mut seek_and_read_res = self.path.open_file();
-        match &mut seek_and_read_res {
-            Ok(seek_and_read) => {
-                seek_and_read.read(&mut content).expect("error");
-                return Ok(content);
-            }
-            Err(e) => {
-                return Err(OptimaError::new_generic_error_str(&format!("Could not read file.  Error is {:?}.", e.to_string())))
-            }
-        }
-    }
-    pub fn get_extension(&self) -> Option<String> {
-        let filename = self.path.filename();
-        let split: Vec<&str> = filename.split(".").collect();
-        if split.len() <= 1 { return None; }
-        else { return Some(split[split.len()-1].to_string()) }
-    }
-    pub fn set_extension(&mut self, extension: &str) {
-        let parent_path_option = self.path.parent();
-        if let Some(parent_path) = &parent_path_option {
-            let filename = self.path.filename();
-            let split: Vec<&str> = filename.split(".").collect();
-            let mut new_filename = split[0].to_string();
-            if extension != "" {
-                new_filename += format!(".{}", extension).as_str();
-            }
-            self.path = parent_path.join(new_filename.as_str()).expect("error");
-        }
-    }
-    pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
-        let mut write_res = self.path.create_file();
-        match &mut write_res {
-            Ok(write) => {
-                let object_string = serde_json::to_string(object).expect("error");
-                write.write(object_string.as_bytes()).expect("error");
-            }
-            Err(e) => {
-                return Err(OptimaError::new_generic_error_str(&format!("Could not save object to file.  Error is {:?}.", e.to_string())))
-            }
-        }
-
-        Ok(())
-    }
-    pub fn parse_stl(&self) -> Result<(), OptimaError> {
-        // let b = self.read_file_contents_to_string()?;
-
-        let mut seek_and_read_res = self.path.open_file();
-        match &mut seek_and_read_res {
-            Ok(seek_and_read) => {
-                let r = stl_io::read_stl(seek_and_read);
-                println!("{:?}", r);
-            }
-            Err(e) => {
-                return Err(OptimaError::new_generic_error_str(&format!("Could not read file.  Error is {:?}.", e.to_string())))
-            }
-        }
-
-        Ok(())
-    }
-}
-
-*/
+/// An `OptimaPath` is an object used to load files and write to files in the Optima library.
+/// The object is designed to be cross-platform and flexible such that it can either write to or
+/// read from the physical harddrive on the user's computer or read from a virtual file system that
+/// is embedded into the library binary itself.  When in doubt, use the `OptimaStemCellPath` instead of
+/// this object as it has the same underlying functionality, but it will try to automatically select
+/// whether it should use a physical or virtual file path based on your target (rust executable, web-assembly,
+/// python module, etc).
+///
+/// # Example
+/// ```
+/// use optima::utils::utils_files::optima_path::OptimaAssetLocation;
+/// use optima::utils::utils_files::optima_path::OptimaPath;
+///
+/// // Initializes an OptimaPath linking to the embedded virtual path.
+/// let mut p = OptimaPath::new_asset_virtual_path().expect("error");
+/// p.append_file_location(&OptimaAssetLocation::RobotMeshes {robot_name: "ur5".to_string()});
+/// p.append("0.dae");
+/// let d = p.load_dae().expect("error");
+/// ```
+/// Note that the virtual file system (VfsPath) variant does not support any
+/// writing operations; if tried, an `UnsupportedOperationError` will be returned.
 #[derive(Clone, Debug)]
 pub enum OptimaPath {
     Path(PathBuf),
@@ -290,6 +253,12 @@ impl OptimaPath {
         match self {
             OptimaPath::Path(p) => { p.push(s); }
             OptimaPath::VfsPath(p) => { *p = p.join(s).expect("error"); }
+        }
+    }
+
+    pub fn append_vec(&mut self, v: &Vec<String>) {
+        for s in v {
+            self.append(s);
         }
     }
 
@@ -500,8 +469,8 @@ impl OptimaPath {
                 for entry_res in WalkDir::new(p) {
                     if let Ok(entry) = entry_res {
                         let entry_path = entry.path().to_path_buf();
-                        let optima_path = Self::Path(entry_path);
-                        let matched = Self::directory_walk_standard_entry(&optima_path, &mut out_vec, &pattern);
+                        let mut optima_path = Self::Path(entry_path);
+                        let matched = Self::directory_walk_standard_entry(&mut optima_path, &mut out_vec, &pattern);
                         if matched {
                             match stop_condition {
                                 OptimaPathMatchingStopCondition::First => {
@@ -518,8 +487,8 @@ impl OptimaPath {
                 for it in it_res {
                     for entry_res in it {
                         if let Ok(entry) = entry_res {
-                            let optima_path = Self::VfsPath(entry.clone());
-                            let matched = Self::directory_walk_standard_entry(&optima_path, &mut out_vec, &pattern);
+                            let mut optima_path = Self::VfsPath(entry.clone());
+                            let matched = Self::directory_walk_standard_entry(&mut optima_path, &mut out_vec, &pattern);
                             if matched {
                             match stop_condition {
                                 OptimaPathMatchingStopCondition::First => {
@@ -537,6 +506,75 @@ impl OptimaPath {
         out_vec
     }
 
+    pub fn split_path_into_string_components(&self) -> Vec<String> {
+        let mut out_vec = vec![];
+
+        match self {
+            OptimaPath::Path(p) => {
+                let mut par = p.clone();
+                loop {
+                    let filename_option = par.file_name();
+                    if let Some(filename) = filename_option {
+                        out_vec.insert(0, filename.to_str().unwrap().to_string());
+                    }
+                    let par_option = par.parent();
+                    if let Some(par_some) = par_option {
+                        par = par_some.to_path_buf();
+                    } else {
+                        return out_vec;
+                    }
+                }
+            }
+            OptimaPath::VfsPath(p) => {
+                let mut par = p.clone();
+                loop {
+                    let filename = par.filename();
+                    out_vec.insert(0, filename);
+                    let par_option = par.parent();
+                    if let Some(par_some) = par_option {
+                        par = par_some.clone();
+                    } else {
+                        return out_vec;
+                    }
+                }
+            }
+        };
+    }
+
+    #[allow(unused_must_use)]
+    pub fn delete_file(&self) -> Result<(), OptimaError> {
+        return match self {
+            OptimaPath::Path(p) => {
+                fs::remove_file(p);
+                Ok(())
+            }
+            OptimaPath::VfsPath(_) => {
+                Err(OptimaError::new_unsupported_operation_error("remove_file", "VfsPath does not support deleting files."))
+            }
+        }
+    }
+
+    #[allow(unused_must_use)]
+    pub fn copy_file_to_destination(&self, destination: OptimaPath) -> Result<(), OptimaError> {
+        return match self {
+            OptimaPath::Path(p) => {
+                match &destination {
+                    OptimaPath::Path(p2) => {
+                        fs::copy(p, p2);
+
+                        Ok(())
+                    }
+                    OptimaPath::VfsPath(_) => {
+                        Err(OptimaError::new_unsupported_operation_error("copy_file_to_destination", "VfsPath does not support copying files."))
+                    }
+                }
+            }
+            OptimaPath::VfsPath(_) => {
+                Err(OptimaError::new_unsupported_operation_error("copy_file_to_destination", "VfsPath does not support copying files."))
+            }
+        }
+    }
+
     pub fn load_urdf(&self) -> Result<Robot, OptimaError> {
         let s = self.read_file_contents_to_string()?;
         let robot_res = urdf_rs::read_from_string(&s);
@@ -546,7 +584,33 @@ impl OptimaPath {
         }
     }
 
-    fn directory_walk_standard_entry(optima_path: &OptimaPath,
+    pub fn load_dae(&self) -> Result<Document, OptimaError> {
+        let string = self.read_file_contents_to_string()?;
+        let dae_result = Document::from_str(&string);
+        return match dae_result {
+            Ok(dae) => {
+                Ok(dae)
+            }
+            Err(_) => {
+                Err(OptimaError::new_generic_error_str(&format!("Could not parse dae file at path {:?}", self)))
+            }
+        }
+    }
+
+    pub fn load_collada_dae(&self) -> Result<ColladaDocument, OptimaError> {
+        let string = self.read_file_contents_to_string()?;
+        let collada_result = ColladaDocument::from_str(&string);
+        return match collada_result {
+            Ok(dae) => {
+                Ok(dae)
+            }
+            Err(_) => {
+                Err(OptimaError::new_generic_error_str(&format!("Could not parse dae file at path {:?}", self)))
+            }
+        }
+    }
+
+    fn directory_walk_standard_entry(optima_path: &mut OptimaPath,
                                      out_vec: &mut Vec<OptimaPath>,
                                      pattern: &OptimaPathMatchingPattern) -> bool {
         let mut matched = false;
@@ -576,6 +640,46 @@ impl OptimaPath {
                         out_vec.push(optima_path.clone());
                         matched = true;
                     }
+                }
+            }
+            OptimaPathMatchingPattern::PathComponents(v) => {
+                let split = optima_path.split_path_into_string_components();
+                let v_len = v.len();
+                let split_len = split.len();
+                if split_len < v_len { return false; }
+
+                let mut local_match = true;
+                for i in 0..v_len {
+                    if &v[i] != &split[split_len - v_len + i] {
+                        local_match = false;
+                        break;
+                    }
+                }
+
+                if local_match {
+                    out_vec.push(optima_path.clone());
+                    matched = true;
+                }
+            }
+            OptimaPathMatchingPattern::PathComponentsWithoutExtension(v) => {
+                let mut optima_path_copy = optima_path.clone();
+                optima_path_copy.set_extension("");
+                let split = optima_path_copy.split_path_into_string_components();
+                let v_len = v.len();
+                let split_len = split.len();
+                if split_len < v_len { return false; }
+
+                let mut local_match = true;
+                for i in 0..v_len {
+                    if &v[i] != &split[split_len - v_len + i] {
+                        local_match = false;
+                        break;
+                    }
+                }
+
+                if local_match {
+                    out_vec.push(optima_path.clone());
+                    matched = true;
                 }
             }
         }
@@ -612,6 +716,7 @@ impl OptimaPath {
     }
 }
 
+/// Loads an object that implements the `Deserialize` trait from a deserialized json string.
 pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Result<T, OptimaError> {
     let o_res = serde_json::from_str(json_str);
     return match o_res {
@@ -709,13 +814,20 @@ struct PathToAssetsDir {
     pub path_to_assets_dir: PathBuf
 }
 
+/// An Enum used to specify a particular patten that should be matched during a directory walk.
 #[derive(Debug, Clone)]
 pub enum OptimaPathMatchingPattern {
     FileOrDirName(String),
     Extension(String),
-    FilenameWithoutExtension(String)
+    FilenameWithoutExtension(String),
+    PathComponents(Vec<String>),
+    PathComponentsWithoutExtension(Vec<String>)
 }
 
+/// An Enum used to specify when a particular directory walk should stop based on when a pattern is
+/// matched.  For example, `First` will stop the directory walk when the given pattern is matched
+/// for the first time, while `All` will continue recursively searching through the whole directory
+/// until all potential matches are found.
 #[derive(Debug, Clone)]
 pub enum OptimaPathMatchingStopCondition {
     First,

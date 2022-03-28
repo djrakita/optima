@@ -1,5 +1,3 @@
-/*
-use std::path::{Component, Path, PathBuf};
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -8,17 +6,19 @@ use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
+use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition};
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
-pub struct RobotFileManagerModule {
+pub struct RobotMeshFileManagerModule {
     robot_name: String,
     links: Vec<Link>
 }
-impl RobotFileManagerModule {
+impl RobotMeshFileManagerModule {
     pub fn new(robot_model_module: &RobotModelModule) -> Result<Self, OptimaError> {
         Ok(Self {
             robot_name: robot_model_module.robot_name().to_string(),
@@ -27,7 +27,7 @@ impl RobotFileManagerModule {
     }
 
     pub fn new_from_robot_model_module_json_file(robot_name: &str) -> Result<Self, OptimaError> {
-        let robot_model_module = RobotModelModule::new_from_json_file(robot_name, RobotModuleJsonType::ModelModule)?;
+        let robot_model_module = RobotModelModule::new(robot_name)?;
         return Self::new(&robot_model_module);
     }
 
@@ -36,124 +36,120 @@ impl RobotFileManagerModule {
         return Self::new(&robot_model_module);
     }
 
-    pub fn get_all_link_mesh_path_stubs(&self, link_mesh_type: &LinkMeshType, with_file_extension: bool) -> Vec<Option<PathBuf>> {
+    fn get_urdf_link_mesh_path_split_vecs(&self, link_mesh_type: &LinkMeshType) -> Vec<Option<Vec<String>>> {
         let mut out_vec = vec![];
-        for link in &self.links {
-            let ros_filestring_option = match link_mesh_type {
+
+        let links = &self.links;
+        for link in links {
+            let path_string_string = match link_mesh_type {
                 LinkMeshType::Visual => { link.urdf_link().visual_mesh_filename().clone() }
                 LinkMeshType::Collision => { link.urdf_link().collision_mesh_filename().clone() }
             };
 
-            match &ros_filestring_option {
+            match path_string_string {
                 None => { out_vec.push(None); }
-                Some(s) => {
-                    let path_from_string = Path::new(s);
-                    let components = path_from_string.components();
-                    let component_vec: Vec<Component> = components.collect();
-                    if component_vec.len() <= 1 { out_vec.push(None); }
-                    else {
-                        let last_component = component_vec[component_vec.len() - 1];
-                        let second_last_component = component_vec[component_vec.len() - 2];
+                Some(path_string) => {
+                    let path_string_split: Vec<&str> = path_string.split("/").collect();
+                    let mut v = vec![];
+                    for path_string in path_string_split {
+                        v.push(path_string.to_string());
+                    }
+                    out_vec.push(Some(v));
+                }
+            }
+        }
 
-                        let last_component_path_option = match last_component {
-                            Component::Normal(s) => { Some(Path::new(s).to_path_buf()) }
-                            _ => { None }
-                        };
+        out_vec
+    }
 
-                        let second_last_component_path_option = match second_last_component {
-                            Component::Normal(s) => { Some(Path::new(s).to_path_buf()) }
-                            _ => { None }
-                        };
+    fn get_final_n_subcomponents_from_urdf_link_mesh_path_split_vecs(&self, link_mesh_type: &LinkMeshType, n: usize) -> Vec<Option<Vec<String>>> {
+        let mut out_vec = vec![];
 
-                        if last_component_path_option.is_none() || second_last_component_path_option.is_none() {
-                            out_vec.push(None); continue;
-                        } else {
-                            let last_component_path = last_component_path_option.unwrap();
-                            let second_last_component_path = second_last_component_path_option.unwrap();
+        let split = self.get_urdf_link_mesh_path_split_vecs(link_mesh_type);
+        for s in &split {
+            match s {
+                None => { out_vec.push(None); }
+                Some(ss) => {
+                    let mut v = vec![];
+                    let n_local = n.min(ss.len());
+                    for i in 0..n_local {
+                        v.push(ss[ss.len() - n_local + i].clone());
+                    }
+                    out_vec.push(Some(v));
+                }
+            }
+        }
 
-                            let mut combined_path = second_last_component_path.join(last_component_path);
-                            if !with_file_extension {
-                                combined_path.set_extension("");
-                            }
-                            out_vec.push(Some(combined_path));
+        out_vec
+    }
+
+    pub fn get_optima_paths_to_urdf_link_meshes(&self, link_mesh_type: &LinkMeshType) -> Result<Vec<Option<OptimaPath>>, OptimaError> {
+        let mut out_vec = vec![];
+
+        let mut directory_string_vecs = vec![];
+        let mut directory_idxs = vec![];
+        let subcomponents = self.get_final_n_subcomponents_from_urdf_link_mesh_path_split_vecs(link_mesh_type, 3);
+        for s in &subcomponents {
+            if let Some(ss) = s {
+                let check_vec = vec![ ss[0].clone(), ss[1].clone() ];
+                if !directory_string_vecs.contains(&check_vec) {
+                    directory_idxs.push(Some(directory_string_vecs.len()));
+                    directory_string_vecs.push(check_vec.clone());
+                } else {
+                    for (i, d) in directory_string_vecs.iter().enumerate() {
+                        if d == &check_vec {
+                            directory_idxs.push(Some(i));
                         }
                     }
                 }
-            }
-        }
-        out_vec
-    }
-
-    pub fn get_all_link_mesh_filenames(&self, link_mesh_type: &LinkMeshType, with_file_extension: bool) -> Vec<Option<PathBuf>> {
-        let mut out_vec = vec![];
-
-        let stubs = self.get_all_link_mesh_path_stubs(link_mesh_type, with_file_extension);
-        for stub_option in &stubs {
-            match stub_option {
-                None => {
-                    out_vec.push(None);
-                }
-                Some(stub) => {
-                    out_vec.push(Some(FileUtils::get_filename(stub, with_file_extension).expect("error")));
-                }
+            } else {
+                directory_idxs.push(None);
             }
         }
 
-        out_vec
-    }
-
-    pub fn get_all_link_mesh_directories(&self, link_mesh_type: &LinkMeshType) -> Vec<PathBuf> {
-        let mut out_vec = vec![];
-
-        let stubs = self.get_all_link_mesh_path_stubs(link_mesh_type, true);
-        for stub_option in &stubs {
-            if let Some(stub) = stub_option {
-                let parent = stub.parent().unwrap().to_path_buf();
-                if !out_vec.contains(&parent) {
-                    out_vec.push(parent);
-                }
+        let mut directory_optima_paths = vec![];
+        optima_print("Finding mesh file directories.  This may take a while...", PrintMode::Println, PrintColor::Cyan, true);
+        for d in &directory_string_vecs {
+            let p = OptimaPath::new_home_path()?;
+            let res = p.walk_directory_and_match(OptimaPathMatchingPattern::PathComponents(d.clone()), OptimaPathMatchingStopCondition::First);
+            if res.len() > 0 { directory_optima_paths.push(res[0].clone()); }
+            else {
+                return Err(OptimaError::new_generic_error_str(&format!("Could not find directory corresponding to path components {:?}.", d)));
             }
         }
 
-        out_vec
-    }
-
-    pub fn get_all_link_mesh_paths(&self, link_mesh_type: &LinkMeshType, asset_file_mode: AssetFileMode, with_file_extension: bool) -> Vec<Option<PathBuf>> {
-        let mut out_vec = vec![];
-        let path = AssetDirUtils::get_path_to_location(AssetDirLocation::RobotMeshes { robot_name: self.robot_name.clone() }, asset_file_mode).expect("error");
-        let stubs = self.get_all_link_mesh_path_stubs(link_mesh_type, with_file_extension);
-
-        for stub_option in &stubs {
-            match stub_option {
+        let subcomponents = self.get_final_n_subcomponents_from_urdf_link_mesh_path_split_vecs(link_mesh_type, 1);
+        for (i, directory_optima_path_idx_option) in directory_idxs.iter().enumerate() {
+            match directory_optima_path_idx_option {
                 None => { out_vec.push(None); }
-                Some(stub) => { out_vec.push(Some(path.join(stub))) }
-            }
-        }
-
-        out_vec
-    }
-
-    /*
-    pub fn get_all_mesh_file_directories(&self) -> Vec<PathBuf> {
-        for l in &self.links {
-            let aa = l.urdf_link().visual_mesh_filename();
-            if let Some(a) = aa {
-                let p = Path::new(a);
-                // println!("{:?}", p);
-                let c: Vec<Component> = p.components().collect();
-                match c[c.len()-1] {
-                    Component::Normal(pp) => {
-                        let path = Path::new(pp);
-                        println!("{:?}", path);
-                    }
-                    _ => { }
+                Some(idx) => {
+                    let ss = subcomponents[i].as_ref().unwrap();
+                    let mut out_path_clone = directory_optima_paths[*idx].clone();
+                    out_path_clone.append(&ss[0]);
+                    out_vec.push(Some(out_path_clone));
                 }
-                // println!("{:?}", c[c.len()-1]);
             }
         }
-        vec![]
+
+        Ok(out_vec)
     }
-    */
+
+    #[allow(unused_must_use)]
+    pub fn find_and_copy_visual_meshes_to_assets(&self) -> Result<(), OptimaError> {
+        let destination = OptimaPath::new_asset_path_from_json_file()?;
+        let paths = self.get_optima_paths_to_urdf_link_meshes(&LinkMeshType::Visual)?;
+        for (i, path) in paths.iter().enumerate() {
+            if let Some(p) = path {
+                let extension = p.extension().unwrap();
+                let new_filename = format!("{}.{}", i, extension);
+                let mut destination_clone = destination.clone();
+                destination_clone.append_file_location(&OptimaAssetLocation::RobotMeshes { robot_name: self.robot_name.clone() });
+                destination_clone.append(&new_filename);
+                p.copy_file_to_destination(destination_clone);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -161,4 +157,3 @@ pub enum LinkMeshType {
     Visual,
     Collision
 }
-*/
