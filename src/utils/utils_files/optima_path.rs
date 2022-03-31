@@ -4,10 +4,6 @@ use std::{fs};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{PathBuf};
-use std::str::FromStr;
-// use dae_parser::Document;
-use collada::document::ColladaDocument;
-use dae_parser::Document;
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use urdf_rs::Robot;
@@ -51,7 +47,7 @@ impl OptimaStemCellPath {
         }
 
         if optima_file_paths.len() == 0 {
-            return Err(OptimaError::new_generic_error_str("OptimaStemCellPath has zero valid paths."))
+            return Err(OptimaError::new_generic_error_str("OptimaStemCellPath has zero valid paths.", file!(), line!()))
         }
 
         Ok(Self {
@@ -81,17 +77,24 @@ impl OptimaStemCellPath {
             let res = p.read_file_contents_to_string();
             if res.is_ok() { return res; }
         }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function read_file_contents_to_string()"));
+        return Err(OptimaError::new_generic_error_str("No valid optima_path in function read_file_contents_to_string()", file!(), line!()));
     }
     pub fn write_string_to_file(&self, s: &String) -> Result<(), OptimaError> {
         for p in &self.optima_file_paths {
             let res = p.write_string_to_file(s);
             if res.is_ok() { return res; }
         }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function write_string_to_file()"));
+        return Err(OptimaError::new_generic_error_str("No valid optima_path in function write_string_to_file()", file!(), line!()));
     }
     pub fn exists(&self) -> bool {
         return self.optima_file_paths[0].exists();
+    }
+    pub fn get_file_for_writing(&self) -> Result<File, OptimaError> {
+        for p in &self.optima_file_paths {
+            let res = p.get_file_for_writing();
+            if res.is_ok() { return Ok(res.unwrap()) }
+        }
+        return Err(OptimaError::new_generic_error_str("No valid optima_path in function write_string_to_file()", file!(), line!()));
     }
     pub fn filename(&self) -> Option<String> {
         return self.optima_file_paths[0].filename();
@@ -115,14 +118,14 @@ impl OptimaStemCellPath {
             let res = p.save_object_to_file_as_json(object);
             if res.is_ok() { return res; }
         }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function save_object_to_file_as_json()"));
+        return Err(OptimaError::new_generic_error_str("No valid optima_path in function save_object_to_file_as_json()", file!(), line!()));
     }
     pub fn load_object_from_json_file<T: DeserializeOwned>(&self) -> Result<T, OptimaError> {
         for p in &self.optima_file_paths {
             let res = p.load_object_from_json_file();
             if res.is_ok() { return res; }
         }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_object_from_json_file()"));
+        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_object_from_json_file()", file!(), line!()));
     }
     pub fn walk_directory_and_match(&self, pattern: OptimaPathMatchingPattern, stop_condition: OptimaPathMatchingStopCondition) -> Vec<OptimaPath> {
         for p in &self.optima_file_paths {
@@ -141,32 +144,15 @@ impl OptimaStemCellPath {
         */
         return self.load_file(OptimaPath::load_urdf, "load_urdf");
     }
-    pub fn load_dae(&self) -> Result<Document, OptimaError> {
-        /*
-        for p in &self.optima_file_paths {
-            let res = p.load_dae();
-            if res.is_ok() { return res; }
-        }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_dae()"));
-        */
-        return self.load_file(OptimaPath::load_dae, "load_dae");
-    }
-    pub fn load_collada_dae(&self) -> Result<ColladaDocument, OptimaError> {
-        /*
-        for p in &self.optima_file_paths {
-            let res = p.load_collada_dae();
-            if res.is_ok() { return res; }
-        }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_collada_dae()"));
-        */
-        return self.load_file(OptimaPath::load_collada_dae, "load_collada_dae");
-    }
-    fn load_file<T>(&self, f: fn(&OptimaPath) -> Result<T, OptimaError>, function_name: &str) -> Result<T, OptimaError> {
+    pub fn load_file<T>(&self, f: fn(&OptimaPath) -> Result<T, OptimaError>, function_name: &str) -> Result<T, OptimaError> {
         for p in &self.optima_file_paths {
             let res = f(p);
             if res.is_ok() { return res; }
         }
-        return Err(OptimaError::new_generic_error_str(&format!("No valid optima_path in function {:?}", function_name)));
+        return Err(OptimaError::new_generic_error_str(&format!("No valid optima_path in function {:?}", function_name), file!(), line!()));
+    }
+    pub fn optima_file_paths(&self) -> &Vec<OptimaPath> {
+        &self.optima_file_paths
     }
 }
 
@@ -200,7 +186,7 @@ impl OptimaPath {
     pub fn new_home_path() -> Result<Self, OptimaError> {
         if cfg!(target_os = "wasm32") {
             return Err(OptimaError::new_unsupported_operation_error("new_home_path",
-            "Not supported by wasm32."));
+            "Not supported by wasm32.", file!(), line!()));
         }
         Ok(Self::Path(dirs::home_dir().unwrap().to_path_buf()))
     }
@@ -208,7 +194,7 @@ impl OptimaPath {
     pub fn new_asset_path_from_json_file() -> Result<Self, OptimaError> {
         if cfg!(target_os = "wasm32") {
             return Err(OptimaError::new_unsupported_operation_error("new_asset_path_from_json_file",
-            "Not supported by wasm32."));
+            "Not supported by wasm32.", file!(), line!()));
         }
 
         let mut check_path = Self::new_home_path()?;
@@ -221,7 +207,7 @@ impl OptimaPath {
                 }
                 Err(_) => {
                     let found = Self::auto_create_optima_asset_path_json_file();
-                    if !found { return Err(OptimaError::new_generic_error_str("optima_asset folder not found on computer.")); }
+                    if !found { return Err(OptimaError::new_generic_error_str("optima_asset folder not found on computer.", file!(), line!())); }
                     else { return Self::new_asset_path_from_json_file(); }
                 }
             }
@@ -229,10 +215,10 @@ impl OptimaPath {
             let mut check_path = Self::new_home_path()?;
             check_path.append(".optima_asset_path.lock");
             if check_path.exists() {
-                return Err(OptimaError::new_generic_error_str("optima_assets folder not found on computer.  This was indicated by the .optima_asset_path.lock file."))
+                return Err(OptimaError::new_generic_error_str("optima_assets folder not found on computer.  This was indicated by the .optima_asset_path.lock file.", file!(), line!()))
             }
             let found = Self::auto_create_optima_asset_path_json_file();
-            if !found { return Err(OptimaError::new_generic_error_str("optima_asset folder not found on computer.")); }
+            if !found { return Err(OptimaError::new_generic_error_str("optima_asset folder not found on computer.", file!(), line!())); }
             else { return Self::new_asset_path_from_json_file(); }
         }
     }
@@ -285,7 +271,7 @@ impl OptimaPath {
                         Ok(contents)
                     }
                     Err(e) => {
-                        Err(OptimaError::new_generic_error_str(e.to_string().as_str()))
+                        Err(OptimaError::new_generic_error_str(e.to_string().as_str(), file!(), line!()))
                     }
                 }
             }
@@ -299,7 +285,7 @@ impl OptimaPath {
                         Ok(content)
                     }
                     Err(e) => {
-                        Err(OptimaError::new_generic_error_str(&format!("Could not read file.  Error is {:?}.", e.to_string())))
+                        Err(OptimaError::new_generic_error_str(&format!("Could not read file.  Error is {:?}.", e.to_string()), file!(), line!()))
                     }
                 }
             }
@@ -311,7 +297,7 @@ impl OptimaPath {
             OptimaPath::Path(p) => {
                 let parent_option = p.parent();
                 match parent_option {
-                    None => { return Err(OptimaError::new_generic_error_str("Could not get parent of path in save_object_to_file_as_json.")) }
+                    None => { return Err(OptimaError::new_generic_error_str("Could not get parent of path in save_object_to_file_as_json.", file!(), line!())) }
                     Some(parent) => {
                         fs::create_dir_all(parent).expect("error");
                     }
@@ -330,14 +316,14 @@ impl OptimaPath {
                         Ok(())
                     }
                     Err(e) => {
-                        Err(OptimaError::new_generic_error_str(e.to_string().as_str()))
+                        Err(OptimaError::new_generic_error_str(e.to_string().as_str(), file!(), line!()))
                     }
                 }
             }
             OptimaPath::VfsPath(_) => {
                 Err(OptimaError::new_unsupported_operation_error("save_object_to_file_as_json()",
                                                                  "Writing is not supported by VfsPath.  \
-                                                                    Try using a Path variant instead."))
+                                                                    Try using a Path variant instead.", file!(), line!()))
             }
         }
     }
@@ -346,6 +332,22 @@ impl OptimaPath {
         return match self {
             OptimaPath::Path(p) => { p.exists() }
             OptimaPath::VfsPath(p) => { p.exists().expect("error") }
+        }
+    }
+
+    #[allow(unused_must_use)]
+    pub fn get_file_for_writing(&self) -> Result<File, OptimaError> {
+        return match self {
+            OptimaPath::Path(p) => {
+                let prefix = p.parent().unwrap();
+                std::fs::create_dir_all(prefix).unwrap();
+                if p.exists() { std::fs::remove_file(p); }
+                let file = OpenOptions::new().write(true).create_new(true).open(p).unwrap();
+                Ok(file)
+            }
+            OptimaPath::VfsPath(_) => {
+                Err(OptimaError::new_unsupported_operation_error("get_file_for_writing", "Cannot get file for writing from VfsPath.", file!(), line!()))
+            }
         }
     }
 
@@ -418,7 +420,7 @@ impl OptimaPath {
             OptimaPath::Path(p) => {
                 let parent_option = p.parent();
                 match parent_option {
-                    None => { return Err(OptimaError::new_generic_error_str("Could not get parent of path in save_object_to_file_as_json.")) }
+                    None => { return Err(OptimaError::new_generic_error_str("Could not get parent of path in save_object_to_file_as_json.", file!(), line!())) }
                     Some(parent) => {
                         fs::create_dir_all(parent).expect("error");
                     }
@@ -437,14 +439,14 @@ impl OptimaPath {
                         Ok(())
                     }
                     Err(e) => {
-                        Err(OptimaError::new_generic_error_str(e.to_string().as_str()))
+                        Err(OptimaError::new_generic_error_str(e.to_string().as_str(), file!(), line!()))
                     }
                 }
             }
             OptimaPath::VfsPath(_) => {
                 Err(OptimaError::new_unsupported_operation_error("save_object_to_file_as_json()",
                                                                  "Writing is not supported by VfsPath.  \
-                                                                    Try using a Path variant instead."))
+                                                                    Try using a Path variant instead.", file!(), line!()))
             }
         }
     }
@@ -549,7 +551,7 @@ impl OptimaPath {
                 Ok(())
             }
             OptimaPath::VfsPath(_) => {
-                Err(OptimaError::new_unsupported_operation_error("remove_file", "VfsPath does not support deleting files."))
+                Err(OptimaError::new_unsupported_operation_error("remove_file", "VfsPath does not support deleting files.", file!(), line!()))
             }
         }
     }
@@ -565,12 +567,12 @@ impl OptimaPath {
                         Ok(())
                     }
                     OptimaPath::VfsPath(_) => {
-                        Err(OptimaError::new_unsupported_operation_error("copy_file_to_destination", "VfsPath does not support copying files."))
+                        Err(OptimaError::new_unsupported_operation_error("copy_file_to_destination", "VfsPath does not support copying files.", file!(), line!()))
                     }
                 }
             }
             OptimaPath::VfsPath(_) => {
-                Err(OptimaError::new_unsupported_operation_error("copy_file_to_destination", "VfsPath does not support copying files."))
+                Err(OptimaError::new_unsupported_operation_error("copy_file_to_destination", "VfsPath does not support copying files.", file!(), line!()))
             }
         }
     }
@@ -580,34 +582,25 @@ impl OptimaPath {
         let robot_res = urdf_rs::read_from_string(&s);
         match robot_res {
             Ok(r) => { Ok(r) }
-            Err(_) => { Err(OptimaError::new_generic_error_str(&format!("Robot could not be loaded from path {:?}", self))) }
+            Err(_) => { Err(OptimaError::new_generic_error_str(&format!("Robot could not be loaded from path {:?}", self), file!(), line!())) }
         }
     }
 
-    pub fn load_dae(&self) -> Result<Document, OptimaError> {
-        let string = self.read_file_contents_to_string()?;
-        let dae_result = Document::from_str(&string);
-        return match dae_result {
-            Ok(dae) => {
-                Ok(dae)
+    pub fn verify_extension(&self, extensions: Vec<&str>, file: &str, line: u32) -> Result<(), OptimaError> {
+        let ext_option = self.extension();
+        match ext_option {
+            None => {
+                return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file, line));
             }
-            Err(_) => {
-                Err(OptimaError::new_generic_error_str(&format!("Could not parse dae file at path {:?}", self)))
-            }
-        }
-    }
-
-    pub fn load_collada_dae(&self) -> Result<ColladaDocument, OptimaError> {
-        let string = self.read_file_contents_to_string()?;
-        let collada_result = ColladaDocument::from_str(&string);
-        return match collada_result {
-            Ok(dae) => {
-                Ok(dae)
-            }
-            Err(_) => {
-                Err(OptimaError::new_generic_error_str(&format!("Could not parse dae file at path {:?}", self)))
+            Some(ext) => {
+                for e in &extensions {
+                    if e == &ext {
+                        return Ok(());
+                    }
+                }
             }
         }
+        return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file, line));
     }
 
     fn directory_walk_standard_entry(optima_path: &mut OptimaPath,
@@ -726,7 +719,7 @@ pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Resu
         }
         Err(_) => {
             optima_print(json_str, PrintMode::Println, PrintColor::Red, false);
-            Err(OptimaError::new_generic_error_str("load_object_from_json_string() failed.  The given json_string is incompatible with the requested type."))
+            Err(OptimaError::new_generic_error_str("load_object_from_json_string() failed.  The given json_string is incompatible with the requested type.", file!(), line!()))
         }
     }
 }

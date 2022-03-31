@@ -165,7 +165,7 @@ impl Joint {
     }
     pub fn set_fixed_joint_sub_dof(&mut self, joint_sub_idx: usize, fixed_value: Option<f64>) -> Result<(), OptimaError> {
         if joint_sub_idx >= self.joint_axes.len() {
-            return Err(OptimaError::new_idx_out_of_bound_error(joint_sub_idx, self.joint_axes.len(), "set_fixed_joint_sub_dof"));
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_sub_idx, self.joint_axes.len(), file!(), line!()));
         }
 
         self.joint_axes[joint_sub_idx].fixed_value = fixed_value;

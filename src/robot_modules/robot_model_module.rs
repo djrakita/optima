@@ -122,9 +122,12 @@ impl RobotModelModule {
 
         let mut path_to_robot = OptimaStemCellPath::new_asset_path()?;
         path_to_robot.append_file_location(&OptimaAssetLocation::Robot {robot_name: robot_name.to_string()});
+        if !path_to_robot.exists() {
+            return Err(OptimaError::new_generic_error_str(format!("Robot directory for robot {} does not exist.", robot_name).as_str(), file!(), line!()))
+        }
         let path_to_urdf_vec = path_to_robot.walk_directory_and_match(OptimaPathMatchingPattern::Extension("urdf".to_string()), OptimaPathMatchingStopCondition::First);
         if path_to_urdf_vec.is_empty() {
-            return Err(OptimaError::new_generic_error_str(format!("Robot directory for robot {:?} does not contain a urdf.", robot_name).as_str()))
+            return Err(OptimaError::new_generic_error_str(format!("Robot directory for robot {} does not contain a urdf.", robot_name).as_str(), file!(), line!()))
         }
         let path_to_urdf = path_to_urdf_vec[0].clone();
         let urdf_robot = path_to_urdf.load_urdf()?;
@@ -236,7 +239,7 @@ impl RobotModelModule {
     /// function will return an error.
     pub fn get_link_by_idx(&self, idx: usize) -> Result<&Link, OptimaError> {
         if idx >= self.links().len() {
-            return Err(OptimaError::new_idx_out_of_bound_error(idx, self.links().len(), "get_link_by_idx()"));
+            return Err(OptimaError::new_idx_out_of_bound_error(idx, self.links().len(), file!(), line!()));
         }
 
         return Ok(&self.links[idx]);
@@ -251,7 +254,7 @@ impl RobotModelModule {
     /// function will return an error.
     pub fn get_joint_by_idx(&self, idx: usize) -> Result<&Joint, OptimaError> {
         if idx >= self.joints().len() {
-            return Err(OptimaError::new_idx_out_of_bound_error(idx, self.joints().len(), "get_joint_by_idx()"));
+            return Err(OptimaError::new_idx_out_of_bound_error(idx, self.joints().len(), file!(), line!()));
         }
 
         return Ok(&self.joints[idx]);
@@ -321,13 +324,13 @@ impl RobotModelModule {
         for (i, l) in self.link_tree_traversal_layers.iter().enumerate() {
             if l.contains(&link_idx) { return Ok(i); }
         }
-        return Err(OptimaError::new_generic_error_str("link_idx not found in get_link_tree_traversal_layer()"));
+        return Err(OptimaError::new_generic_error_str("link_idx not found in get_link_tree_traversal_layer()", file!(), line!()));
     }
 
     /// Returns the link index of the given link indices that is in the highest tree traveral layer.
     pub fn get_link_with_highest_tree_traversal_layer(&self, link_idxs: &Vec<usize>) -> Result<usize, OptimaError> {
         if link_idxs.len() == 1 { return Ok(link_idxs[0]); }
-        if link_idxs.len() == 0 { return Err(OptimaError::new_generic_error_string(format!("cannot have link_idxs with length 0 in get_link_with_highest_tree_traversal_layer()"))); }
+        if link_idxs.len() == 0 { return Err(OptimaError::new_generic_error_str(&format!("cannot have link_idxs with length 0 in get_link_with_highest_tree_traversal_layer()"), file!(), line!())); }
 
         let mut highest_layer = 0;
         let mut highest_layer_link_idx = 0;
@@ -509,7 +512,7 @@ impl RobotModelModule {
     /// Sets given link as inactive.
     pub fn set_link_as_inactive(&mut self, link_idx: usize) -> Result<(), OptimaError> {
         if link_idx >= self.links().len() {
-            return Err(OptimaError::new_idx_out_of_bound_error(link_idx, self.links().len(), "set_link_as_inactive()"));
+            return Err(OptimaError::new_idx_out_of_bound_error(link_idx, self.links().len(), file!(), line!()));
         }
 
         self.links[link_idx].set_active(false);
@@ -519,7 +522,7 @@ impl RobotModelModule {
 
     pub fn set_fixed_joint_sub_dof(&mut self, joint_idx: usize, joint_sub_idx: usize, fixed_value: Option<f64>) -> Result<(), OptimaError> {
         if joint_idx >= self.joints.len() {
-            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints.len(), "set_fixed_joint_sub_dof"));
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints.len(), file!(), line!()));
         }
 
         return self.joints[joint_idx].set_fixed_joint_sub_dof(joint_sub_idx, fixed_value);
@@ -527,7 +530,7 @@ impl RobotModelModule {
 
     pub fn set_fixed_joint(&mut self, joint_idx: usize, fixed_value: Option<f64>) -> Result<(), OptimaError> {
         if joint_idx >= self.joints.len() {
-            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints.len(), "set_fixed_joint"));
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints.len(), file!(), line!()));
         }
 
         let j = &mut self.joints[joint_idx];

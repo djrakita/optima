@@ -7,17 +7,14 @@ pub enum OptimaError {
     UnsupportedOperationError(String)
 }
 impl OptimaError {
-    pub fn new_generic_error_str(s: &str) -> Self {
-        Self::GenericError(s.to_string())
+    pub fn new_generic_error_str(s: &str, file: &str, line: u32) -> Self {
+        Self::GenericError(format!("{} -- File: {}, Line: {}", s.to_string(), file, line))
     }
-    pub fn new_generic_error_string(s: String) -> Self {
-        Self::GenericError(s)
-    }
-    pub fn new_idx_out_of_bound_error(given_idx: usize, length_of_array: usize, function_name: &str) -> Self {
-        let s = format!("Index {:?} is too large for the array of length {:?} in function {}", given_idx, length_of_array, function_name);
+    pub fn new_idx_out_of_bound_error(given_idx: usize, length_of_array: usize, file: &str, line: u32) -> Self {
+        let s = format!("Index {:?} is too large for the array of length {:?} -- File: {}, Line: {}", given_idx, length_of_array, file, line);
         Self::IdxOutOfBoundError(s)
     }
-    pub fn new_unsupported_operation_error(function_name: &str, message: &str) -> Self {
-        return Self::UnsupportedOperationError(format!("Unsupported operation error in function {}.  {}", function_name, message))
+    pub fn new_unsupported_operation_error(function_name: &str, message: &str, file: &str, line: u32) -> Self {
+        return Self::UnsupportedOperationError(format!("Unsupported operation error in function {}.  {} -- File: {}, Line: {}", function_name, message, file, line))
     }
 }

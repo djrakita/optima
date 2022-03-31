@@ -114,7 +114,7 @@ impl RobotMeshFileManagerModule {
             let res = p.walk_directory_and_match(OptimaPathMatchingPattern::PathComponents(d.clone()), OptimaPathMatchingStopCondition::First);
             if res.len() > 0 { directory_optima_paths.push(res[0].clone()); }
             else {
-                return Err(OptimaError::new_generic_error_str(&format!("Could not find directory corresponding to path components {:?}.", d)));
+                return Err(OptimaError::new_generic_error_str(&format!("Could not find directory corresponding to path components {:?}.", d), file!(), line!()));
             }
         }
 

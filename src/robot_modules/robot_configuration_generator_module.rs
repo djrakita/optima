@@ -134,7 +134,7 @@ impl RobotConfigurationGeneratorModule {
                 let idx_option = self.get_idx(name);
                 match &idx_option {
                     None => {
-                        Err(OptimaError::new_generic_error_str(&format!("configuration with name {:?} does not exist.", name)))
+                        Err(OptimaError::new_generic_error_str(&format!("configuration with name {:?} does not exist.", name), file!(), line!()))
                     }
                     Some(idx) => {
                         let info = &self.robot_configuration_infos[*idx];

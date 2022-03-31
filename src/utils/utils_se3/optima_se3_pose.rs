@@ -78,7 +78,7 @@ impl OptimaSE3Pose {
                 let new_operand = other.convert(self.get_pose_type());
                 self.multiply(&new_operand, conversion_if_necessary)
             } else {
-                Err(OptimaError::new_generic_error_str("incompatible pose types in multiply."))
+                Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!()))
             }
         }
 
@@ -89,7 +89,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::ImplicitDualQuaternion { data, .. } => {
                         Ok(OptimaSE3Pose::new_implicit_dual_quaternion(data0.multiply_shortcircuit(data)))
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!())) }
                 }
             }
             OptimaSE3Pose::HomogeneousMatrix { data, .. } => {
@@ -98,7 +98,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::HomogeneousMatrix { data, .. } => {
                         Ok(OptimaSE3Pose::new_homogeneous_matrix(data0.multiply(data)))
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!())) }
                 }
             }
             OptimaSE3Pose::RotationAndTranslation { data, .. } => {
@@ -107,7 +107,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::RotationAndTranslation { data, .. } => {
                         Ok(OptimaSE3Pose::new_rotation_and_translation(data0.multiply(data, conversion_if_necessary)?))
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!())) }
                 }
             }
         }
@@ -137,7 +137,7 @@ impl OptimaSE3Pose {
                 let new_operand = other.convert(self.get_pose_type());
                 self.displacement(&new_operand, conversion_if_necessary)
             } else {
-                Err(OptimaError::new_generic_error_str("incompatible pose types in displacement."))
+                Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!()))
             }
         }
 
@@ -148,7 +148,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::ImplicitDualQuaternion { data, .. } => {
                         Ok(OptimaSE3Pose::new_implicit_dual_quaternion(data0.displacement(data)))
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!())) }
                 }
             }
             OptimaSE3Pose::HomogeneousMatrix { data, .. } => {
@@ -157,7 +157,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::HomogeneousMatrix { data, .. } => {
                         Ok(OptimaSE3Pose::new_homogeneous_matrix(data0.displacement(data)))
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!())) }
                 }
             }
             OptimaSE3Pose::RotationAndTranslation { data, .. } => {
@@ -166,7 +166,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::RotationAndTranslation { data, .. } => {
                         Ok(OptimaSE3Pose::new_rotation_and_translation(data0.displacement(data, conversion_if_necessary)?))
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!())) }
                 }
             }
         }
@@ -181,7 +181,7 @@ impl OptimaSE3Pose {
                 let new_operand = other.convert(self.get_pose_type());
                 self.distance_function(&new_operand, conversion_if_necessary)
             } else {
-                Err(OptimaError::new_generic_error_str("incompatible pose types in distance function."))
+                Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!()))
             }
         }
 
@@ -192,7 +192,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::ImplicitDualQuaternion { data, .. } => {
                         Ok(data0.displacement(data).ln_l2_magnitude())
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
                 }
             }
             OptimaSE3Pose::HomogeneousMatrix { data, .. } => {
@@ -201,7 +201,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::HomogeneousMatrix { data, .. } => {
                         Ok(data0.approximate_distance(&data))
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
                 }
             }
             OptimaSE3Pose::RotationAndTranslation { data, .. } => {
@@ -210,7 +210,7 @@ impl OptimaSE3Pose {
                     OptimaSE3Pose::RotationAndTranslation { data, .. } => {
                         data0.approximate_distance(&data, conversion_if_necessary)
                     }
-                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.")) }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
                 }
             }
         }
@@ -222,7 +222,7 @@ impl OptimaSE3Pose {
                 Ok(data)
             }
             _ => {
-                Err(OptimaError::new_generic_error_str("tried to unwrap homogenous matrix on incompatible type."))
+                Err(OptimaError::new_generic_error_str("tried to unwrap homogenous matrix on incompatible type.", file!(), line!()))
             }
         }
     }
@@ -233,7 +233,7 @@ impl OptimaSE3Pose {
                 Ok(data)
             }
             _ => {
-                Err(OptimaError::new_generic_error_str("tried to unwrap implicit dual quaternion on incompatible type."))
+                Err(OptimaError::new_generic_error_str("tried to unwrap implicit dual quaternion on incompatible type.", file!(), line!()))
             }
         }
     }
@@ -244,7 +244,7 @@ impl OptimaSE3Pose {
                 Ok(data)
             }
             _ => {
-                Err(OptimaError::new_generic_error_str("tried to unwrap rotation and translation on incompatible type."))
+                Err(OptimaError::new_generic_error_str("tried to unwrap rotation and translation on incompatible type.", file!(), line!()))
             }
         }
     }
