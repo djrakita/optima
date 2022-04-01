@@ -4,11 +4,13 @@ use std::str::FromStr;
 use collada::document::ColladaDocument;
 use collada::PrimitiveElement;
 use dae_parser::{Document, Transform};
-use nalgebra::{Matrix4, Unit, UnitQuaternion, Vector3};
+use nalgebra::{Matrix4, Point3, Unit, UnitQuaternion, Vector3};
+use parry3d_f64::transformation::vhacd::{VHACD, VHACDParameters};
 use stl_io::IndexedMesh;
 use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{OptimaPath, OptimaStemCellPath};
+use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
 use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
@@ -27,6 +29,22 @@ impl TrimeshEngine {
             indices,
             normals
         }
+    }
+    pub fn convex_decomposition(&self) -> Vec<TrimeshEngine> {
+        let points: Vec<Point3<f64>> = self.vertices.iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
+        let indices: Vec<[u32; 3]> = self.indices.iter().map(|i| [i[0] as u32, i[1] as u32, i[2] as u32] ).collect();
+
+        let v = VHACD::decompose(&VHACDParameters::default(), points.as_slice(), indices.as_slice(), true);
+        let res_vec = v.compute_exact_convex_hulls(points.as_slice(), indices.as_slice());
+
+        let mut out_vec = vec![];
+        for res in &res_vec {
+            let vertices: Vec<Vector3<f64>> = res.0.iter().map(|p| NalgebraConversions::point3_to_vector3(p) ).collect();
+            let indices: Vec<[usize; 3]> = res.1.iter().map(|i| [i[0] as usize, i[1] as usize, i[2] as usize] ).collect();
+            out_vec.push(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, None));
+        }
+
+        return out_vec;
     }
     pub fn vertices(&self) -> &Vec<Vector3<f64>> {
         &self.vertices
@@ -358,3 +376,4 @@ impl OptimaPath {
         Ok(())
     }
 }
+
