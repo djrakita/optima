@@ -73,28 +73,16 @@ impl OptimaStemCellPath {
         }
     }
     pub fn read_file_contents_to_string(&self) -> Result<String, OptimaError> {
-        for p in &self.optima_file_paths {
-            let res = p.read_file_contents_to_string();
-            if res.is_ok() { return res; }
-        }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function read_file_contents_to_string()", file!(), line!()));
+        self.try_function_on_all_optima_file_paths(OptimaPath::read_file_contents_to_string, "read_file_contents_to_string")
     }
     pub fn write_string_to_file(&self, s: &String) -> Result<(), OptimaError> {
-        for p in &self.optima_file_paths {
-            let res = p.write_string_to_file(s);
-            if res.is_ok() { return res; }
-        }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function write_string_to_file()", file!(), line!()));
+        self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::write_string_to_file, s, "write_string_to_file")
     }
     pub fn exists(&self) -> bool {
         return self.optima_file_paths[0].exists();
     }
     pub fn get_file_for_writing(&self) -> Result<File, OptimaError> {
-        for p in &self.optima_file_paths {
-            let res = p.get_file_for_writing();
-            if res.is_ok() { return Ok(res.unwrap()) }
-        }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function write_string_to_file()", file!(), line!()));
+        self.try_function_on_all_optima_file_paths(OptimaPath::get_file_for_writing, "get_file_for_writing")
     }
     pub fn filename(&self) -> Option<String> {
         return self.optima_file_paths[0].filename();
@@ -113,19 +101,27 @@ impl OptimaStemCellPath {
     pub fn split_path_into_string_components(&self) -> Vec<String> {
         return self.optima_file_paths[0].split_path_into_string_components();
     }
-    pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
+    pub fn delete_file(&self) -> Result<(), OptimaError> {
+        self.try_function_on_all_optima_file_paths(OptimaPath::delete_file, "delete_file")
+    }
+    pub fn copy_file_to_destination(&self, destination: &OptimaPath) -> Result<(), OptimaError> {
+        self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::copy_file_to_destination, destination, "copy_file_to_destination")
+    }
+    pub fn verify_extension(&self, extensions: &Vec<&str>) -> Result<(), OptimaError> {
+        self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::verify_extension, extensions, "verify_extension")
+    }
+    pub fn get_all_items_in_directory(&self, include_directories: bool) -> Vec<String> {
         for p in &self.optima_file_paths {
-            let res = p.save_object_to_file_as_json(object);
-            if res.is_ok() { return res; }
+            let items = p.get_all_items_in_directory(include_directories);
+            if items.len() > 0 { return items; }
         }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function save_object_to_file_as_json()", file!(), line!()));
+        return vec![];
+    }
+    pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
+        self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::save_object_to_file_as_json, object, "save_object_to_file_as_json")
     }
     pub fn load_object_from_json_file<T: DeserializeOwned>(&self) -> Result<T, OptimaError> {
-        for p in &self.optima_file_paths {
-            let res = p.load_object_from_json_file();
-            if res.is_ok() { return res; }
-        }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_object_from_json_file()", file!(), line!()));
+        self.try_function_on_all_optima_file_paths(OptimaPath::load_object_from_json_file, "load_object_from_json_file")
     }
     pub fn walk_directory_and_match(&self, pattern: OptimaPathMatchingPattern, stop_condition: OptimaPathMatchingStopCondition) -> Vec<OptimaPath> {
         for p in &self.optima_file_paths {
@@ -135,18 +131,18 @@ impl OptimaStemCellPath {
         return vec![];
     }
     pub fn load_urdf(&self) -> Result<Robot, OptimaError> {
-        /*
-        for p in &self.optima_file_paths {
-            let res = p.load_urdf();
-            if res.is_ok() { return res; }
-        }
-        return Err(OptimaError::new_generic_error_str("No valid optima_path in function load_urdf()"));
-        */
-        return self.load_file(OptimaPath::load_urdf, "load_urdf");
+        return self.try_function_on_all_optima_file_paths(OptimaPath::load_urdf, "load_urdf");
     }
-    pub fn load_file<T>(&self, f: fn(&OptimaPath) -> Result<T, OptimaError>, function_name: &str) -> Result<T, OptimaError> {
+    pub fn try_function_on_all_optima_file_paths<T>(&self, f: fn(&OptimaPath) -> Result<T, OptimaError>, function_name: &str) -> Result<T, OptimaError> {
         for p in &self.optima_file_paths {
             let res = f(p);
+            if res.is_ok() { return res; }
+        }
+        return Err(OptimaError::new_generic_error_str(&format!("No valid optima_path in function {:?}", function_name), file!(), line!()));
+    }
+    pub fn try_function_on_all_optima_file_paths_with_one_param<T, P>(&self, f: fn(&OptimaPath, &P) -> Result<T, OptimaError>, param: &P, function_name: &str) -> Result<T, OptimaError> {
+        for p in &self.optima_file_paths {
+            let res = f(p, param);
             if res.is_ok() { return res; }
         }
         return Err(OptimaError::new_generic_error_str(&format!("No valid optima_path in function {:?}", function_name), file!(), line!()));
@@ -557,10 +553,10 @@ impl OptimaPath {
     }
 
     #[allow(unused_must_use)]
-    pub fn copy_file_to_destination(&self, destination: OptimaPath) -> Result<(), OptimaError> {
+    pub fn copy_file_to_destination(&self, destination: &OptimaPath) -> Result<(), OptimaError> {
         return match self {
             OptimaPath::Path(p) => {
-                match &destination {
+                match destination {
                     OptimaPath::Path(p2) => {
                         fs::copy(p, p2);
 
@@ -577,6 +573,55 @@ impl OptimaPath {
         }
     }
 
+    pub fn verify_extension(&self, extensions: &Vec<&str>) -> Result<(), OptimaError> {
+        let ext_option = self.extension();
+        match ext_option {
+            None => {
+                return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file!(), line!()));
+            }
+            Some(ext) => {
+                for e in extensions {
+                    if e == &ext {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file!(), line!()));
+    }
+
+    pub fn get_all_items_in_directory(&self, include_directories: bool) -> Vec<String> {
+        let mut out_vec = vec![];
+
+        match self {
+            OptimaPath::Path(p) => {
+                let res = p.read_dir();
+                if let Ok(read_dir) = res {
+                    for dir_entry_res in read_dir {
+                        if let Ok(dir_entry) = dir_entry_res {
+                            let filename = dir_entry.file_name();
+                            if include_directories || dir_entry.path().is_file() {
+                                out_vec.push(filename.to_str().unwrap().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            OptimaPath::VfsPath(p) => {
+                let res = p.read_dir();
+                if let Ok(read_dir) = res {
+                    for i in read_dir {
+                        if include_directories || i.is_file().unwrap() {
+                            out_vec.push(i.filename());
+                        }
+                    }
+                }
+            }
+        }
+
+        out_vec
+    }
+
     pub fn load_urdf(&self) -> Result<Robot, OptimaError> {
         let s = self.read_file_contents_to_string()?;
         let robot_res = urdf_rs::read_from_string(&s);
@@ -584,23 +629,6 @@ impl OptimaPath {
             Ok(r) => { Ok(r) }
             Err(_) => { Err(OptimaError::new_generic_error_str(&format!("Robot could not be loaded from path {:?}", self), file!(), line!())) }
         }
-    }
-
-    pub fn verify_extension(&self, extensions: Vec<&str>, file: &str, line: u32) -> Result<(), OptimaError> {
-        let ext_option = self.extension();
-        match ext_option {
-            None => {
-                return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file, line));
-            }
-            Some(ext) => {
-                for e in &extensions {
-                    if e == &ext {
-                        return Ok(());
-                    }
-                }
-            }
-        }
-        return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file, line));
     }
 
     fn directory_walk_standard_entry(optima_path: &mut OptimaPath,

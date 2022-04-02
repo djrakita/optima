@@ -60,22 +60,22 @@ impl TrimeshEngine {
 /// Implementations for TrimeshEngine.
 impl OptimaStemCellPath {
     pub fn load_file_to_trimesh_engine(&self) -> Result<TrimeshEngine, OptimaError> {
-        self.load_file(OptimaPath::load_file_to_trimesh_engine, "load_file_to_trimesh_engine")
+        self.try_function_on_all_optima_file_paths(OptimaPath::load_file_to_trimesh_engine, "load_file_to_trimesh_engine")
     }
     pub fn load_stl_to_trimesh_engine(&self) -> Result<TrimeshEngine, OptimaError> {
-        self.load_file(OptimaPath::load_stl_to_trimesh_engine, "load_stl_to_trimesh_engine")
+        self.try_function_on_all_optima_file_paths(OptimaPath::load_stl_to_trimesh_engine, "load_stl_to_trimesh_engine")
     }
     pub fn load_dae_to_trimesh_engine(&self) -> Result<TrimeshEngine, OptimaError> {
-        self.load_file(OptimaPath::load_dae_to_trimesh_engine, "load_dae_to_trimesh_engine")
+        self.try_function_on_all_optima_file_paths(OptimaPath::load_dae_to_trimesh_engine, "load_dae_to_trimesh_engine")
     }
     pub fn load_stl(&self) -> Result<IndexedMesh, OptimaError> {
-        return self.load_file(OptimaPath::load_stl, "load_stl");
+        return self.try_function_on_all_optima_file_paths(OptimaPath::load_stl, "load_stl");
     }
     pub fn load_dae(&self) -> Result<Document, OptimaError> {
-        return self.load_file(OptimaPath::load_dae, "load_dae");
+        return self.try_function_on_all_optima_file_paths(OptimaPath::load_dae, "load_dae");
     }
     pub fn load_collada_dae(&self) -> Result<ColladaDocument, OptimaError> {
-        return self.load_file(OptimaPath::load_collada_dae, "load_collada_dae");
+        return self.try_function_on_all_optima_file_paths(OptimaPath::load_collada_dae, "load_collada_dae");
     }
     pub fn save_trimesh_engine_to_stl(&self, trimesh_engine: &TrimeshEngine) -> Result<(), OptimaError> {
         for p in self.optima_file_paths() {
@@ -270,7 +270,7 @@ impl OptimaPath {
         return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, None));
     }
     pub fn load_stl(&self) -> Result<IndexedMesh, OptimaError> {
-        self.verify_extension(vec!["stl", "STL"], file!(), line!())?;
+        self.verify_extension(&vec!["stl", "STL"])?;
         return match self {
             OptimaPath::Path(p) => {
                 let mut file = File::open(p);
@@ -309,7 +309,7 @@ impl OptimaPath {
         }
     }
     pub fn load_dae(&self) -> Result<Document, OptimaError> {
-        self.verify_extension(vec!["dae", "DAE"], file!(), line!())?;
+        self.verify_extension(&vec!["dae", "DAE"])?;
         let string = self.read_file_contents_to_string()?;
         let dae_result = Document::from_str(&string);
         return match dae_result {
@@ -322,7 +322,7 @@ impl OptimaPath {
         }
     }
     pub fn load_collada_dae(&self) -> Result<ColladaDocument, OptimaError> {
-        self.verify_extension(vec!["dae", "DAE"], file!(), line!())?;
+        self.verify_extension(&vec!["dae", "DAE"])?;
         let string = self.read_file_contents_to_string()?;
         let collada_result = ColladaDocument::from_str(&string);
         return match collada_result {
@@ -335,7 +335,7 @@ impl OptimaPath {
         }
     }
     pub fn save_trimesh_engine_to_stl(&self, trimesh_engine: &TrimeshEngine) -> Result<(), OptimaError> {
-        self.verify_extension(vec!["stl", "STL"], file!(), line!())?;
+        self.verify_extension(&vec!["stl", "STL"])?;
 
         let normals_option = &trimesh_engine.normals;
 

@@ -145,7 +145,7 @@ impl RobotMeshFileManagerModule {
                 let mut destination_clone = destination.clone();
                 destination_clone.append_file_location(&OptimaAssetLocation::RobotMeshes { robot_name: self.robot_name.clone() });
                 destination_clone.append(&new_filename);
-                p.copy_file_to_destination(destination_clone);
+                p.copy_file_to_destination(&destination_clone);
             }
         }
         Ok(())
