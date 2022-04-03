@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
-use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition};
 use crate::utils::utils_robot::link::Link;
@@ -114,6 +114,7 @@ impl RobotMeshFileManagerModule {
             let res = p.walk_directory_and_match(OptimaPathMatchingPattern::PathComponents(d.clone()), OptimaPathMatchingStopCondition::First);
             if res.len() > 0 { directory_optima_paths.push(res[0].clone()); }
             else {
+                // optima_print(&format!("ERROR: Could not find directory corresponding to path components {:?}.", d), Println, PrintColor::Red, true);
                 return Err(OptimaError::new_generic_error_str(&format!("Could not find directory corresponding to path components {:?}.", d), file!(), line!()));
             }
         }
@@ -143,7 +144,7 @@ impl RobotMeshFileManagerModule {
                 let extension = p.extension().unwrap();
                 let new_filename = format!("{}.{}", i, extension);
                 let mut destination_clone = destination.clone();
-                destination_clone.append_file_location(&OptimaAssetLocation::RobotMeshes { robot_name: self.robot_name.clone() });
+                destination_clone.append_file_location(&OptimaAssetLocation::RobotInputMeshes { robot_name: self.robot_name.clone() });
                 destination_clone.append(&new_filename);
                 p.copy_file_to_destination(&destination_clone);
             }

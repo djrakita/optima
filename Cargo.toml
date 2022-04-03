@@ -63,7 +63,7 @@ targets = ["x86_64-apple-darwin", "wasm32-unknown-unknown"]
 rustdoc-args = [ "--html-in-header", "./src/docs-header.html" ]
 
 [profile.dev]
-opt-level = 3
+opt-level = 2
 
 [profile.release]
 opt-level = 3

@@ -5,7 +5,7 @@ use pyo3::*;
 use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
-use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_robot::urdf_link::URDFLink;
 
 /// A Link holds all necessary information about a robot link (specified by a robot URDF file)

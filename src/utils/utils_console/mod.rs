@@ -1,4 +1,5 @@
-
+use std::io;
+use std::io::BufRead;
 #[cfg(not(target_arch = "wasm32"))]
 use termion::{style, color::Rgb, color};
 
@@ -6,7 +7,7 @@ use termion::{style, color::Rgb, color};
 ///
 /// ## Example
 /// ```
-/// use optima::utils::utils_console_output::{optima_print, PrintMode, PrintColor};
+/// use optima::utils::utils_console::{optima_print, PrintMode, PrintColor};
 /// optima_print("test", PrintMode::Print, PrintColor::Blue, false);
 /// ```
 #[cfg(not(target_arch = "wasm32"))]
@@ -32,6 +33,7 @@ pub fn optima_print_new_line() {
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use crate::utils::utils_errors::OptimaError;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -86,4 +88,16 @@ impl PrintColor {
     }
 }
 
-
+pub struct ConsoleInputUtils;
+impl ConsoleInputUtils {
+    pub fn get_console_input_string(prompt: &str, print_color: PrintColor) -> Result<String, OptimaError> {
+        return if cfg!(target_arch = "wasm32") {
+            Err(OptimaError::new_generic_error_str("wasm32 does not support console input.", file!(), line!()))
+        } else {
+            optima_print(prompt, PrintMode::Println, print_color, true);
+            let stdin = io::stdin();
+            let line = stdin.lock().lines().next().unwrap().unwrap();
+            Ok(line)
+        }
+    }
+}

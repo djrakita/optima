@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 use nalgebra::{Vector3, Unit};
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_configuration_module::MobileBaseInfo;
-use crate::utils::utils_console_output::{optima_print, optima_print_new_line, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_robot::urdf_joint::{JointTypeWrapper, URDFJoint};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseAll, OptimaSE3Pose, OptimaSE3PoseType};

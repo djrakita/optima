@@ -6,14 +6,12 @@ use crate::robot_modules::robot_configuration_module::RobotConfigurationModulePy
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use std::io;
-use std::io::BufRead;
 use serde::{Deserialize, Serialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::robot_modules::robot_configuration_module::{RobotConfigurationIdentifier, RobotConfigurationInfo, RobotConfigurationModule};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
-use crate::utils::utils_console_output::{optima_print, optima_print_new_line, PrintColor, PrintMode};
+use crate::utils::utils_console::{ConsoleInputUtils, optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath, RobotModuleJsonType};
 
 /// The `RobotConfigurationGeneratorModule` is used to generate `RobotConfigurationModule`s.  This generator
@@ -79,9 +77,7 @@ impl RobotConfigurationGeneratorModule {
                         self.save_to_json_file()?;
                     }
                     Some(idx) => {
-                        optima_print(&format!("Robot configuration with name {:?} already exits.  Overwrite?  (y or n)", name), PrintMode::Println, PrintColor::Blue, true);
-                        let stdin = io::stdin();
-                        let line = stdin.lock().lines().next().unwrap().unwrap();
+                        let line = ConsoleInputUtils::get_console_input_string(&format!("Robot configuration with name {:?} already exits.  Overwrite?  (y or n)", name), PrintColor::Blue)?;
                         if &line == "y" {
                             optima_print("Configuration saved.", PrintMode::Println, PrintColor::Blue, false);
                             self.robot_configuration_infos[*idx] = robot_configuration_info.clone();
@@ -108,9 +104,7 @@ impl RobotConfigurationGeneratorModule {
                 optima_print(&format!("Configuration with name {:?} does not exist.  Nothing deleted.", name), PrintMode::Println, PrintColor::Yellow, true);
             }
             Some(idx) => {
-                optima_print(&format!("Ready to delete configuration {:?}.  Confirm?  (y or n)", name), PrintMode::Println, PrintColor::Blue, true);
-                let stdin = io::stdin();
-                let line = stdin.lock().lines().next().unwrap().unwrap();
+                let line = ConsoleInputUtils::get_console_input_string(&format!("Ready to delete configuration {:?}.  Confirm?  (y or n)", name), PrintColor::Blue)?;
                 if &line == "y" {
                     self.robot_configuration_infos.remove(*idx);
                     self.save_to_json_file()?;

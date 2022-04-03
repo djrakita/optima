@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use urdf_rs::Robot;
 use walkdir::WalkDir;
-use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 
 /// An `OptimaStemCellPath` has the same functionality as an `OptimaPath`, but it
@@ -104,15 +104,18 @@ impl OptimaStemCellPath {
     pub fn delete_file(&self) -> Result<(), OptimaError> {
         self.try_function_on_all_optima_file_paths(OptimaPath::delete_file, "delete_file")
     }
+    pub fn delete_all_items_in_directory(&self) -> Result<(), OptimaError> {
+        self.try_function_on_all_optima_file_paths(OptimaPath::delete_all_items_in_directory, "delete_all_items_in_directory")
+    }
     pub fn copy_file_to_destination(&self, destination: &OptimaPath) -> Result<(), OptimaError> {
         self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::copy_file_to_destination, destination, "copy_file_to_destination")
     }
     pub fn verify_extension(&self, extensions: &Vec<&str>) -> Result<(), OptimaError> {
         self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::verify_extension, extensions, "verify_extension")
     }
-    pub fn get_all_items_in_directory(&self, include_directories: bool) -> Vec<String> {
+    pub fn get_all_items_in_directory(&self, include_directories: bool, include_hidden_files: bool) -> Vec<String> {
         for p in &self.optima_file_paths {
-            let items = p.get_all_items_in_directory(include_directories);
+            let items = p.get_all_items_in_directory(include_directories, include_hidden_files);
             if items.len() > 0 { return items; }
         }
         return vec![];
@@ -263,7 +266,10 @@ impl OptimaPath {
                 match &mut file_res {
                     Ok(f) => {
                         let mut contents = String::new();
-                        f.read_to_string(&mut contents).expect("error");
+                        let res = f.read_to_string(&mut contents);
+                        if res.is_err() {
+                            return Err(OptimaError::new_generic_error_str(&format!("Could not read file contents to string for path {:?}", self), file!(), line!()));
+                        }
                         Ok(contents)
                     }
                     Err(e) => {
@@ -547,7 +553,21 @@ impl OptimaPath {
                 Ok(())
             }
             OptimaPath::VfsPath(_) => {
-                Err(OptimaError::new_unsupported_operation_error("remove_file", "VfsPath does not support deleting files.", file!(), line!()))
+                Err(OptimaError::new_unsupported_operation_error("delete_file", "VfsPath does not support deleting files.", file!(), line!()))
+            }
+        }
+    }
+
+    #[allow(unused_must_use)]
+    pub fn delete_all_items_in_directory(&self) -> Result<(), OptimaError> {
+        return match self {
+            OptimaPath::Path(p) => {
+                fs::remove_dir_all(p);
+                fs::create_dir(p);
+                Ok(())
+            }
+            OptimaPath::VfsPath(_) => {
+                Err(OptimaError::new_unsupported_operation_error("delete_all_files_in_directory", "VfsPath does not support deleting files.", file!(), line!()))
             }
         }
     }
@@ -558,6 +578,10 @@ impl OptimaPath {
             OptimaPath::Path(p) => {
                 match destination {
                     OptimaPath::Path(p2) => {
+                        if !p2.exists() {
+                            let par = p2.parent().unwrap();
+                            fs::create_dir_all(par);
+                        }
                         fs::copy(p, p2);
 
                         Ok(())
@@ -590,7 +614,7 @@ impl OptimaPath {
         return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file!(), line!()));
     }
 
-    pub fn get_all_items_in_directory(&self, include_directories: bool) -> Vec<String> {
+    pub fn get_all_items_in_directory(&self, include_directories: bool, include_hidden_files: bool) -> Vec<String> {
         let mut out_vec = vec![];
 
         match self {
@@ -601,7 +625,10 @@ impl OptimaPath {
                         if let Ok(dir_entry) = dir_entry_res {
                             let filename = dir_entry.file_name();
                             if include_directories || dir_entry.path().is_file() {
-                                out_vec.push(filename.to_str().unwrap().to_string());
+                                let f = filename.to_str().unwrap().to_string();
+                                if !(f.chars().nth(0).unwrap().to_string() == ".") || include_hidden_files {
+                                    out_vec.push(filename.to_str().unwrap().to_string());
+                                }
                             }
                         }
                     }
@@ -612,7 +639,10 @@ impl OptimaPath {
                 if let Ok(read_dir) = res {
                     for i in read_dir {
                         if include_directories || i.is_file().unwrap() {
-                            out_vec.push(i.filename());
+                            let f = i.filename();
+                            if !(f.chars().nth(0).unwrap().to_string() == ".") || include_hidden_files {
+                                out_vec.push(i.filename());
+                            }
                         }
                     }
                 }
@@ -769,6 +799,7 @@ struct AssetEmbed;
 pub enum OptimaAssetLocation {
     Robots,
     Robot { robot_name: String },
+    RobotInputMeshes { robot_name: String },
     RobotMeshes { robot_name: String  },
     RobotPreprocessedData { robot_name: String },
     RobotModuleJsons { robot_name: String },
@@ -787,6 +818,11 @@ impl OptimaAssetLocation {
             OptimaAssetLocation::Robot { robot_name } => {
                 let mut v = Self::Robots.get_path_wrt_asset_folder();
                 v.push(robot_name.clone());
+                v
+            }
+            OptimaAssetLocation::RobotInputMeshes { robot_name } => {
+                let mut v = Self::Robot { robot_name: robot_name.clone() }.get_path_wrt_asset_folder();
+                v.push("input_meshes".to_string());
                 v
             }
             OptimaAssetLocation::RobotMeshes { robot_name } => {

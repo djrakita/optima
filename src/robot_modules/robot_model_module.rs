@@ -12,7 +12,7 @@ use crate::utils::utils_robot::joint::{Joint};
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
-use crate::utils::utils_console_output::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
 use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad};
 
@@ -167,29 +167,6 @@ impl RobotModelModule {
     pub fn new_from_json_string(json_string: &str) -> Result<Self, OptimaError> {
         load_object_from_json_string(json_string)
     }
-
-    /// Serializes and saves module to json file.
-    /// The file is in the optima_assets/optima_robots/<robot name>/
-    pub fn save_to_json(&self) -> Result<(), OptimaError> {
-        let mut p = OptimaStemCellPath::new_asset_path()?;
-        p.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_name.clone(), t: RobotModuleJsonType::ModelModule });
-        return p.save_object_to_file_as_json(self);
-    }
-
-    /*
-    /// Loads module from a json string.  Will throw an error if the json string is not compatible.
-    pub fn new_from_json_string(json_string: &str) -> Result<Self, OptimaError> {
-        FileUtils::load_object_from_json_string::<Self>(json_string)
-    }
-
-    /// Serializes and saves module to json file.
-    /// The file is in the optima_assets/optima_robots/<robot name>/
-    pub fn save_to_json(&self) -> Result<(), OptimaError> {
-        let p = RobotDirUtils::get_path_to_robot_module_json(self.robot_name(), RobotModuleJsonType::ModelModule)?;
-        FileUtils::save_object_to_file_as_json(self, &p)?;
-        Ok(())
-    }
-    */
 
     fn assign_all_link_connections_manual(&mut self) {
         let l1 = self.links.len();
