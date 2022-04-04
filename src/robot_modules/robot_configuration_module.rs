@@ -71,6 +71,15 @@ impl RobotConfigurationModule {
             }
         }
 
+        /*
+        for j in self.robot_model_module.joints_mut() {
+            let prec_option = j.preceding_link_idx();
+            if let Some(prec) = prec_option {
+
+            }
+        }
+        */
+
         let fixed = &robot_configuration_info.fixed_joint_infos;
         for f in fixed {
             robot_model_module.set_fixed_joint_sub_dof(f.joint_idx, f.joint_sub_idx, Some(f.fixed_joint_value))?;

@@ -494,6 +494,26 @@ impl RobotModelModule {
 
         self.links[link_idx].set_active(false);
 
+        let l = self.joints.len();
+        for i in 0..l {
+            let prec_option = self.joints[i].preceding_link_idx();
+            if let Some(prec) = prec_option {
+                if prec == link_idx {
+                    self.set_joint_as_inactive(i)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn set_joint_as_inactive(&mut self, joint_idx: usize) -> Result<(), OptimaError> {
+        if joint_idx >= self.joints().len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints().len(), file!(), line!()));
+        }
+
+        self.joints[joint_idx].set_active(false);
+
         Ok(())
     }
 

@@ -23,13 +23,13 @@ use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseAll, OptimaSE3Pose, 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct Joint {
     name: String,
+    active: bool,
     joint_idx: usize,
     preceding_link_idx: Option<usize>,
     child_link_idx: Option<usize>,
     origin_offset_pose: OptimaSE3PoseAll,
     has_origin_offset: bool,
     joint_axes: Vec<JointAxis>,
-    num_dofs: usize,
     urdf_joint: URDFJoint
 }
 impl Joint {
@@ -43,13 +43,13 @@ impl Joint {
 
         let mut out_self = Self {
             name,
+            active: true,
             joint_idx,
             preceding_link_idx: None,
             child_link_idx: None,
             origin_offset_pose: OptimaSE3PoseAll::new(&OptimaSE3Pose::new_implicit_dual_quaternion_from_euler_angles(rpy[0], rpy[1], rpy[2], xyz[0], xyz[1], xyz[2])),
             has_origin_offset: rpy.norm() != 0.0 || xyz.norm() != 0.0,
             joint_axes: vec![],
-            num_dofs: 0,
             urdf_joint
         };
         out_self.set_dof_axes();
@@ -86,17 +86,15 @@ impl Joint {
             }
         }
 
-        let num_dofs = joint_axes.len();
-
         Self {
             name: "mobile_base_joint".to_string(),
+            active: true,
             joint_idx,
             preceding_link_idx: Some(newly_created_link_idx),
             child_link_idx: Some(world_link_idx),
             origin_offset_pose: OptimaSE3PoseAll::new_identity(),
             has_origin_offset: false,
             joint_axes,
-            num_dofs,
             urdf_joint: URDFJoint::new_empty()
         }
     }
@@ -105,6 +103,9 @@ impl Joint {
     }
     pub fn name(&self) -> &str {
         &self.name
+    }
+    pub fn active(&self) -> bool {
+        self.active
     }
     pub fn joint_idx(&self) -> usize {
         self.joint_idx
@@ -119,7 +120,13 @@ impl Joint {
         self.has_origin_offset
     }
     pub fn num_dofs(&self) -> usize {
-        self.num_dofs
+        let mut num_dofs = 0;
+        for ja in self.joint_axes() {
+            if !ja.is_fixed() {
+                num_dofs += 1;
+            }
+        }
+        return num_dofs;
     }
     pub fn urdf_joint(&self) -> &URDFJoint {
         &self.urdf_joint
@@ -142,8 +149,11 @@ impl Joint {
         optima_print(&format!("  Joint name: "), PrintMode::Print, PrintColor::Blue, true);
         optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false);
         optima_print(&format!("  Num dofs: "), PrintMode::Print, PrintColor::Blue, true);
-        optima_print(&format!(" {} ", self.num_dofs), PrintMode::Print, PrintColor::None, false);
-        if self.num_dofs > 0 {
+        optima_print(&format!(" {} ", self.num_dofs()), PrintMode::Print, PrintColor::None, false);
+        optima_print(&format!("  Active: "), PrintMode::Print, PrintColor::Blue, true);
+        let c = if self.active { PrintColor::Green } else { PrintColor::Red };
+        optima_print(&format!(" {} ", self.active), PrintMode::Print, c, false);
+        if self.num_dofs() > 0 {
             optima_print_new_line();
         }
         for (i, a) in self.joint_axes().iter().enumerate() {
@@ -152,10 +162,10 @@ impl Joint {
 
             match a.is_fixed() {
                 true => {
-                    optima_print(&format!("Fixed at value {}", a.fixed_value.unwrap()), PrintMode::Print, PrintColor::Red, false);
+                    optima_print(&format!("Fixed at value {}", a.fixed_value.unwrap()), PrintMode::Print, PrintColor::None, false);
                 }
                 false => {
-                    optima_print("Not fixed.", PrintMode::Print, PrintColor::Green, false);
+                    optima_print("Not fixed.", PrintMode::Print, PrintColor::None, false);
                 }
             };
             if self.joint_axes.len() > 1 && i < self.joint_axes.len()-1 {
@@ -170,6 +180,9 @@ impl Joint {
 
         self.joint_axes[joint_sub_idx].fixed_value = fixed_value;
         Ok(())
+    }
+    pub fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
     fn set_dof_axes(&mut self) {
         let joint_type = self.urdf_joint.joint_type();
@@ -215,8 +228,6 @@ impl Joint {
                 self.joint_axes.push(JointAxis::new(2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
             }
         }
-
-        self.num_dofs = self.joint_axes.len();
     }
 }
 

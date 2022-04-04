@@ -53,6 +53,7 @@ impl RobotPreprocessingModule {
         self.preprocess_robot_model_module_json(robot_name)?;
         self.preprocess_robot_configuration_generator_module_json(robot_name)?;
         self.copy_link_meshes_to_assets_folder(robot_name)?;
+        self.preprocess_robot_link_meshes(robot_name)?;
         self.preprocess_robot_link_convex_shapes(robot_name)?;
         self.preprocess_robot_link_convex_shape_subcomponents(robot_name)?;
 
@@ -102,6 +103,36 @@ impl RobotPreprocessingModule {
 
             optima_print("Successfully copied link meshes to assets folder!", PrintMode::Println, PrintColor::Green, false);
         }
+        Ok(())
+    }
+
+    fn preprocess_robot_link_meshes(&self, robot_name: &str) -> Result<(), OptimaError> {
+        let mut directory_path = OptimaStemCellPath::new_asset_path()?;
+        directory_path.append_file_location(&OptimaAssetLocation::RobotMeshes { robot_name: robot_name.to_string() });
+        // let files_in_directory = directory_path.get_all_items_in_directory(false, false);
+        optima_print("Preprocessing robot link meshes...", PrintMode::Println, PrintColor::Cyan, false);
+        directory_path.delete_all_items_in_directory()?;
+
+        let mut base_meshes_directory_path = OptimaStemCellPath::new_asset_path()?;
+        base_meshes_directory_path.append_file_location(&OptimaAssetLocation::RobotInputMeshes {robot_name: robot_name.to_string()});
+
+        let robot_model_module = RobotModelModule::new(robot_name)?;
+        let links = robot_model_module.links();
+
+        for (i, link) in links.iter().enumerate() {
+            let has_visual_mesh = link.urdf_link().visual_mesh_filename().is_some();
+            if has_visual_mesh {
+                let res = base_meshes_directory_path.walk_directory_and_match(OptimaPathMatchingPattern::PathComponentsWithoutExtension(vec![format!("{}", i)]), OptimaPathMatchingStopCondition::First);
+                let optima_path = res[0].clone();
+                let trimesh = optima_path.load_file_to_trimesh_engine()?;
+                optima_print(&format!("   > computed mesh for link {:?}", i), PrintMode::Println, PrintColor::None, false);
+
+                let mut directory_path_copy = directory_path.clone();
+                directory_path_copy.append(&format!("{}.stl", i));
+                directory_path_copy.save_trimesh_engine_to_stl(&trimesh)?;
+            }
+        }
+        optima_print("Successfully preprocessed robot link meshes!", PrintMode::Println, PrintColor::Green, false);
         Ok(())
     }
 
@@ -159,7 +190,7 @@ impl RobotPreprocessingModule {
                     let optima_path = res[0].clone();
                     let trimesh = optima_path.load_file_to_trimesh_engine()?;
 
-                    let convex_components = trimesh.compute_convex_decomposition(1024);
+                    let convex_components = trimesh.compute_convex_decomposition();
                     optima_print(&format!("   > computed {:?} convex subcomponents for link {:?}", convex_components.len(), i), PrintMode::Println, PrintColor::None, false);
                     for (j, c) in convex_components.iter().enumerate() {
                         let mut directory_path_copy = directory_path.clone();

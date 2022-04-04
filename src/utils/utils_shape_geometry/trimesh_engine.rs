@@ -30,7 +30,7 @@ impl TrimeshEngine {
             normals
         }
     }
-    pub fn compute_convex_decomposition(&self, max_convex_hulls: u32) -> Vec<TrimeshEngine> {
+    pub fn compute_convex_decomposition(&self) -> Vec<TrimeshEngine> {
         let points: Vec<Point3<f64>> = self.vertices.iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let indices: Vec<[u32; 3]> = self.indices.iter().map(|i| [i[0] as u32, i[1] as u32, i[2] as u32] ).collect();
 
@@ -93,7 +93,7 @@ impl OptimaStemCellPath {
     pub fn save_trimesh_engine_to_stl(&self, trimesh_engine: &TrimeshEngine) -> Result<(), OptimaError> {
         for p in self.optima_file_paths() {
             let res = p.save_trimesh_engine_to_stl(trimesh_engine);
-            if res.is_err() { return Ok(()) }
+            if res.is_ok() { return Ok(()) }
         }
 
         return Err(OptimaError::new_generic_error_str("No valid optima_path in function save_object_to_file_as_json()", file!(), line!()));

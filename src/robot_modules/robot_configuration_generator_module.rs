@@ -64,7 +64,6 @@ impl RobotConfigurationGeneratorModule {
         }
     }
 
-
     /// A function that is automatically called by RobotConfigurationModule.
     /// Should not need to be called by end user.
     pub fn save_robot_configuration_module(&mut self, robot_configuration_info: &RobotConfigurationInfo) -> Result<(), OptimaError> {
@@ -135,6 +134,19 @@ impl RobotConfigurationGeneratorModule {
                         RobotConfigurationModule::new_from_base_model_module_and_info(self.base_robot_model_module.clone(), info.clone())
                     }
                 }
+            }
+        }
+    }
+
+    /// Returns a robot configuration.  If name is None, this will return the base configuration;
+    /// otherwise, it will return the named configuration of the given name.
+    pub fn generate_configuration(&self, name: Option<&str>) -> Result<RobotConfigurationModule, OptimaError> {
+        return match name {
+            None => {
+                self.generate_base_configuration()
+            }
+            Some(n) => {
+                self.generate_named_configuration(n)
             }
         }
     }

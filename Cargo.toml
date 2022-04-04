@@ -15,16 +15,13 @@ nalgebra = {version="0.30.1", features=["serde-serialize"]}
 serde = "1.0.136"
 serde_json = "1.0.79"
 urdf-rs = "0.6.2"
-# vfs = {version="0.6.2", features=["embedded-fs"], optional = true}
-vfs = { git = "https://github.com/manuel-woelker/rust-vfs", rev = "40fe15a947479054d98b8303f11db123ffd723cc", features=["embedded-fs"] }
+vfs = { version="0.7.0", features=["embedded-fs"] }
 rust-embed = { version="6.2.0", features=["debug-embed", "interpolate-folder-path", "compression", "include-exclude"] }
 dae-parser = "0.8.5"
 collada = "0.14.0"
 stl_io = "0.6.0"
 walkdir = "2.3.2"
 dirs = "4.0.0"
-hyperdual = "1.0.0"
-num-dual = "0.5.1"
 simba = "0.7.0"
 num-traits = "0.2.14"
 parry3d-f64 = "0.8.0"
@@ -37,9 +34,9 @@ pyo3 = { version = "0.16.2", features = ["extension-module"] }
 termion = "1.5.6"
 
 [features]
-default = []
-do_not_embed_assets = []
-only_use_embedded_assets = []
+default = [ "do_not_embed_assets" ] # NOTE!  To turn off, must include --no-default-features.
+do_not_embed_assets = [ "exclude_all_robot_asset_embedding" ]
+only_use_embedded_assets = [] # NOTE!  This will only work if you include --no-default-features.
 exclude_all_robot_asset_embedding = []
 exclude_robot_visual_meshes_embedding = []
 # ----------- robot embeddeding groups -------- #
