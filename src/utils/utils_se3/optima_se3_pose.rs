@@ -1,4 +1,4 @@
-use nalgebra::{Rotation3, UnitQuaternion, Vector3};
+use nalgebra::{Rotation3, Unit, UnitQuaternion, Vector3};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
@@ -17,12 +17,49 @@ pub enum OptimaSE3Pose {
     RotationAndTranslation { data: RotationAndTranslation, pose_type: OptimaSE3PoseType }
 }
 impl OptimaSE3Pose {
-    pub fn new_implicit_dual_quaternion(data: ImplicitDualQuaternion) -> Self {
-        Self::ImplicitDualQuaternion { data, pose_type: OptimaSE3PoseType::ImplicitDualQuaternion }
+    pub fn new_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64, t: &OptimaSE3PoseType) -> Self {
+        match t {
+            OptimaSE3PoseType::ImplicitDualQuaternion => {
+                Self::new_implicit_dual_quaternion_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+            OptimaSE3PoseType::HomogeneousMatrix => {
+                Self::new_homogeneous_matrix_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => {
+                Self::new_unit_quaternion_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => {
+                Self::new_rotation_matrix_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+        }
     }
+    pub fn new_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64, t: &OptimaSE3PoseType) -> Self {
+        match t {
+            OptimaSE3PoseType::ImplicitDualQuaternion => {
+                Self::new_implicit_dual_quaternion_from_axis_angle(axis, angle, x, y, z)
+            }
+            OptimaSE3PoseType::HomogeneousMatrix => {
+                Self::new_homogeneous_matrix_from_axis_angle(axis, angle, x, y, z)
+            }
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => {
+                Self::new_unit_quaternion_and_translation_from_axis_angle(axis, angle, x, y, z)
+            }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => {
+                Self::new_rotation_matrix_and_translation_from_axis_angle(axis, angle, x, y, z)
+            }
+        }
+    }
+
     pub fn new_homogeneous_matrix(data: HomogeneousMatrix) -> Self {
         Self::HomogeneousMatrix { data, pose_type: OptimaSE3PoseType::HomogeneousMatrix }
     }
+    pub fn new_homogeneous_matrix_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new_homogeneous_matrix(HomogeneousMatrix::new_from_euler_angles(rx, ry, rz, x, y, z))
+    }
+    pub fn new_homogeneous_matrix_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new_homogeneous_matrix(HomogeneousMatrix::new_from_axis_angle(axis, angle, x, y, z))
+    }
+
     pub fn new_rotation_and_translation(data: RotationAndTranslation) -> Self {
         match data.rotation() {
             OptimaRotation::RotationMatrix { .. } => {
@@ -33,27 +70,43 @@ impl OptimaSE3Pose {
             }
         }
     }
-    pub fn new_unit_quaternion_and_translation(q: UnitQuaternion<f64>, t: Vector3<f64>) -> Self {
-        Self::new_rotation_and_translation(RotationAndTranslation::new(OptimaRotation::new_unit_quaternion(q), t))
-    }
-    pub fn new_rotation_matrix_and_translation(m: Rotation3<f64>, t: Vector3<f64>) -> Self {
-        Self::new_rotation_and_translation(RotationAndTranslation::new(OptimaRotation::new_rotation_matrix(m), t))
-    }
-    pub fn new_implicit_dual_quaternion_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
-        Self::new_implicit_dual_quaternion(ImplicitDualQuaternion::new_from_euler_angles(rx, ry, rz, x, y, z))
-    }
-    pub fn new_homogeneous_matrix_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
-        Self::new_homogeneous_matrix(HomogeneousMatrix::new_from_euler_angles(rx, ry, rz, x, y, z))
-    }
     pub fn new_rotation_and_translation_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64, rotation_type: &OptimaRotationType) -> Self {
         Self::new_rotation_and_translation(RotationAndTranslation::new_from_euler_angles(rx, ry, rz, x, y, z, rotation_type))
+    }
+    pub fn new_rotation_and_translation_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64, rotation_type: &OptimaRotationType) -> Self {
+        Self::new_rotation_and_translation_from_axis_angle(axis, angle, x, y, z, rotation_type)
+    }
+
+    pub fn new_unit_quaternion_and_translation(q: UnitQuaternion<f64>, t: Vector3<f64>) -> Self {
+        Self::new_rotation_and_translation(RotationAndTranslation::new(OptimaRotation::new_unit_quaternion(q), t))
     }
     pub fn new_unit_quaternion_and_translation_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
         Self::new_rotation_and_translation_from_euler_angles(rx, ry, rz, x, y, z, &OptimaRotationType::UnitQuaternion)
     }
+    pub fn new_unit_quaternion_and_translation_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new_rotation_and_translation_from_axis_angle(axis, angle, x, y, z, &OptimaRotationType::UnitQuaternion)
+    }
+
+    pub fn new_rotation_matrix_and_translation(m: Rotation3<f64>, t: Vector3<f64>) -> Self {
+        Self::new_rotation_and_translation(RotationAndTranslation::new(OptimaRotation::new_rotation_matrix(m), t))
+    }
     pub fn new_rotation_matrix_and_translation_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
         Self::new_rotation_and_translation_from_euler_angles(rx, ry, rz, x, y, z, &OptimaRotationType::RotationMatrix)
     }
+    pub fn new_rotation_matrix_and_translation_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new_rotation_and_translation_from_axis_angle(axis, angle, x, y, z, &OptimaRotationType::RotationMatrix)
+    }
+
+    pub fn new_implicit_dual_quaternion(data: ImplicitDualQuaternion) -> Self {
+        Self::ImplicitDualQuaternion { data, pose_type: OptimaSE3PoseType::ImplicitDualQuaternion }
+    }
+    pub fn new_implicit_dual_quaternion_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new_implicit_dual_quaternion(ImplicitDualQuaternion::new_from_euler_angles(rx, ry, rz, x, y, z))
+    }
+    pub fn new_implicit_dual_quaternion_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64) -> Self {
+        Self::new_implicit_dual_quaternion(ImplicitDualQuaternion::new_from_axis_angle(axis, angle, x, y, z))
+    }
+
     /// Converts the SE(3) pose to other supported pose types.
     pub fn convert(&self, target_type: &OptimaSE3PoseType) -> OptimaSE3Pose {
         return match self {

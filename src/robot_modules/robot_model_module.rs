@@ -362,7 +362,7 @@ impl RobotModelModule {
         loop {
             let mut change_on_this_loop = false;
             for i in 0..num_links {
-                if self.links[i].preceding_link_idx().is_some() && self.links[i].active() {
+                if self.links[i].preceding_link_idx().is_some() && self.links[i].present() {
                     if self.link_tree_traversal_layers[curr_layer - 1].contains(&self.links[i].preceding_link_idx().unwrap()) {
                         if self.link_tree_traversal_layers.len() == curr_layer { self.link_tree_traversal_layers.push( Vec::new() ); }
 
@@ -486,20 +486,20 @@ impl RobotModelModule {
         }
     }
 
-    /// Sets given link as inactive.
-    pub fn set_link_as_inactive(&mut self, link_idx: usize) -> Result<(), OptimaError> {
+    /// Sets given link as not present in the model.
+    pub fn set_link_as_not_present(&mut self, link_idx: usize) -> Result<(), OptimaError> {
         if link_idx >= self.links().len() {
             return Err(OptimaError::new_idx_out_of_bound_error(link_idx, self.links().len(), file!(), line!()));
         }
 
-        self.links[link_idx].set_active(false);
+        self.links[link_idx].set_present(false);
 
         let l = self.joints.len();
         for i in 0..l {
             let prec_option = self.joints[i].preceding_link_idx();
             if let Some(prec) = prec_option {
                 if prec == link_idx {
-                    self.set_joint_as_inactive(i)?;
+                    self.set_joint_as_not_present(i)?;
                 }
             }
         }
@@ -507,12 +507,12 @@ impl RobotModelModule {
         Ok(())
     }
 
-    pub fn set_joint_as_inactive(&mut self, joint_idx: usize) -> Result<(), OptimaError> {
+    pub fn set_joint_as_not_present(&mut self, joint_idx: usize) -> Result<(), OptimaError> {
         if joint_idx >= self.joints().len() {
             return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints().len(), file!(), line!()));
         }
 
-        self.joints[joint_idx].set_active(false);
+        self.joints[joint_idx].set_present(false);
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use nalgebra::{Matrix3, Matrix4, Rotation3, UnitQuaternion, Vector3, Vector4};
+use nalgebra::{Matrix3, Matrix4, Rotation3, Unit, UnitQuaternion, Vector3, Vector4};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_se3::implicit_dual_quaternion::ImplicitDualQuaternion;
 use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
@@ -18,6 +18,12 @@ impl HomogeneousMatrix {
     }
     pub fn new_from_euler_angles(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
         let rotation = OptimaRotation::new_rotation_matrix_from_euler_angles(rx, ry, rz);
+        let translation = Vector3::new(x, y, z);
+        let matrix = Self::rotation_and_translation_to_homogeneous_matrix(&rotation, &translation);
+        return Self::new(matrix);
+    }
+    pub fn new_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64) -> Self {
+        let rotation = OptimaRotation::new_rotation_matrix_from_axis_angle(axis, angle);
         let translation = Vector3::new(x, y, z);
         let matrix = Self::rotation_and_translation_to_homogeneous_matrix(&rotation, &translation);
         return Self::new(matrix);

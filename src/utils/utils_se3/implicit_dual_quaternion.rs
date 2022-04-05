@@ -1,4 +1,4 @@
-use nalgebra::{Quaternion, UnitQuaternion, Vector3, Vector6};
+use nalgebra::{Quaternion, Unit, UnitQuaternion, Vector3, Vector6};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
 use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
@@ -34,9 +34,13 @@ impl ImplicitDualQuaternion {
         let t = Vector3::new(x, y, z);
         return Self::new(r, t);
     }
+    pub fn new_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64) -> Self {
+        let r= UnitQuaternion::from_axis_angle(axis, angle);
+        let t = Vector3::new(x, y, z);
+        return Self::new(r, t);
+    }
     pub fn new_identity() -> Self {
-        // return Self::new_from_euler_angles(0.,0.,0., Vector3::zeros());
-        todo!()
+        Self::new_from_euler_angles(0.,0.,0.,0.,0.,0.)
     }
     /// Creates new implicit dual quaternion by exponentiating the natural logarithm vector (the
     /// vector returned by self.ln()

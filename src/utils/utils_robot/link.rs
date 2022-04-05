@@ -14,7 +14,7 @@ use crate::utils::utils_robot::urdf_link::URDFLink;
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct Link {
     name: String,
-    active: bool,
+    present: bool,
     link_idx: usize,
     preceding_link_idx: Option<usize>,
     children_link_idxs: Vec<usize>,
@@ -27,7 +27,7 @@ impl Link {
     pub fn new(urdf_link: URDFLink, link_idx: usize) -> Self {
         Self {
             name: urdf_link.name().to_string(),
-            active: true,
+            present: true,
             link_idx,
             preceding_link_idx: None,
             children_link_idxs: vec![],
@@ -42,7 +42,7 @@ impl Link {
     pub fn new_mobile_base_link(link_idx: usize, world_link_idx: usize, newly_created_joint_idx: usize) -> Self {
         Self {
             name: "mobile_base_link".to_string(),
-            active: true,
+            present: true,
             link_idx,
             preceding_link_idx: None,
             children_link_idxs: vec![world_link_idx],
@@ -55,8 +55,8 @@ impl Link {
     pub fn name(&self) -> &str {
         &self.name
     }
-    pub fn active(&self) -> bool {
-        self.active
+    pub fn present(&self) -> bool {
+        self.present
     }
     pub fn link_idx(&self) -> usize {
         self.link_idx
@@ -106,14 +106,14 @@ impl Link {
         optima_print(&format!("  Link name: "), PrintMode::Print, PrintColor::Blue, true);
         optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false);
         optima_print(&format!("  Active: "), PrintMode::Print, PrintColor::Blue, true);
-        let color = match self.active {
+        let color = match self.present {
             true => { PrintColor::Green }
             false => { PrintColor::Red }
         };
-        optima_print(&format!(" {} ", self.active), PrintMode::Print, color, false);
+        optima_print(&format!(" {} ", self.present), PrintMode::Print, color, false);
     }
-    pub fn set_active(&mut self, active: bool) {
-        self.active = active;
+    pub fn set_present(&mut self, present: bool) {
+        self.present = present;
     }
 }
 

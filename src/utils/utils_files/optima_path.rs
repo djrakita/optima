@@ -120,6 +120,13 @@ impl OptimaStemCellPath {
         }
         return vec![];
     }
+    pub fn get_all_directories_in_directory(&self) -> Vec<String> {
+        for p in &self.optima_file_paths {
+            let items = p.get_all_directories_in_directory();
+            if items.len() > 0 { return items; }
+        }
+        return vec![];
+    }
     pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
         self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::save_object_to_file_as_json, object, "save_object_to_file_as_json")
     }
@@ -643,6 +650,39 @@ impl OptimaPath {
                             if !(f.chars().nth(0).unwrap().to_string() == ".") || include_hidden_files {
                                 out_vec.push(i.filename());
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        out_vec
+    }
+
+    pub fn get_all_directories_in_directory(&self) -> Vec<String> {
+        let mut out_vec = vec![];
+
+        match self {
+            OptimaPath::Path(p) => {
+                let res = p.read_dir();
+                if let Ok(read_dir) = res {
+                    for dir_entry_res in read_dir {
+                        if let Ok(dir_entry) = dir_entry_res {
+                            if dir_entry.path().is_dir() {
+                                let filename = dir_entry.file_name();
+                                let filename_string = filename.to_str().unwrap().to_string();
+                                out_vec.push(filename_string);
+                            }
+                        }
+                    }
+                }
+            }
+            OptimaPath::VfsPath(p) => {
+                let res = p.read_dir();
+                if let Ok(read_dir) = res {
+                    for i in read_dir {
+                        if i.is_dir().unwrap() {
+                            out_vec.push(i.filename());
                         }
                     }
                 }

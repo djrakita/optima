@@ -67,18 +67,9 @@ impl RobotConfigurationModule {
         for d in dead_end_link_idxs {
             let all_downstream_links = robot_model_module.get_all_downstream_links(*d)?;
             for dl in &all_downstream_links {
-                robot_model_module.set_link_as_inactive(*dl)?;
+                robot_model_module.set_link_as_not_present(*dl)?;
             }
         }
-
-        /*
-        for j in self.robot_model_module.joints_mut() {
-            let prec_option = j.preceding_link_idx();
-            if let Some(prec) = prec_option {
-
-            }
-        }
-        */
 
         let fixed = &robot_configuration_info.fixed_joint_infos;
         for f in fixed {

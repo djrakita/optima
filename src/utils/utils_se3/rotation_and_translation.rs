@@ -1,4 +1,4 @@
-use nalgebra::Vector3;
+use nalgebra::{Unit, Vector3};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
@@ -27,6 +27,15 @@ impl RotationAndTranslation {
 
         return Self::new(rotation, Vector3::new(x, y, z));
     }
+    pub fn new_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64, rotation_type: &OptimaRotationType) -> Self {
+        let rotation = match rotation_type {
+            OptimaRotationType::RotationMatrix => { OptimaRotation::new_rotation_matrix_from_axis_angle(axis, angle) }
+            OptimaRotationType::UnitQuaternion => { OptimaRotation::new_unit_quaternion_from_axis_angle(axis, angle) }
+        };
+
+        return Self::new(rotation, Vector3::new(x, y, z));
+    }
+
     /// Returns the rotation component of the object.
     pub fn rotation(&self) -> &OptimaRotation {
         &self.rotation

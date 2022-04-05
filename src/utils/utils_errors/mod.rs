@@ -5,7 +5,8 @@
 pub enum OptimaError {
     GenericError(String),
     IdxOutOfBoundError(String),
-    UnsupportedOperationError(String)
+    UnsupportedOperationError(String),
+    RobotStateVecWrongSizeError(String)
 }
 impl OptimaError {
     pub fn new_generic_error_str(s: &str, file: &str, line: u32) -> Self {
@@ -22,5 +23,9 @@ impl OptimaError {
         let s = format!("ERROR: Unsupported operation error in function {}.  {} -- File: {}, Line: {}", function_name, message, file, line);
         // optima_print(&s, PrintMode::Println, PrintColor::Red, true);
         return Self::UnsupportedOperationError(s);
+    }
+    pub fn new_robot_state_vec_wrong_size_error(function_name: &str, given_robot_state_vec_len: usize, correct_robot_state_vec_len: usize, file: &str, line: u32) -> Self {
+        let s = format!("Wrong size of robot state vector in function {}.  It should be length {}, but is currently length {}. -- {}, {}", function_name, correct_robot_state_vec_len, given_robot_state_vec_len, file, line);
+        return Self::RobotStateVecWrongSizeError(s);
     }
 }

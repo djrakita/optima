@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use nalgebra::{UnitQuaternion, Rotation3, Vector3};
+use nalgebra::{UnitQuaternion, Rotation3, Vector3, Unit};
 use crate::utils::utils_errors::OptimaError;
 
 /// An enum used to represent a rotation or orientation.  The enum affords easy conversion between
@@ -23,6 +23,14 @@ impl OptimaRotation {
     pub fn new_unit_quaternion_from_euler_angles(rx: f64, ry: f64, rz: f64) -> OptimaRotation {
         let q = UnitQuaternion::from_euler_angles(rx, ry, rz);
         return Self::new_unit_quaternion(q);
+    }
+    pub fn new_rotation_matrix_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64) -> OptimaRotation {
+        let data = Rotation3::from_axis_angle(axis, angle);
+        return Self::new_rotation_matrix(data);
+    }
+    pub fn new_unit_quaternion_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64) -> OptimaRotation {
+        let data = UnitQuaternion::from_axis_angle(axis, angle);
+        return Self::new_unit_quaternion(data);
     }
     /// Creates new rotation by exponentating the logarithm vector (the vector returned by ln()
     /// function).

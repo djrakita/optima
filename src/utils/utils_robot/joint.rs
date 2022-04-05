@@ -23,7 +23,7 @@ use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseAll, OptimaSE3Pose, 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct Joint {
     name: String,
-    active: bool,
+    present: bool,
     joint_idx: usize,
     preceding_link_idx: Option<usize>,
     child_link_idx: Option<usize>,
@@ -43,7 +43,7 @@ impl Joint {
 
         let mut out_self = Self {
             name,
-            active: true,
+            present: true,
             joint_idx,
             preceding_link_idx: None,
             child_link_idx: None,
@@ -52,7 +52,7 @@ impl Joint {
             joint_axes: vec![],
             urdf_joint
         };
-        out_self.set_dof_axes();
+        out_self.set_dof_axes(joint_idx);
 
         out_self
     }
@@ -65,30 +65,30 @@ impl Joint {
         match mobile_base_mode {
             MobileBaseInfo::Static => {}
             MobileBaseInfo::Floating { .. } => {
-                joint_axes.push(JointAxis::new(0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation));
-                joint_axes.push(JointAxis::new(1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation));
-                joint_axes.push(JointAxis::new(2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
-                joint_axes.push(JointAxis::new(3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
-                joint_axes.push(JointAxis::new(4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
-                joint_axes.push(JointAxis::new(5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation));
+                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation));
+                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation));
+                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
+                joint_axes.push(JointAxis::new(joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
+                joint_axes.push(JointAxis::new(joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
+                joint_axes.push(JointAxis::new(joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation));
             }
             MobileBaseInfo::PlanarTranslation { .. } => {
-                joint_axes.push(JointAxis::new(0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
-                joint_axes.push(JointAxis::new(1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
+                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
+                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
             }
             MobileBaseInfo::PlanarRotation { .. } => {
-                joint_axes.push(JointAxis::new(0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
+                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
             }
             MobileBaseInfo::PlanarTranslationAndRotation { .. } => {
-                joint_axes.push(JointAxis::new(0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
-                joint_axes.push(JointAxis::new(1, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
-                joint_axes.push(JointAxis::new(2, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
+                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
+                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
+                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
             }
         }
 
         Self {
             name: "mobile_base_joint".to_string(),
-            active: true,
+            present: true,
             joint_idx,
             preceding_link_idx: Some(newly_created_link_idx),
             child_link_idx: Some(world_link_idx),
@@ -105,7 +105,7 @@ impl Joint {
         &self.name
     }
     pub fn active(&self) -> bool {
-        self.active
+        self.present
     }
     pub fn joint_idx(&self) -> usize {
         self.joint_idx
@@ -127,6 +127,9 @@ impl Joint {
             }
         }
         return num_dofs;
+    }
+    pub fn num_axes(&self) -> usize {
+        return self.joint_axes.len();
     }
     pub fn urdf_joint(&self) -> &URDFJoint {
         &self.urdf_joint
@@ -151,9 +154,9 @@ impl Joint {
         optima_print(&format!("  Num dofs: "), PrintMode::Print, PrintColor::Blue, true);
         optima_print(&format!(" {} ", self.num_dofs()), PrintMode::Print, PrintColor::None, false);
         optima_print(&format!("  Active: "), PrintMode::Print, PrintColor::Blue, true);
-        let c = if self.active { PrintColor::Green } else { PrintColor::Red };
-        optima_print(&format!(" {} ", self.active), PrintMode::Print, c, false);
-        if self.num_dofs() > 0 {
+        let c = if self.present { PrintColor::Green } else { PrintColor::Red };
+        optima_print(&format!(" {} ", self.present), PrintMode::Print, c, false);
+        if self.num_axes() > 0 {
             optima_print_new_line();
         }
         for (i, a) in self.joint_axes().iter().enumerate() {
@@ -181,34 +184,34 @@ impl Joint {
         self.joint_axes[joint_sub_idx].fixed_value = fixed_value;
         Ok(())
     }
-    pub fn set_active(&mut self, active: bool) {
-        self.active = active;
+    pub fn set_present(&mut self, present: bool) {
+        self.present = present;
     }
-    fn set_dof_axes(&mut self) {
+    fn set_dof_axes(&mut self, joint_idx: usize) {
         let joint_type = self.urdf_joint.joint_type();
         let axis = self.urdf_joint.axis().clone();
 
         match joint_type {
             JointTypeWrapper::Revolute => {
-                self.joint_axes.push(JointAxis::new(0, axis, JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 0, axis, JointAxisPrimitiveType::Rotation));
             }
             JointTypeWrapper::Continuous => {
-                self.joint_axes.push(JointAxis::new(0, axis, JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 0, axis, JointAxisPrimitiveType::Rotation));
             }
             JointTypeWrapper::Prismatic => {
-                self.joint_axes.push(JointAxis::new(0, axis, JointAxisPrimitiveType::Translation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 0, axis, JointAxisPrimitiveType::Translation));
             }
             JointTypeWrapper::Fixed => {
                 /* Do Nothing */
             }
             JointTypeWrapper::Floating => {
-                self.joint_axes.push(JointAxis::new(0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation));
-                self.joint_axes.push(JointAxis::new(1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation));
-                self.joint_axes.push(JointAxis::new(2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
 
-                self.joint_axes.push(JointAxis::new(3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
-                self.joint_axes.push(JointAxis::new(4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
-                self.joint_axes.push(JointAxis::new(5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation));
             }
             JointTypeWrapper::Planar => {
                 /*
@@ -223,9 +226,9 @@ impl Joint {
                 todo!()
             }
             JointTypeWrapper::Spherical => {
-                self.joint_axes.push(JointAxis::new(0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation));
-                self.joint_axes.push(JointAxis::new(1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation));
-                self.joint_axes.push(JointAxis::new(2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation));
+                self.joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation));
             }
         }
     }
@@ -251,6 +254,7 @@ impl Joint {
 /// degree of freedom (e.g., in the case of a floating joint, it will have 6 DOFs).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct JointAxis {
+    joint_idx: usize,
     joint_sub_dof_idx: usize,
     fixed_value: Option<f64>,
     axis_as_unit: Unit<Vector3<f64>>,
@@ -258,8 +262,9 @@ pub struct JointAxis {
     axis_primitive_type: JointAxisPrimitiveType
 }
 impl JointAxis {
-    pub fn new(joint_sub_dof_idx: usize, axis: Vector3<f64>, axis_primitive_type: JointAxisPrimitiveType) -> Self {
+    pub fn new(joint_idx: usize, joint_sub_dof_idx: usize, axis: Vector3<f64>, axis_primitive_type: JointAxisPrimitiveType) -> Self {
         Self {
+            joint_idx,
             joint_sub_dof_idx,
             fixed_value: None,
             axis_as_unit: Unit::new_normalize(axis.clone()),
@@ -269,6 +274,21 @@ impl JointAxis {
     }
     pub fn is_fixed(&self) -> bool {
         self.fixed_value.is_some()
+    }
+    pub fn joint_sub_dof_idx(&self) -> usize {
+        self.joint_sub_dof_idx
+    }
+    pub fn fixed_value(&self) -> Option<f64> {
+        self.fixed_value
+    }
+    pub fn axis_as_unit(&self) -> Unit<Vector3<f64>> {
+        self.axis_as_unit
+    }
+    pub fn axis(&self) -> Vector3<f64> {
+        self.axis
+    }
+    pub fn axis_primitive_type(&self) -> &JointAxisPrimitiveType {
+        &self.axis_primitive_type
     }
 }
 
