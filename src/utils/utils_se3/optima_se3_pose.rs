@@ -74,7 +74,7 @@ impl OptimaSE3Pose {
         Self::new_rotation_and_translation(RotationAndTranslation::new_from_euler_angles(rx, ry, rz, x, y, z, rotation_type))
     }
     pub fn new_rotation_and_translation_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64, x: f64, y: f64, z: f64, rotation_type: &OptimaRotationType) -> Self {
-        Self::new_rotation_and_translation_from_axis_angle(axis, angle, x, y, z, rotation_type)
+        Self::new_rotation_and_translation(RotationAndTranslation::new_from_axis_angle(axis, angle, x, y, z, rotation_type))
     }
 
     pub fn new_unit_quaternion_and_translation(q: UnitQuaternion<f64>, t: Vector3<f64>) -> Self {

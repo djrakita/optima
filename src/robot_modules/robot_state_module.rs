@@ -54,7 +54,9 @@ pub struct RobotStateModule {
     num_axes: usize,
     ordered_dof_joint_axes: Vec<JointAxis>,
     ordered_joint_axes: Vec<JointAxis>,
-    robot_configuration_module: RobotConfigurationModule
+    robot_configuration_module: RobotConfigurationModule,
+    joint_idx_to_dof_state_idxs_mapping: Vec<Vec<usize>>,
+    joint_idx_to_full_state_idxs_mapping: Vec<Vec<usize>>,
 }
 impl RobotStateModule {
     pub fn new(robot_configuration_module: RobotConfigurationModule) -> Self {
@@ -63,10 +65,14 @@ impl RobotStateModule {
             num_axes: 0,
             ordered_dof_joint_axes: vec![],
             ordered_joint_axes: vec![],
-            robot_configuration_module
+            robot_configuration_module,
+            joint_idx_to_dof_state_idxs_mapping: vec![],
+            joint_idx_to_full_state_idxs_mapping: vec![]
         };
 
         out_self.set_ordered_joint_axes();
+        out_self.initialize_joint_idx_to_full_state_idxs();
+        out_self.initialize_joint_idx_to_dof_state_idxs();
         out_self.num_dofs = out_self.ordered_dof_joint_axes.len();
         out_self.num_axes = out_self.ordered_joint_axes.len();
 
@@ -90,6 +96,30 @@ impl RobotStateModule {
                 }
             }
         }
+    }
+
+    fn initialize_joint_idx_to_dof_state_idxs(&mut self) {
+        let mut out_vec = vec![];
+        let num_joints = self.robot_configuration_module.robot_model_module().joints().len();
+        for _ in 0..num_joints { out_vec.push(vec![]); }
+
+        for (i, ja) in self.ordered_dof_joint_axes.iter().enumerate() {
+            out_vec[ja.joint_idx()].push(i);
+        }
+
+        self.joint_idx_to_dof_state_idxs_mapping = out_vec;
+    }
+
+    fn initialize_joint_idx_to_full_state_idxs(&mut self) {
+        let mut out_vec = vec![];
+        let num_joints = self.robot_configuration_module.robot_model_module().joints().len();
+        for _ in 0..num_joints { out_vec.push(vec![]); }
+
+        for (i, ja) in self.ordered_joint_axes.iter().enumerate() {
+            out_vec[ja.joint_idx()].push(i);
+        }
+
+        self.joint_idx_to_full_state_idxs_mapping = out_vec;
     }
 
     pub fn num_dofs(&self) -> usize {
@@ -158,6 +188,22 @@ impl RobotStateModule {
         }
 
         return Ok(out_robot_state_vector);
+    }
+
+    pub fn map_joint_idx_to_full_state_idxs(&self, joint_idx: usize) -> Result<&Vec<usize>, OptimaError> {
+        if joint_idx >= self.joint_idx_to_full_state_idxs_mapping.len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joint_idx_to_full_state_idxs_mapping.len(), file!(), line!()));
+        }
+
+        return Ok(&self.joint_idx_to_full_state_idxs_mapping[joint_idx]);
+    }
+
+    pub fn map_joint_idx_to_dof_state_idxs(&self, joint_idx: usize) -> Result<&Vec<usize>, OptimaError> {
+        if joint_idx >= self.joint_idx_to_dof_state_idxs_mapping.len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joint_idx_to_dof_state_idxs_mapping.len(), file!(), line!()));
+        }
+
+        return Ok(&self.joint_idx_to_dof_state_idxs_mapping[joint_idx]);
     }
 }
 

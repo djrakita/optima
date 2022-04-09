@@ -275,6 +275,9 @@ impl JointAxis {
     pub fn is_fixed(&self) -> bool {
         self.fixed_value.is_some()
     }
+    pub fn joint_idx(&self) -> usize {
+        self.joint_idx
+    }
     pub fn joint_sub_dof_idx(&self) -> usize {
         self.joint_sub_dof_idx
     }
