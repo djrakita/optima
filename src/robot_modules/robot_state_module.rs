@@ -1,3 +1,4 @@
+use std::ops::{Add, Index, Mul};
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -141,14 +142,12 @@ impl RobotStateModule {
     }
 
     /// Converts a dof state to a full state.
-    pub fn convert_dof_state_to_full_state(&self, dof_state: &DVector<f64>) -> Result<DVector<f64>, OptimaError> {
-        if dof_state.len() != self.num_dofs {
-            return Err(OptimaError::new_robot_state_vec_wrong_size_error("convert_dof_state_to_full_state", dof_state.len(), self.num_dofs, file!(), line!()))
+    pub fn convert_state_to_full_state(&self, state: &RobotState) -> Result<RobotState, OptimaError> {
+        if state.len() != self.num_dofs {
+            return Err(OptimaError::new_robot_state_vec_wrong_size_error("convert_dof_state_to_full_state", state.len(), self.num_dofs, file!(), line!()))
         }
 
-        if self.num_axes == self.num_dofs {
-            return Ok(dof_state.clone());
-        }
+        if state.robot_state_type() == &RobotStateType::DOF { return Ok(state.clone()); }
 
         let mut out_robot_state_vector = DVector::zeros(self.num_axes);
 
@@ -158,23 +157,21 @@ impl RobotStateModule {
             if a.is_fixed() {
                 out_robot_state_vector[i] = a.fixed_value().unwrap();
             } else {
-                out_robot_state_vector[i] = dof_state[bookmark];
+                out_robot_state_vector[i] = state[bookmark];
                 bookmark += 1;
             }
         }
 
-        return Ok(out_robot_state_vector);
+        return Ok(RobotState::new(out_robot_state_vector, RobotStateType::Full, self)?);
     }
 
     /// Converts a full state to a dof state.
-    pub fn convert_full_state_to_dof_state(&self, full_state: &DVector<f64>) -> Result<DVector<f64>, OptimaError> {
-        if full_state.len() != self.num_axes() {
-            return Err(OptimaError::new_robot_state_vec_wrong_size_error("convert_full_state_to_dof_state", full_state.len(), self.num_axes, file!(), line!()))
+    pub fn convert_state_to_dof_state(&self, state: &RobotState) -> Result<RobotState, OptimaError> {
+        if state.len() != self.num_axes() {
+            return Err(OptimaError::new_robot_state_vec_wrong_size_error("convert_full_state_to_dof_state", state.len(), self.num_axes, file!(), line!()))
         }
 
-        if self.num_axes == self.num_dofs {
-            return Ok(full_state.clone());
-        }
+        if state.robot_state_type() == &RobotStateType::Full { return Ok(state.clone()); }
 
         let mut out_robot_state_vector = DVector::zeros(self.num_dofs);
 
@@ -182,12 +179,12 @@ impl RobotStateModule {
 
         for (i, a) in self.ordered_joint_axes.iter().enumerate() {
             if !a.is_fixed() {
-                out_robot_state_vector[bookmark] = full_state[i];
+                out_robot_state_vector[bookmark] = state[i];
                 bookmark += 1;
             }
         }
 
-        return Ok(out_robot_state_vector);
+        return Ok(RobotState::new(out_robot_state_vector, RobotStateType::DOF, self)?);
     }
 
     pub fn map_joint_idx_to_full_state_idxs(&self, joint_idx: usize) -> Result<&Vec<usize>, OptimaError> {
@@ -205,6 +202,14 @@ impl RobotStateModule {
 
         return Ok(&self.joint_idx_to_dof_state_idxs_mapping[joint_idx]);
     }
+
+    pub fn spawn_robot_state(&self, state: DVector<f64>, robot_state_type: RobotStateType) -> Result<RobotState, OptimaError> {
+        return RobotState::new(state, robot_state_type, self);
+    }
+
+    pub fn spawn_robot_state_try_auto_type(&self, state: DVector<f64>) -> Result<RobotState, OptimaError> {
+        return RobotState::new_try_auto_type(state, self);
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -215,14 +220,16 @@ impl RobotStateModule {
         return Self::new_from_names(robot_name, configuration_name).expect("error");
     }
 
-    pub fn convert_dof_state_to_full_state_py(&self, dof_state: Vec<f64>) -> Vec<f64> {
-        let res = self.convert_dof_state_to_full_state(&NalgebraConversions::vec_to_dvector(&dof_state)).expect("error");
-        return NalgebraConversions::dvector_to_vec(&res);
+    pub fn convert_state_to_full_state_py(&self, state: Vec<f64>) -> Vec<f64> {
+        let robot_state = self.spawn_robot_state_try_auto_type(NalgebraConversions::vec_to_dvector(&state)).expect("error");
+        let res = self.convert_state_to_full_state(&robot_state).expect("error");
+        return NalgebraConversions::dvector_to_vec(&res.state);
     }
 
-    pub fn convert_full_state_to_dof_state_py(&self, full_state: Vec<f64>) -> Vec<f64> {
-        let res = self.convert_full_state_to_dof_state(&NalgebraConversions::vec_to_dvector(&full_state)).expect("error");
-        return NalgebraConversions::dvector_to_vec(&res);
+    pub fn convert_state_to_dof_state_py(&self, state: Vec<f64>) -> Vec<f64> {
+        let robot_state = self.spawn_robot_state_try_auto_type(NalgebraConversions::vec_to_dvector(&state)).expect("error");
+        let res = self.convert_state_to_dof_state(&robot_state).expect("error");
+        return NalgebraConversions::dvector_to_vec(&res.state);
     }
 
     pub fn num_dofs_py(&self) -> usize { self.num_dofs() }
@@ -243,14 +250,16 @@ impl RobotStateModule {
         }
     }
 
-    pub fn convert_dof_state_to_full_state_wasm(&self, dof_state: Vec<f64>) -> Vec<f64> {
-        let res = self.convert_dof_state_to_full_state(&NalgebraConversions::vec_to_dvector(&dof_state)).expect("error");
-        return NalgebraConversions::dvector_to_vec(&res);
+    pub fn convert_state_to_full_state_wasm(&self, state: Vec<f64>) -> Vec<f64> {
+        let robot_state = self.spawn_robot_state_try_auto_type(NalgebraConversions::vec_to_dvector(&state)).expect("error");
+        let res = self.convert_state_to_full_state(&robot_state).expect("error");
+        return NalgebraConversions::dvector_to_vec(&res.state);
     }
 
-    pub fn convert_full_state_to_dof_state_wasm(&self, full_state: Vec<f64>) -> Vec<f64> {
-        let res = self.convert_full_state_to_dof_state(&NalgebraConversions::vec_to_dvector(&full_state)).expect("error");
-        return NalgebraConversions::dvector_to_vec(&res);
+    pub fn convert_state_to_dof_state_wasm(&self, state: Vec<f64>) -> Vec<f64> {
+        let robot_state = self.spawn_robot_state_try_auto_type(NalgebraConversions::vec_to_dvector(&state)).expect("error");
+        let res = self.convert_state_to_dof_state(&robot_state).expect("error");
+        return NalgebraConversions::dvector_to_vec(&res.state);
     }
 
     pub fn num_dofs_wasm(&self) -> usize { self.num_dofs() }
@@ -258,4 +267,95 @@ impl RobotStateModule {
     pub fn num_axes_wasm(&self) -> usize {
         self.num_axes()
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RobotState {
+    state: DVector<f64>,
+    robot_state_type: RobotStateType
+}
+impl RobotState {
+    pub fn new(state: DVector<f64>, robot_state_type: RobotStateType, robot_state_module: &RobotStateModule) -> Result<Self, OptimaError> {
+        match robot_state_type {
+            RobotStateType::DOF => {
+                if robot_state_module.num_dofs() != state.len() {
+                    return Err(OptimaError::new_robot_state_vec_wrong_size_error("RobotState::new", state.len(), robot_state_module.num_dofs(), file!(), line!()));
+                }
+            }
+            RobotStateType::Full => {
+                if robot_state_module.num_axes() != state.len() {
+                    return Err(OptimaError::new_robot_state_vec_wrong_size_error("RobotState::new", state.len(), robot_state_module.num_axes(), file!(), line!()));
+                }
+            }
+        }
+
+        Ok(Self {
+            state,
+            robot_state_type
+        })
+    }
+    pub fn new_try_auto_type(state: DVector<f64>, robot_state_module: &RobotStateModule) -> Result<Self, OptimaError> {
+        return if robot_state_module.num_axes() == state.len() {
+            Ok(Self::new_unchecked(state, RobotStateType::Full))
+        } else if robot_state_module.num_dofs() == state.len() {
+            Ok(Self::new_unchecked(state, RobotStateType::DOF))
+        } else {
+            Err(OptimaError::new_generic_error_str(&format!("Could not successfully make an auto \
+            RobotState in try_new_auto_type().  The given state length was {} while either {} or {} was required.",
+                                                            state.len(), robot_state_module.num_axes(), robot_state_module.num_dofs()),
+                                                   file!(),
+                                                   line!()))
+        }
+    }
+    fn new_unchecked(state: DVector<f64>, robot_state_type: RobotStateType) -> Self {
+        Self {
+            state,
+            robot_state_type
+        }
+    }
+    pub fn new_dof_state(state: DVector<f64>, robot_state_module: &RobotStateModule) -> Result<Self, OptimaError> {
+        Self::new(state, RobotStateType::DOF, robot_state_module)
+    }
+    pub fn new_full_state(state: DVector<f64>, robot_state_module: &RobotStateModule) -> Result<Self, OptimaError> {
+        Self::new(state, RobotStateType::Full, robot_state_module)
+    }
+    pub fn state(&self) -> &DVector<f64> {
+        &self.state
+    }
+    pub fn robot_state_type(&self) -> &RobotStateType {
+        &self.robot_state_type
+    }
+    pub fn len(&self) -> usize {
+        return self.state.len();
+    }
+}
+impl Add for RobotState {
+    type Output = Result<RobotState, OptimaError>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if &self.robot_state_type != &rhs.robot_state_type {
+            return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot states of different types ({:?} + {:?}).", self.robot_state_type(), rhs.robot_state_type()), file!(), line!()));
+        }
+        return Ok(RobotState::new_unchecked(self.state() + rhs.state(), self.robot_state_type.clone()))
+    }
+}
+impl Mul<RobotState> for f64 {
+    type Output = RobotState;
+
+    fn mul(self, rhs: RobotState) -> Self::Output {
+        return RobotState::new_unchecked(self * rhs.state(), rhs.robot_state_type.clone());
+    }
+}
+impl Index<usize> for RobotState {
+    type Output = f64;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        return &self.state[index];
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RobotStateType {
+    DOF,
+    Full
 }

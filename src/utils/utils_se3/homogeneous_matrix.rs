@@ -155,6 +155,13 @@ impl HomogeneousMatrix {
         let translation = Vector3::new(mat[(0,3)], mat[(1,3)], mat[(2,3)]);
         return (rotation, translation);
     }
+    /// Returns an euler angle and vector representation of the SE(3) pose.
+    pub fn to_euler_angles_and_vector(&self) -> (Vector3<f64>, Vector3<f64>) {
+        let rotation = self.rotation();
+        let euler_angles = rotation.euler_angles();
+        let euler_angles_vec = Vector3::new(euler_angles.0, euler_angles.1, euler_angles.2);
+        return (euler_angles_vec, self.translation());
+    }
     /// Converts the SE(3) pose to other supported pose types.
     pub fn convert(&self, target_type: &OptimaSE3PoseType) -> OptimaSE3Pose {
         return match target_type {
@@ -180,5 +187,19 @@ impl HomogeneousMatrix {
                 OptimaSE3Pose::new_rotation_and_translation(data)
             }
         }
+    }
+    /// Convert to vector representation.
+    ///
+    /// [[r_00, r_01, r_02, r_03], [r_10, r_11, r_12, r_13], [r_20, r_21, r_22, r_23], [r_30, r_31, r_32, r_33]]
+    pub fn to_vec_representation(&self) -> Vec<Vec<f64>> {
+        let mut out_vec = vec![];
+        for i in 0..4 {
+            let mut tmp_vec = vec![];
+            for j in 0..4 {
+                tmp_vec.push(self.matrix[(i,j)]);
+            }
+            out_vec.push(tmp_vec);
+        }
+        out_vec
     }
 }

@@ -27,7 +27,7 @@ num-traits = "0.2.14"
 parry3d-f64 = "0.8.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen = "0.2.79"
+wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pyo3 = { version = "0.16.2", features = ["extension-module"] }

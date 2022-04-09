@@ -301,6 +301,29 @@ impl OptimaSE3Pose {
             }
         }
     }
+    /// Returns an euler angle and vector representation of the SE(3) pose.
+    pub fn to_euler_angles_and_translation(&self) -> (Vector3<f64>, Vector3<f64>) {
+        return match self {
+            OptimaSE3Pose::ImplicitDualQuaternion { data, .. } => {
+                data.to_euler_angles_and_vector()
+            }
+            OptimaSE3Pose::HomogeneousMatrix { data, .. } => {
+                data.to_euler_angles_and_vector()
+            }
+            OptimaSE3Pose::RotationAndTranslation { data, .. } => {
+                data.to_euler_angles_and_vector()
+            }
+        }
+    }
+    /// Converts to vector representation.
+    pub fn to_vec_representation(&self) -> Vec<Vec<f64>> {
+        return match self {
+            OptimaSE3Pose::ImplicitDualQuaternion { data, .. } => { data.to_vec_representation() }
+            OptimaSE3Pose::HomogeneousMatrix { data, .. } => { data.to_vec_representation() }
+            OptimaSE3Pose::RotationAndTranslation { data, .. } => { data.to_vec_representation() }
+        }
+    }
+
     fn are_types_compatible(a: &OptimaSE3Pose, b: &OptimaSE3Pose) -> bool {
         return if a.get_pose_type() == b.get_pose_type() { true } else { false }
     }

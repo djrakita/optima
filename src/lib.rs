@@ -19,5 +19,6 @@ fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<robot_modules::robot_model_module::RobotModelModule>()?;
     m.add_class::<robot_modules::robot_configuration_generator_module::RobotConfigurationGeneratorModule>()?;
     m.add_class::<robot_modules::robot_state_module::RobotStateModule>()?;
+    m.add_class::<robot_modules::robot_fk_module::RobotFKModule>()?;
     Ok(())
 }

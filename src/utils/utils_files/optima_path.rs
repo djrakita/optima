@@ -33,7 +33,7 @@ impl OptimaStemCellPath {
     pub fn new_asset_path() -> Result<Self, OptimaError> {
         let mut optima_file_paths = vec![];
 
-        if cfg!(target = "wasm32") || cfg!(feature = "only_use_embedded_assets") {
+        if cfg!(target_arch = "wasm32") || cfg!(feature = "only_use_embedded_assets") {
             let p_res = OptimaPath::new_asset_virtual_path();
             if let Ok(p) = p_res { optima_file_paths.push(p); }
         } else if cfg!(feature = "do_not_embed_assets") {

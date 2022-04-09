@@ -229,11 +229,17 @@ impl RobotConfigurationModulePy {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl RobotConfigurationGeneratorModule {
+    #[wasm_bindgen(constructor)]
+    pub fn new_wasm(robot_name: String) -> RobotConfigurationGeneratorModule {
+        RobotConfigurationGeneratorModule::new(&robot_name).expect("error")
+    }
 
+    /*
     #[wasm_bindgen(constructor)]
     pub fn new_wasm(json_string: &str) -> Self {
         Self::new_load_from_json_string(json_string).expect("error")
     }
+    */
 
     /// Generates a named configuration.
     pub fn generate_named_configuration_wasm(&self, name: &str) -> RobotConfigurationModule {

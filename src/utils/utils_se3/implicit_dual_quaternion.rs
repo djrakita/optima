@@ -205,6 +205,12 @@ impl ImplicitDualQuaternion {
     pub fn ln_l2_magnitude(&self) -> f64 {
         return self.ln().norm();
     }
+    /// Returns an euler angle and vector representation of the SE(3) pose.
+    pub fn to_euler_angles_and_vector(&self) -> (Vector3<f64>, Vector3<f64>) {
+        let euler_angles = self.rotation.euler_angles();
+        let euler_angles_vec = Vector3::new(euler_angles.0, euler_angles.1, euler_angles.2);
+        return (euler_angles_vec, self.translation.clone());
+    }
     ////////////////////////////////////////////////////////////////////////////////////////////////
     /// Converts the SE(3) pose to other supported pose types.
     pub fn convert(&self, target_type: &OptimaSE3PoseType) -> OptimaSE3Pose {
@@ -231,5 +237,19 @@ impl ImplicitDualQuaternion {
 
             }
         }
+    }
+    /// Converts to vector representation.
+    ///
+    /// [ [q_w, q_i, q_j, q_k], [x, y, z] ]
+    pub fn to_vec_representation(&self) -> Vec<Vec<f64>> {
+        let mut out_vec = vec![];
+
+        let q = &self.rotation;
+        let t = &self.translation;
+
+        out_vec.push(vec![q.w, q.i, q.j, q.k]);
+        out_vec.push(vec![t[0], t[1], t[2]]);
+
+        out_vec
     }
 }

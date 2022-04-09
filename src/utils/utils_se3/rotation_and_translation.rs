@@ -76,6 +76,12 @@ impl RotationAndTranslation {
         let translation_between = (self.translation() - other.translation()).norm();
         return Ok(angle_between + translation_between);
     }
+    /// Returns an euler angle and vector representation of the SE(3) pose.
+    pub fn to_euler_angles_and_vector(&self) -> (Vector3<f64>, Vector3<f64>) {
+        let rotation = self.rotation();
+        let euler_angles = rotation.get_euler_angles();
+        return (euler_angles, self.translation.clone());
+    }
     /// Converts the internal rotation type of the object to another provided rotation type.
     pub fn convert_rotation_type(&mut self, target_type: &OptimaRotationType) {
         self.rotation = self.rotation.convert(target_type);
@@ -118,5 +124,17 @@ impl RotationAndTranslation {
                 }
             }
         }
+    }
+    /// Converts to vector representation
+    ///
+    /// If quaternion and translation: [[q_w, q_i, q_j, q_k], [x, y, z]]
+    ///
+    /// If rotation matrix and translation: [[r_00, r_01, r_02], [r_10, r_11, r_12], [r_20, r_21, r_22], [x, y, z]]
+    pub fn to_vec_representation(&self) -> Vec<Vec<f64>> {
+        let rotation = self.rotation();
+        let mut out_vec = rotation.to_vec_representation();
+        let t = self.translation();
+        out_vec.push(vec![t[0], t[1], t[2]]);
+        out_vec
     }
 }
