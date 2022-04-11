@@ -190,7 +190,7 @@ pub enum OptimaPath {
 }
 impl OptimaPath {
     pub fn new_home_path() -> Result<Self, OptimaError> {
-        if cfg!(target_os = "wasm32") {
+        if cfg!(target_arch = "wasm32") {
             return Err(OptimaError::new_unsupported_operation_error("new_home_path",
             "Not supported by wasm32.", file!(), line!()));
         }
@@ -198,7 +198,7 @@ impl OptimaPath {
     }
 
     pub fn new_asset_path_from_json_file() -> Result<Self, OptimaError> {
-        if cfg!(target_os = "wasm32") {
+        if cfg!(target_arch = "wasm32") {
             return Err(OptimaError::new_unsupported_operation_error("new_asset_path_from_json_file",
             "Not supported by wasm32.", file!(), line!()));
         }

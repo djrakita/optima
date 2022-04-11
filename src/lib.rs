@@ -8,6 +8,7 @@
 extern crate core;
 
 pub mod robot_modules;
+pub mod robot_set_modules;
 pub mod utils;
 
 #[cfg(not(target_arch = "wasm32"))]

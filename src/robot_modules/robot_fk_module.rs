@@ -14,20 +14,79 @@ use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxisPrimitiveType;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 
+/// The `RobotFKModule` computes the forward kinematics of a robot configuration.  Forward kinematics
+/// takes as input a robot state and outputs the SE(3) poses of all links on the robot.
+///
+/// # Example
+/// ```
+/// use nalgebra::DVector;
+/// use optima::robot_modules::robot_fk_module::RobotFKModule;
+/// use optima::robot_modules::robot_state_module::RobotStateModule;
+/// use optima::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
+///
+/// let robot_state_module = RobotStateModule::new_from_names("ur5", None).expect("error");
+/// let robot_state = robot_state_module.spawn_robot_state_try_auto_type(DVector::zeros(6)).expect("error");
+///
+/// let robot_fk_module = RobotFKModule::new_from_names("ur5", None).expect("error");
+/// let fk_res = robot_fk_module.compute_fk(&robot_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+/// fk_res.print_summary();
+///
+/// // Output:
+/// // Link 0 base_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.0, 0.0]], is_identity: true, rot_is_identity: true, translation_is_zeros: true }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.0, 0.0]]
+/// // Link 1 shoulder_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.0, 0.089159]], is_identity: false, rot_is_identity: true, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.0, 0.089159]]
+/// // Link 2 upper_arm_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.13585, 0.089159]], is_identity: false, rot_is_identity: true, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.13585, 0.089159]]
+/// // Link 3 forearm_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.016149999999999998, 0.514159]], is_identity: false, rot_is_identity: true, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.016149999999999998, 0.514159]]
+/// // Link 4 wrist_1_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.016149999999999998, 0.906409]], is_identity: false, rot_is_identity: true, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.016149999999999998, 0.906409]]
+/// // Link 5 wrist_2_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.10915, 0.906409]], is_identity: false, rot_is_identity: true, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.10915, 0.906409]]
+/// // Link 6 wrist_3_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.10915, 1.001059]], is_identity: false, rot_is_identity: true, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.10915, 1.001059]]
+/// // Link 7 ee_link --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.7071067805519557, 0.7071067818211392], translation: [[0.0, 0.19145, 1.001059]], is_identity: false, rot_is_identity: false, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 1.5707963250000003]]
+/// //    > Pose Translation: [[0.0, 0.19145, 1.001059]]
+/// // Link 8 base --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, -1.0, 1.7948965149208059e-9], translation: [[0.0, 0.0, 0.0]], is_identity: false, rot_is_identity: false, translation_is_zeros: true }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, 0.0, -3.14159265]]
+/// //    > Pose Translation: [[0.0, 0.0, 0.0]]
+/// // Link 9 tool0 --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [-0.7071067805519557, 0.0, 0.0, 0.7071067818211392], translation: [[0.0, 0.19145, 1.001059]], is_identity: false, rot_is_identity: false, translation_is_zeros: false }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[-1.5707963250000003, 0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.19145, 1.001059]]
+/// // Link 10 world --->
+/// //    > Pose: Some(ImplicitDualQuaternion { data: ImplicitDualQuaternion { rotation: [0.0, 0.0, 0.0, 1.0], translation: [[0.0, 0.0, 0.0]], is_identity: true, rot_is_identity: true, translation_is_zeros: true }, pose_type: ImplicitDualQuaternion })
+/// //    > Pose Euler Angles: [[0.0, -0.0, 0.0]]
+/// //    > Pose Translation: [[0.0, 0.0, 0.0]]
+/// //
+/// ```
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotFKModule {
     robot_configuration_module: RobotConfigurationModule,
     robot_state_module: RobotStateModule,
-    starter_out_vec: Vec<Option<OptimaSE3Pose>>,
     starter_result: RobotFKResult
 }
 impl RobotFKModule {
     pub fn new(robot_configuration_module: RobotConfigurationModule, robot_state_module: RobotStateModule) -> Self {
-        let mut starter_out_vec = vec![];
-        let l = robot_configuration_module.robot_model_module().links().len();
-        for _ in 0..l { starter_out_vec.push(None); }
-
         let mut starter_result = RobotFKResult { link_entries: vec![] };
         let links = robot_configuration_module.robot_model_module().links();
         for (i, link) in links.iter().enumerate() {
@@ -41,7 +100,6 @@ impl RobotFKModule {
         Self {
             robot_configuration_module,
             robot_state_module,
-            starter_out_vec,
             starter_result
         }
     }
@@ -60,6 +118,84 @@ impl RobotFKModule {
             for link_idx in link_tree_traversal_layer {
                 self.compute_fk_on_single_link(&state, *link_idx, t, &mut output)?;
             }
+        }
+
+        return Ok(output);
+    }
+    /// This function computes the forward kinematics for some part of the whole robot configuration.
+    /// It provides three primary arguments over the standard `compute_fk` function:
+    /// - start_link_idx: An optional link index that will serve as the beginning of the partial
+    /// floating chain.  If this is None, the start of the chain will be the default world base link.
+    /// - end_link_idx: An optional link index that will serve as the end of the partial floating chain.
+    /// If this is None, the whole forward kinematics process will play out from the start_link_idx on.
+    /// - start_link_pose: An optional SE(3) pose used to situate the beginning link (start_link_idx) in the chain.
+    /// If this is None, this pose will be the default pose just based on the given `RobotState`.
+    pub fn compute_fk_floating_chain(&self, state: &RobotState, t: &OptimaSE3PoseType, start_link_idx: Option<usize>, end_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3Pose>) -> Result<RobotFKResult, OptimaError> {
+        let num_links = self.robot_configuration_module.robot_model_module().links().len();
+        if let Some(start_link_idx) = start_link_idx {
+            if start_link_idx >= num_links {
+            return Err(OptimaError::new_idx_out_of_bound_error(start_link_idx, num_links, file!(), line!()));
+        }
+        }
+        if let Some(end_link_idx) = end_link_idx {
+            if end_link_idx >= num_links {
+                return Err(OptimaError::new_idx_out_of_bound_error(end_link_idx, num_links, file!(), line!()));
+            }
+        }
+
+        let state = self.robot_state_module.convert_state_to_full_state(state)?;
+        let mut output = self.starter_result.clone();
+
+        let start_link_idx = match start_link_idx {
+            None => { self.robot_configuration_module.robot_model_module().robot_base_link_idx() }
+            Some(start_link_idx) => { start_link_idx }
+        };
+
+        match &start_link_pose {
+            None => {
+                let mut tmp_output = self.starter_result.clone();
+                let link_tree_traversal_layers = self.robot_configuration_module.robot_model_module().link_tree_traversal_layers();
+
+                for link_tree_traversal_layer in link_tree_traversal_layers {
+                    for link_idx in link_tree_traversal_layer {
+                        self.compute_fk_on_single_link(&state, *link_idx, t, &mut tmp_output)?;
+                        if *link_idx == start_link_idx {
+                            output.link_entries[start_link_idx].pose = tmp_output.link_entries[start_link_idx].pose.clone();
+                            break;
+                        }
+                    }
+                }
+            }
+            Some(s) => {
+                if s.map_to_pose_type() != t {
+                    return Err(OptimaError::new_generic_error_str(&format!("Given start link pose was not the correct type ({:?} instead of {:?})", s.map_to_pose_type(), t), file!(), line!()));
+                }
+                output.link_entries[start_link_idx].pose = Some(s.clone());
+            }
+        }
+
+        let link_tree_traversal_layers = self.robot_configuration_module.robot_model_module().link_tree_traversal_layers();
+
+        let links = self.robot_configuration_module.robot_model_module().links();
+
+        for link_tree_traversal_layer in link_tree_traversal_layers {
+            for link_idx in link_tree_traversal_layer {
+                let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
+                if predecessor_link_idx_option.is_none() { continue; }
+                let predecessor_link_idx = predecessor_link_idx_option.unwrap();
+                if output.link_entries[predecessor_link_idx].pose.is_some() {
+                    self.compute_fk_on_single_link(&state, *link_idx, t, &mut output)?;
+                    if let Some(end_link_idx_) = end_link_idx {
+                        if end_link_idx_ == *link_idx {
+                            return Ok(output);
+                        }
+                    }
+                }
+            }
+        }
+
+        if end_link_idx.is_some() {
+            return Err(OptimaError::new_generic_error_str(&format!("No valid link chain found between link {} and {} in compute_fk_partial_chain", start_link_idx, end_link_idx.unwrap()), file!(), line!()));
         }
 
         return Ok(output);
@@ -116,6 +252,7 @@ impl RobotFKModule {
     }
 }
 
+/// Python implementations.
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
 impl RobotFKModule {
@@ -134,12 +271,15 @@ impl RobotFKModule {
             return self.compute_fk(&robot_state, &OptimaSE3PoseType::RotationMatrixAndTranslation).expect("error");
         } else if pose_type == "HomogeneousMatrix" {
             return self.compute_fk(&robot_state, &OptimaSE3PoseType::HomogeneousMatrix).expect("error");
+        } else if pose_type == "EulerAnglesAndTranslation" {
+            return self.compute_fk(&robot_state, &OptimaSE3PoseType::EulerAnglesAndTranslation).expect("error");
         } else {
             panic!("{} is not a valid pose_type in compute_fk_py()", pose_type)
         }
     }
 }
 
+/// WASM implementations.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl RobotFKModule {
@@ -154,36 +294,42 @@ impl RobotFKModule {
             }
         }
     }
-
-    pub fn compute_fk_wasm(&self, state: Vec<f64>, pose_type: &str) -> JsValue {
+    pub fn compute_fk_wasm(&self, state: Vec<f64>, pose_type: Option<String>) -> JsValue {
         let robot_state = self.robot_state_module.spawn_robot_state_try_auto_type(NalgebraConversions::vec_to_dvector(&state)).expect("error");
-        if pose_type == "ImplicitDualQuaternion" {
+        let pose_type_ = match pose_type {
+            None => { "ImplicitDualQuaternion".to_string() }
+            Some(p) => { p }
+        };
+        if pose_type_ == "ImplicitDualQuaternion" {
             return JsValue::from_serde(&self.compute_fk(&robot_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error")).unwrap()
-        } else if pose_type == "UnitQuaternionAndTranslation" {
+        } else if pose_type_ == "UnitQuaternionAndTranslation" {
             return JsValue::from_serde(&self.compute_fk(&robot_state, &OptimaSE3PoseType::UnitQuaternionAndTranslation).expect("error")).unwrap()
-        } else if pose_type == "RotationMatrixAndTranslation" {
+        } else if pose_type_ == "RotationMatrixAndTranslation" {
             return JsValue::from_serde(&self.compute_fk(&robot_state, &OptimaSE3PoseType::RotationMatrixAndTranslation).expect("error")).unwrap()
-        } else if pose_type == "HomogeneousMatrix" {
+        } else if pose_type_ == "HomogeneousMatrix" {
             return JsValue::from_serde(&self.compute_fk(&robot_state, &OptimaSE3PoseType::HomogeneousMatrix).expect("error")).unwrap()
+        } else if pose_type_ == "EulerAnglesAndTranslation" {
+            return JsValue::from_serde(&self.compute_fk(&robot_state, &OptimaSE3PoseType::EulerAnglesAndTranslation).expect("error")).unwrap()
         } else {
-            panic!("{} is not a valid pose_type in compute_fk_py()", pose_type)
+            panic!("{} is not a valid pose_type in compute_fk_py()", pose_type_)
         }
-
-
-        // let res = self.compute_fk(&robot_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
-        // JsValue::from_serde(&res).unwrap()
     }
 }
 
+/// The output of a forward kinematics computation.
+/// The primary field in this object is `link_entries`.  This is a list of `RobotFKResultLinkEntry`
+/// objects.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotFKResult {
     link_entries: Vec<RobotFKResultLinkEntry>
 }
 impl RobotFKResult {
+    /// Returns a reference to the results link entries.
     pub fn link_entries(&self) -> &Vec<RobotFKResultLinkEntry> {
         &self.link_entries
     }
+    /// Prints a summary of the forward kinematics result.
     pub fn print_summary(&self) {
         for e in self.link_entries() {
             optima_print(&format!("Link {} {} ---> ", e.link_idx, e.link_name), PrintMode::Println, PrintColor::Blue, true);
@@ -197,6 +343,7 @@ impl RobotFKResult {
     }
 }
 
+/// Python implementations.
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
 impl RobotFKResult {
@@ -210,12 +357,12 @@ impl RobotFKResult {
         let e = &self.link_entries[link_idx];
         return e.pose_py();
     }
-    pub fn get_link_pose_euler_angles_and_translation(&self, link_idx: usize) -> Option<Vec<Vec<f64>>> {
-        let e = &self.link_entries[link_idx];
-        return e.pose_euler_angles_and_translation_py();
-    }
 }
 
+/// A `RobotFKResultLinkEntry` specifies information about one particular link in the forward kinematics
+/// process.  It provides the link index, the link's name, and the pose of the link.
+/// If the link is NOT included in the FK computation (the link is not present in the model, etc)
+/// the pose will be None.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotFKResultLinkEntry {
@@ -235,6 +382,7 @@ impl RobotFKResultLinkEntry {
     }
 }
 
+/// Python implementations.
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
 impl RobotFKResultLinkEntry {
@@ -247,22 +395,6 @@ impl RobotFKResultLinkEntry {
             }
             Some(pose) => {
                 Some(pose.to_vec_representation())
-            }
-        }
-    }
-    pub fn pose_euler_angles_and_translation_py(&self) -> Option<Vec<Vec<f64>>> {
-        return match &self.pose {
-            None => {
-                None
-            }
-            Some(pose) => {
-                let euler_angles_and_translation = pose.to_euler_angles_and_translation();
-                let mut out_vec = vec![];
-                let e = &euler_angles_and_translation.0;
-                let t = &euler_angles_and_translation.1;
-                out_vec.push(vec![ e[0], e[1], e[2] ]);
-                out_vec.push(vec![ t[0], t[1], t[2] ]);
-                return Some(out_vec);
             }
         }
     }

@@ -272,7 +272,7 @@ impl OptimaRotation {
     }
     /// Converts to vector representation.
     ///
-    /// If quaternion: [[q_w, q_i, q_j, q_k]]
+    /// If quaternion: [[q_i, q_j, q_k, q_w]]
     ///
     /// If rotation matrix: [[r_00, r_01, r_02], [r_10, r_11, r_12], [r_20, r_21, r_22]]
     pub fn to_vec_representation(&self) -> Vec<Vec<f64>> {
@@ -289,10 +289,10 @@ impl OptimaRotation {
             }
             OptimaRotation::UnitQuaternion { data, .. } => {
                 out_vec.push(vec![]);
-                out_vec[0].push(data.w);
                 out_vec[0].push(data.i);
                 out_vec[0].push(data.j);
                 out_vec[0].push(data.k);
+                out_vec[0].push(data.w);
             }
         }
         out_vec

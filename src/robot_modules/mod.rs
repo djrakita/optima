@@ -1,3 +1,4 @@
+pub mod robot;
 pub mod robot_model_module;
 pub mod robot_configuration_module;
 pub mod robot_configuration_generator_module;

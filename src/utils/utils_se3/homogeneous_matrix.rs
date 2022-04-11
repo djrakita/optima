@@ -186,6 +186,17 @@ impl HomogeneousMatrix {
                 let data = RotationAndTranslation::new(OptimaRotation::new_rotation_matrix(rotation_matrix), translation);
                 OptimaSE3Pose::new_rotation_and_translation(data)
             }
+            OptimaSE3PoseType::EulerAnglesAndTranslation => {
+                let euler_angles_and_rotation = self.to_euler_angles_and_vector();
+                let e = &euler_angles_and_rotation.0;
+                let t = &euler_angles_and_rotation.1;
+                return OptimaSE3Pose::EulerAnglesAndTranslation {
+                    euler_angles: e.clone(),
+                    translation: t.clone(),
+                    phantom_data: self.convert(&OptimaSE3PoseType::ImplicitDualQuaternion).unwrap_implicit_dual_quaternion().expect("error").clone(),
+                    pose_type: OptimaSE3PoseType::EulerAnglesAndTranslation
+                }
+            }
         }
     }
     /// Convert to vector representation.

@@ -14,8 +14,8 @@ use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxis;
 
 /// The `RobotStateModule` organizes and operates over robot states.  "Robot states" are vectors
-/// that contain scalar transformation values for each joint axis in the robot model.  These objects
-/// are sometimes referred to as robot configurations or robot poses in the robotics literature,
+/// that contain scalar joint values for each joint axis in the robot model.
+/// These objects are sometimes referred to as robot configurations or robot poses in the robotics literature,
 /// but in this library, we will stick to the convention of referring to them as robot states.
 ///
 /// The `RobotStateModule` has two primary fields:
@@ -212,6 +212,7 @@ impl RobotStateModule {
     }
 }
 
+/// Python implementations.
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
 impl RobotStateModule {
@@ -239,6 +240,7 @@ impl RobotStateModule {
     }
 }
 
+/// WASM implementations.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl RobotStateModule {
@@ -269,6 +271,22 @@ impl RobotStateModule {
     }
 }
 
+/// "Robot states" are vectors that contain scalar joint values for each joint axis in the robot model.
+/// These objects are sometimes referred to as robot configurations or robot poses in the robotics literature,
+/// but in this library, we will stick to the convention of referring to them as robot states.
+///
+/// A `RobotState` object contains the vector of joint angles in the field `state`, as well as a
+/// state type (either DOF or Full).
+///
+/// A DOF state only contains values for joint values that are free (not fixed), while the Full state
+/// includes joint values for ALL present joint axes (even if they are fixed).  A dof state is important
+/// for operations such as optimization where only the free values are decision variables,
+/// while a full state is important for operations such as forward kinematics where all present joint
+/// axes need to somehow contribute to the model.
+///
+/// The library will ensure that mathematical operations (additions, scalar multiplication, etc) can
+/// only occur over robot states of the same type.  Conversions between DOF and Full states can be done
+/// via the `RobotStateModule`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotState {
     state: DVector<f64>,

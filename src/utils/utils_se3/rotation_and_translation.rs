@@ -123,11 +123,22 @@ impl RotationAndTranslation {
                     }
                 }
             }
+            OptimaSE3PoseType::EulerAnglesAndTranslation => {
+                let euler_angles_and_rotation = self.to_euler_angles_and_vector();
+                let e = &euler_angles_and_rotation.0;
+                let t = &euler_angles_and_rotation.1;
+                return OptimaSE3Pose::EulerAnglesAndTranslation {
+                    euler_angles: e.clone(),
+                    translation: t.clone(),
+                    phantom_data: self.convert(&OptimaSE3PoseType::ImplicitDualQuaternion).unwrap_implicit_dual_quaternion().expect("error").clone(),
+                    pose_type: OptimaSE3PoseType::EulerAnglesAndTranslation
+                }
+            }
         }
     }
     /// Converts to vector representation
     ///
-    /// If quaternion and translation: [[q_w, q_i, q_j, q_k], [x, y, z]]
+    /// If quaternion and translation: [[q_i, q_j, q_k, q_w], [x, y, z]]
     ///
     /// If rotation matrix and translation: [[r_00, r_01, r_02], [r_10, r_11, r_12], [r_20, r_21, r_22], [x, y, z]]
     pub fn to_vec_representation(&self) -> Vec<Vec<f64>> {

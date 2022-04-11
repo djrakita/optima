@@ -236,18 +236,29 @@ impl ImplicitDualQuaternion {
                 out_pose
 
             }
+            OptimaSE3PoseType::EulerAnglesAndTranslation => {
+                let euler_angles_and_rotation = self.to_euler_angles_and_vector();
+                let e = &euler_angles_and_rotation.0;
+                let t = &euler_angles_and_rotation.1;
+                return OptimaSE3Pose::EulerAnglesAndTranslation {
+                    euler_angles: e.clone(),
+                    translation: t.clone(),
+                    phantom_data: self.clone(),
+                    pose_type: OptimaSE3PoseType::EulerAnglesAndTranslation
+                }
+            }
         }
     }
     /// Converts to vector representation.
     ///
-    /// [ [q_w, q_i, q_j, q_k], [x, y, z] ]
+    /// [ [q_i, q_j, q_k, q_w], [x, y, z] ]
     pub fn to_vec_representation(&self) -> Vec<Vec<f64>> {
         let mut out_vec = vec![];
 
         let q = &self.rotation;
         let t = &self.translation;
 
-        out_vec.push(vec![q.w, q.i, q.j, q.k]);
+        out_vec.push(vec![q.i, q.j, q.k, q.w]);
         out_vec.push(vec![t[0], t[1], t[2]]);
 
         out_vec
