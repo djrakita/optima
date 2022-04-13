@@ -5,8 +5,6 @@
 //! The core library is written in Rust, though high quality ports to high-level languages such as
 //! Python and Javascript are available via PyO3 and WebAssembly, respectively.
 
-extern crate core;
-
 pub mod robot_modules;
 pub mod robot_set_modules;
 pub mod utils;
@@ -18,8 +16,9 @@ use pyo3::prelude::*;
 #[pymodule]
 fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<robot_modules::robot_model_module::RobotModelModule>()?;
-    m.add_class::<robot_modules::robot_configuration_generator_module::RobotConfigurationGeneratorModule>()?;
-    m.add_class::<robot_modules::robot_state_module::RobotStateModule>()?;
+    m.add_class::<robot_modules::robot_configuration_module::RobotConfigurationModule>()?;
+    m.add_class::<robot_modules::robot_joint_state_module::RobotJointStateModule>()?;
     m.add_class::<robot_modules::robot_fk_module::RobotFKModule>()?;
+    m.add_class::<robot_modules::robot_file_manager_module::RobotMeshFileManagerModule>()?;
     Ok(())
 }

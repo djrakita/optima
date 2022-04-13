@@ -5,10 +5,11 @@ use pyo3::*;
 use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_configuration_generator_module::RobotConfigurationGeneratorModule;
 use crate::robot_modules::robot_model_module::RobotModelModule;
+use crate::utils::utils_console::{ConsoleInputUtils, PrintColor};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath};
 
 /// A `RobotConfigurationModule` is a description of a robot model one abstraction layer above the
 /// `RobotModelModule`.  A robot configuration affords extra specificity and functionality over a robot
@@ -22,17 +23,36 @@ use crate::utils::utils_errors::OptimaError;
 /// In many cases, the `RobotConfigurationInfo` will reflect a default base model configuration, meaning
 /// its respective configuration will be the base robot model given directly by the robot's URDF.
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotConfigurationModule {
     robot_configuration_info: RobotConfigurationInfo,
     robot_model_module: RobotModelModule,
     base_robot_model_module: RobotModelModule
 }
 impl RobotConfigurationModule {
+    pub fn new_from_names(robot_name: &str, configuration_name: Option<&str>) -> Result<Self, OptimaError> {
+        return match configuration_name {
+            None => { Self::new_base_model(robot_name) }
+            Some(configuration_name) => {
+                let mut path = OptimaStemCellPath::new_asset_path()?;
+                path.append_file_location(&OptimaAssetLocation::RobotConfigurations { robot_name: robot_name.to_string() });
+                path.append(&(configuration_name.to_string() + ".json"));
+
+                if !path.exists() {
+                    return Err(OptimaError::new_generic_error_str(&format!("Robot {} does not have configuration {} at path {:?}.", robot_name, configuration_name, path), file!(), line!()))
+                }
+
+                let base_model_module = RobotModelModule::new(robot_name)?;
+                let robot_configuration_info = path.load_object_from_json_file::<RobotConfigurationInfo>()?;
+                Self::new_from_base_model_module_and_info(base_model_module, robot_configuration_info)
+            }
+        }
+    }
+
     /// Returns the robot's base model configuration.  It is possible to initialize a
     /// `RobotConfigurationModel` using this function, but it is recommended to use the
     /// `RobotConfigurationGeneratorModule` for all initializations.
-    pub fn new_base_model_from_absolute_paths(robot_name: &str) -> Result<Self, OptimaError> {
+    fn new_base_model(robot_name: &str) -> Result<Self, OptimaError> {
         let robot_model_module = RobotModelModule::new(robot_name)?;
         Ok(Self {
             robot_configuration_info: Default::default(),
@@ -45,7 +65,7 @@ impl RobotConfigurationModule {
     /// The end user should not need to use this function as it is called automatically by the
     /// `RobotConfigurationGeneratorModule`.  It is recommended to use the `RobotConfigurationGeneratorModule`
     /// for all initializations.
-    pub fn new_from_base_model_module_and_info(base_model_module: RobotModelModule, robot_configuration_info: RobotConfigurationInfo) -> Result<Self, OptimaError> {
+    fn new_from_base_model_module_and_info(base_model_module: RobotModelModule, robot_configuration_info: RobotConfigurationInfo) -> Result<Self, OptimaError> {
         let mut out_self = Self {
             robot_configuration_info,
             robot_model_module: base_model_module.clone(),
@@ -144,6 +164,7 @@ impl RobotConfigurationModule {
         self.robot_configuration_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(name.to_string());
     }
 
+    /*
     /// Saves the `RobotConfigurationModule` to its robot's `RobotConfigurationGeneratorModule`.
     /// The configuration will be saved to a json file such that the `RobotConfigurationGeneratorModule`
     /// will be able to load this configuration in the future.
@@ -151,6 +172,30 @@ impl RobotConfigurationModule {
         self.set_configuration_name(configuration_name);
         let mut r = RobotConfigurationGeneratorModule::new(self.robot_model_module.robot_name())?;
         r.save_robot_configuration_module(&self.robot_configuration_info)?;
+        Ok(())
+    }
+    */
+
+    pub fn save_(&self, configuration_name: &str) -> Result<(), OptimaError> {
+        let mut path = OptimaStemCellPath::new_asset_path()?;
+        path.append_file_location(&OptimaAssetLocation::RobotConfigurations { robot_name: self.robot_model_module.robot_name().to_string() });
+        path.append(&(configuration_name.to_string() + ".json"));
+
+        if path.exists() {
+            let response = ConsoleInputUtils::get_console_input_string(&format!("Configuration with name {} already exists.  Overwrite?  (y or n)", configuration_name), PrintColor::Cyan)?;
+            if response == "y" {
+                let mut out_info = self.robot_configuration_info.clone();
+                out_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(configuration_name.to_string());
+                path.save_object_to_file_as_json(&out_info)?;
+            } else {
+                return Ok(());
+            }
+        } else {
+            let mut out_info = self.robot_configuration_info.clone();
+            out_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(configuration_name.to_string());
+            path.save_object_to_file_as_json(&out_info)?;
+        }
+
         Ok(())
     }
 
@@ -173,7 +218,7 @@ impl RobotConfigurationModulePy {
     #[cfg(not(target_arch = "wasm32"))]
     #[new]
     pub fn new(robot_name: &str, py: Python) -> Self {
-        let robot_configuration_module = RobotConfigurationModule::new_base_model_from_absolute_paths(robot_name).expect("error");
+        let robot_configuration_module = RobotConfigurationModule::new_base_model(robot_name).expect("error");
         let robot_model_module_py = Py::new(py, robot_configuration_module.robot_model_module.clone()).expect("error");
         Self {
             robot_configuration_module,
@@ -256,10 +301,23 @@ impl RobotConfigurationModulePy {
     /// The configuration will be saved to a json file such that the RobotConfigurationGeneratorModule
     /// will be able to load this configuration in the future.
     pub fn save(&mut self, configuration_name: &str) {
-        self.robot_configuration_module.save(configuration_name).expect("error");
+        self.robot_configuration_module.save_(configuration_name).expect("error");
     }
 
 }
+/*
+#[cfg(not(target_arch = "wasm32"))]
+impl RobotConfigurationModulePy {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn new_from_configuration_module(robot_configuration_module: RobotConfigurationModule, py: Python) -> Self {
+        let robot_model_module_py = Py::new(py, robot_configuration_module.robot_model_module().clone()).expect("error");
+        Self {
+            robot_configuration_module,
+            robot_model_module_py
+        }
+    }
+}
+*/
 
 /// Methods supported by WASM.
 #[cfg(target_arch = "wasm32")]
@@ -419,3 +477,4 @@ pub enum MobileBaseType {
     PlanarRotation,
     PlanarTranslationAndRotation
 }
+

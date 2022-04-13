@@ -360,6 +360,17 @@ impl OptimaPath {
         }
     }
 
+    pub fn to_string(&self) -> String {
+        return match self {
+            OptimaPath::Path(p) => {
+                p.to_str().unwrap().to_string()
+            }
+            OptimaPath::VfsPath(p) => {
+                p.as_str().to_string()
+            }
+        }
+    }
+
     pub fn filename(&self) -> Option<String> {
         return match self {
             OptimaPath::Path(p) => {
@@ -581,6 +592,9 @@ impl OptimaPath {
 
     #[allow(unused_must_use)]
     pub fn copy_file_to_destination(&self, destination: &OptimaPath) -> Result<(), OptimaError> {
+        if !self.exists() {
+            return Err(OptimaError::new_generic_error_str(&format!("Tried to copy file {:?} but it does not exist!", self), file!(), line!()));
+        }
         return match self {
             OptimaPath::Path(p) => {
                 match destination {
@@ -840,8 +854,10 @@ struct AssetEmbed;
 pub enum OptimaAssetLocation {
     Robots,
     Robot { robot_name: String },
+    RobotConfigurations { robot_name: String },
     RobotInputMeshes { robot_name: String },
     RobotMeshes { robot_name: String  },
+    RobotGLBMeshes { robot_name: String  },
     RobotPreprocessedData { robot_name: String },
     RobotModuleJsons { robot_name: String },
     RobotModuleJson { robot_name: String, t: RobotModuleJsonType },
@@ -861,6 +877,11 @@ impl OptimaAssetLocation {
                 v.push(robot_name.clone());
                 v
             }
+            OptimaAssetLocation::RobotConfigurations { robot_name } => {
+                let mut v = Self::Robot { robot_name: robot_name.clone() }.get_path_wrt_asset_folder();
+                v.push("configurations".to_string());
+                v
+            }
             OptimaAssetLocation::RobotInputMeshes { robot_name } => {
                 let mut v = Self::Robot { robot_name: robot_name.clone() }.get_path_wrt_asset_folder();
                 v.push("input_meshes".to_string());
@@ -869,6 +890,11 @@ impl OptimaAssetLocation {
             OptimaAssetLocation::RobotMeshes { robot_name } => {
                 let mut v = Self::Robot { robot_name: robot_name.clone() }.get_path_wrt_asset_folder();
                 v.push("meshes".to_string());
+                v
+            }
+            OptimaAssetLocation::RobotGLBMeshes { robot_name } => {
+                let mut v = Self::Robot { robot_name: robot_name.clone() }.get_path_wrt_asset_folder();
+                v.push("glb_meshes".to_string());
                 v
             }
             OptimaAssetLocation::RobotPreprocessedData { robot_name } => {
@@ -936,14 +962,12 @@ pub enum OptimaPathMatchingStopCondition {
 /// to handle paths to particular module json files.
 #[derive(Clone, Debug)]
 pub enum RobotModuleJsonType {
-    ModelModule,
-    ConfigurationGeneratorModule
+    ModelModule
 }
 impl RobotModuleJsonType {
     pub fn filename(&self) -> &str {
         match self {
             RobotModuleJsonType::ModelModule => { "robot_model_module.json" }
-            RobotModuleJsonType::ConfigurationGeneratorModule => { "configuration_generator_module.json" }
         }
     }
 }

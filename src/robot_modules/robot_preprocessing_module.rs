@@ -7,7 +7,6 @@ use wasm_bindgen::prelude::*;
 use crate::utils::utils_console::{ConsoleInputUtils, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_configuration_generator_module::RobotConfigurationGeneratorModule;
 use crate::robot_modules::robot_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
@@ -17,7 +16,6 @@ use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotPreprocessingModule {
     pub replace_robot_model_module_json: bool,
-    pub replace_configuration_generator_module_json: bool,
     pub replace_robot_link_convex_shapes: bool,
     pub replace_robot_link_convex_shape_subcomponents: bool
 }
@@ -42,8 +40,6 @@ impl RobotPreprocessingModule {
 
         let line = ConsoleInputUtils::get_console_input_string("Replace robot model module?  (y or n)", PrintColor::Cyan)?;
         let replace_robot_model_module_json = if &line == "y" { true } else { false };
-        let line = ConsoleInputUtils::get_console_input_string("Replace robot configuration generator module?  (y or n)", PrintColor::Cyan)?;
-        let replace_configuration_generator_module_json = if &line == "y" { true } else { false };
         let line = ConsoleInputUtils::get_console_input_string("Replace robot link convex shapes?  (y or n)", PrintColor::Cyan)?;
         let replace_robot_link_convex_shapes = if &line == "y" { true } else { false };
         let line = ConsoleInputUtils::get_console_input_string("Replace robot link convex subcomponents?  (y or n)", PrintColor::Cyan)?;
@@ -53,7 +49,6 @@ impl RobotPreprocessingModule {
             optima_print(&format!(" Preprocessing robot {:?}", robot_name), PrintMode::Println, PrintColor::Blue, true);
             let res = RobotPreprocessingModule {
                 replace_robot_model_module_json,
-                replace_configuration_generator_module_json,
                 replace_robot_link_convex_shapes,
                 replace_robot_link_convex_shape_subcomponents
             }.preprocess_robot(robot_name);
@@ -73,8 +68,6 @@ impl RobotPreprocessingModule {
 
         let line = ConsoleInputUtils::get_console_input_string("Replace robot model module?  (y or n)", PrintColor::Cyan)?;
         let replace_robot_model_module_json = if &line == "y" { true } else { false };
-        let line = ConsoleInputUtils::get_console_input_string("Replace robot configuration generator module?  (y or n)", PrintColor::Cyan)?;
-        let replace_configuration_generator_module_json = if &line == "y" { true } else { false };
         let line = ConsoleInputUtils::get_console_input_string("Replace robot link convex shapes?  (y or n)", PrintColor::Cyan)?;
         let replace_robot_link_convex_shapes = if &line == "y" { true } else { false };
         let line = ConsoleInputUtils::get_console_input_string("Replace robot link convex subcomponents?  (y or n)", PrintColor::Cyan)?;
@@ -82,7 +75,6 @@ impl RobotPreprocessingModule {
 
         return Self {
             replace_robot_model_module_json,
-            replace_configuration_generator_module_json,
             replace_robot_link_convex_shapes,
             replace_robot_link_convex_shape_subcomponents
         }.preprocess_robot(robot_name);
@@ -94,7 +86,6 @@ impl RobotPreprocessingModule {
         }
 
         self.preprocess_robot_model_module_json(robot_name)?;
-        self.preprocess_robot_configuration_generator_module_json(robot_name)?;
         self.copy_link_meshes_to_assets_folder(robot_name)?;
         self.preprocess_robot_link_meshes(robot_name)?;
         self.preprocess_robot_link_convex_shapes(robot_name)?;
@@ -118,29 +109,13 @@ impl RobotPreprocessingModule {
         Ok(())
     }
 
-    fn preprocess_robot_configuration_generator_module_json(&self, robot_name: &str) -> Result<(), OptimaError> {
-        let mut file_path = OptimaStemCellPath::new_asset_path()?;
-        file_path.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ConfigurationGeneratorModule });
-        if !file_path.exists() || self.replace_configuration_generator_module_json {
-            optima_print("   > Preprocessing robot configuration generator module...", PrintMode::Println, PrintColor::Cyan, false);
-            file_path.delete_file()?;
-
-            let robot_configuration_generator_module = RobotConfigurationGeneratorModule::new(robot_name)?;
-            robot_configuration_generator_module.save_to_json_file()?;
-
-            optima_print("   > Successfully preprocessed robot configuration generator module!", PrintMode::Println, PrintColor::Green, false);
-        }
-        Ok(())
-    }
-
     fn copy_link_meshes_to_assets_folder(&self, robot_name: &str) -> Result<(), OptimaError> {
         let mut file_path = OptimaStemCellPath::new_asset_path()?;
         file_path.append_file_location(&OptimaAssetLocation::RobotInputMeshes { robot_name: robot_name.to_string() });
         let file_names = file_path.get_all_items_in_directory(false, false);
         if !file_path.exists() || file_names.len() == 0 {
             optima_print("   > Copying link meshes to assets folder...", PrintMode::Println, PrintColor::Cyan, false);
-            let robot_model_module = RobotModelModule::new(robot_name)?;
-            let mesh_file_manager_module = RobotMeshFileManagerModule::new(&robot_model_module)?;
+            let mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_name)?;
 
             mesh_file_manager_module.find_and_copy_visual_meshes_to_assets()?;
 
@@ -152,7 +127,6 @@ impl RobotPreprocessingModule {
     fn preprocess_robot_link_meshes(&self, robot_name: &str) -> Result<(), OptimaError> {
         let mut directory_path = OptimaStemCellPath::new_asset_path()?;
         directory_path.append_file_location(&OptimaAssetLocation::RobotMeshes { robot_name: robot_name.to_string() });
-        // let files_in_directory = directory_path.get_all_items_in_directory(false, false);
         optima_print("Preprocessing robot link meshes...", PrintMode::Println, PrintColor::Cyan, false);
         directory_path.delete_all_items_in_directory()?;
 
@@ -166,6 +140,9 @@ impl RobotPreprocessingModule {
             let has_visual_mesh = link.urdf_link().visual_mesh_filename().is_some();
             if has_visual_mesh {
                 let res = base_meshes_directory_path.walk_directory_and_match(OptimaPathMatchingPattern::PathComponentsWithoutExtension(vec![format!("{}", i)]), OptimaPathMatchingStopCondition::First);
+                if res.len() == 0 {
+                    return Err(OptimaError::new_generic_error_str(&format!("Path for link {:?} does not exist in {:?}.", i, base_meshes_directory_path), file!(), line!()));
+                }
                 let optima_path = res[0].clone();
                 let trimesh = optima_path.load_file_to_trimesh_engine()?;
                 optima_print(&format!("   > computed mesh for link {:?}", i), PrintMode::Println, PrintColor::None, false);
@@ -251,7 +228,6 @@ impl Default for RobotPreprocessingModule {
     fn default() -> Self {
         Self {
             replace_robot_model_module_json: true,
-            replace_configuration_generator_module_json: false,
             replace_robot_link_convex_shapes: true,
             replace_robot_link_convex_shape_subcomponents: true
         }
