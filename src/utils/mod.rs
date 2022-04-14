@@ -6,3 +6,4 @@ pub mod utils_se3;
 pub mod utils_shape_geometry;
 pub mod utils_nalgebra;
 pub mod utils_collision;
+pub mod utils_generics;

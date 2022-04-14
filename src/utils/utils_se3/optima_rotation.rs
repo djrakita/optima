@@ -256,13 +256,64 @@ impl OptimaRotation {
         }
     }
     /// Returns the euler angle representation of the rotation.
-    pub fn get_euler_angles(&self) -> Vector3<f64> {
+    pub fn to_euler_angles(&self) -> Vector3<f64> {
         let euler_angles = match self {
             OptimaRotation::RotationMatrix { data, .. } => { data.euler_angles() }
             OptimaRotation::UnitQuaternion { data, .. } => { data.euler_angles() }
         };
         let euler_angles_vec = Vector3::new(euler_angles.0, euler_angles.1, euler_angles.2);
         return euler_angles_vec;
+    }
+    /// To axis angle representation of a rotation.
+    pub fn to_axis_angle(&self) -> (Vector3<f64>, f64) {
+        let axis_angle = match self {
+            OptimaRotation::RotationMatrix { data, .. } => { data.axis_angle() }
+            OptimaRotation::UnitQuaternion { data, .. } => { data.axis_angle() }
+        };
+        match axis_angle {
+            None => {
+                (Vector3::new(0.,0.,0.), 0.0)
+            }
+            Some(axis_angle) => {
+                (Vector3::new(axis_angle.0[0], axis_angle.0[1], axis_angle.0[2]), axis_angle.1)
+            }
+        }
+    }
+    /// Spherical linear interpolation.
+    pub fn slerp(&self, other: &OptimaRotation, t: f64, conversion_if_necessary: bool) -> Result<OptimaRotation, OptimaError> {
+        if self.get_rotation_type() != other.get_rotation_type() {
+            return if conversion_if_necessary {
+                let new_operand = other.convert(self.get_rotation_type());
+                self.slerp(&new_operand, t, conversion_if_necessary)
+            } else {
+                Err(OptimaError::new_generic_error_str("incompatible rotation types in interpolate.", file!(), line!()))
+            }
+        }
+
+        return match self {
+            OptimaRotation::RotationMatrix { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaRotation::RotationMatrix { data, .. } => {
+                        Ok(Self::new_rotation_matrix(data0.slerp(data, t)))
+                    }
+                    OptimaRotation::UnitQuaternion { .. } => {
+                        Err(OptimaError::new_generic_error_str("incompatible rotation types in interpolate.", file!(), line!()))
+                    }
+                }
+            }
+            OptimaRotation::UnitQuaternion { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaRotation::RotationMatrix { .. } => {
+                        Err(OptimaError::new_generic_error_str("incompatible rotation types in interpolate.", file!(), line!()))
+                    }
+                    OptimaRotation::UnitQuaternion { data, .. } => {
+                        Ok(Self::new_unit_quaternion(data0.slerp(data, t)))
+                    }
+                }
+            }
+        }
     }
     fn get_rotation_type(&self) -> &OptimaRotationType {
         return match &self {

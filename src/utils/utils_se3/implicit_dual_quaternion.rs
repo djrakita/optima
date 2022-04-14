@@ -1,4 +1,4 @@
-use nalgebra::{Quaternion, Unit, UnitQuaternion, Vector3, Vector6};
+use nalgebra::{Isometry3, Quaternion, Unit, UnitQuaternion, Vector3, Vector6};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
 use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
@@ -167,6 +167,16 @@ impl ImplicitDualQuaternion {
     pub fn displacement(&self, other: &ImplicitDualQuaternion) -> ImplicitDualQuaternion {
         return self.inverse().multiply_shortcircuit(&other);
     }
+    pub fn displacement_separate_rotation_and_translation(&self, other: &ImplicitDualQuaternion) -> (OptimaRotation, Vector3<f64>) {
+        let disp_rotation = OptimaRotation::new_unit_quaternion(self.rotation.clone()).displacement(&OptimaRotation::new_unit_quaternion(other.rotation.clone()), false).expect("error");
+        let disp_translation = other.translation - self.translation;
+        return (disp_rotation, disp_translation);
+    }
+    pub fn slerp(&self, other: &ImplicitDualQuaternion, t: f64) -> ImplicitDualQuaternion {
+        let new_quat = self.rotation.slerp(&other.rotation, t);
+        let new_translation = (1.0 - t) * self.translation + t * other.translation;
+        return Self::new(new_quat, new_translation);
+    }
     /// The natural logarithm of the implicit dual quaternion.  For details on this transform, see
     /// the IJRR paper Efficient Forward, Differential, and Inverse Kinematics using Dual Quaternions
     /// by Neil Dantam
@@ -206,10 +216,24 @@ impl ImplicitDualQuaternion {
         return self.ln().norm();
     }
     /// Returns an euler angle and vector representation of the SE(3) pose.
-    pub fn to_euler_angles_and_vector(&self) -> (Vector3<f64>, Vector3<f64>) {
+    pub fn to_euler_angles_and_translation(&self) -> (Vector3<f64>, Vector3<f64>) {
         let euler_angles = self.rotation.euler_angles();
         let euler_angles_vec = Vector3::new(euler_angles.0, euler_angles.1, euler_angles.2);
         return (euler_angles_vec, self.translation.clone());
+    }
+    /// Returns an axis angle and translation representation of the SE(3) pose.
+    pub fn to_axis_angle_and_translation(&self) -> (Vector3<f64>, f64, Vector3<f64>) {
+        let axis_angle = self.rotation.axis_angle();
+        let (axis, angle) = match axis_angle {
+            None => { (Vector3::new(0.,0.,0.), 0.0) }
+            Some(axis_angle) => { (Vector3::new(axis_angle.0[0], axis_angle.0[1], axis_angle.0[2]), axis_angle.1) }
+        };
+        return (axis, angle, self.translation.clone());
+    }
+    /// Outputs an Isometry3 object in the Nalgebra library that corresponds to the SE(3) pose.
+    pub fn to_nalgebra_isometry(&self) -> Isometry3<f64> {
+        let axis = self.rotation().scaled_axis();
+        return Isometry3::new(self.translation.clone(), axis);
     }
     ////////////////////////////////////////////////////////////////////////////////////////////////
     /// Converts the SE(3) pose to other supported pose types.
@@ -237,7 +261,7 @@ impl ImplicitDualQuaternion {
 
             }
             OptimaSE3PoseType::EulerAnglesAndTranslation => {
-                let euler_angles_and_rotation = self.to_euler_angles_and_vector();
+                let euler_angles_and_rotation = self.to_euler_angles_and_translation();
                 let e = &euler_angles_and_rotation.0;
                 let t = &euler_angles_and_rotation.1;
                 return OptimaSE3Pose::EulerAnglesAndTranslation {

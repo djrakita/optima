@@ -159,11 +159,6 @@ impl RobotConfigurationModule {
         return self.update();
     }
 
-    /// Sets the name of the robot configuration.
-    pub fn set_configuration_name(&mut self, name: &str) {
-        self.robot_configuration_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(name.to_string());
-    }
-
     /*
     /// Saves the `RobotConfigurationModule` to its robot's `RobotConfigurationGeneratorModule`.
     /// The configuration will be saved to a json file such that the `RobotConfigurationGeneratorModule`
@@ -176,7 +171,7 @@ impl RobotConfigurationModule {
     }
     */
 
-    pub fn save_(&self, configuration_name: &str) -> Result<(), OptimaError> {
+    pub fn save(&self, configuration_name: &str) -> Result<(), OptimaError> {
         let mut path = OptimaStemCellPath::new_asset_path()?;
         path.append_file_location(&OptimaAssetLocation::RobotConfigurations { robot_name: self.robot_model_module.robot_name().to_string() });
         path.append(&(configuration_name.to_string() + ".json"));
@@ -184,16 +179,12 @@ impl RobotConfigurationModule {
         if path.exists() {
             let response = ConsoleInputUtils::get_console_input_string(&format!("Configuration with name {} already exists.  Overwrite?  (y or n)", configuration_name), PrintColor::Cyan)?;
             if response == "y" {
-                let mut out_info = self.robot_configuration_info.clone();
-                out_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(configuration_name.to_string());
-                path.save_object_to_file_as_json(&out_info)?;
+                path.save_object_to_file_as_json(&self.robot_configuration_info)?;
             } else {
                 return Ok(());
             }
         } else {
-            let mut out_info = self.robot_configuration_info.clone();
-            out_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(configuration_name.to_string());
-            path.save_object_to_file_as_json(&out_info)?;
+            path.save_object_to_file_as_json(&self.robot_configuration_info)?;
         }
 
         Ok(())
@@ -290,18 +281,11 @@ impl RobotConfigurationModulePy {
         self.copy_robot_model_module_to_py(py);
     }
 
-    /// Sets the name of the robot configuration.
-    pub fn set_configuration_name(&mut self, name: &str, py: Python) {
-        // self.robot_configuration_info.configuration_identifier = RobotConfigurationIdentifier::NamedConfiguration(name.to_string());
-        self.robot_configuration_module.set_configuration_name(name);
-        self.copy_robot_model_module_to_py(py)
-    }
-
     /// Saves the RobotConfigurationModule to its robot's RobotConfigurationGeneratorModule.
     /// The configuration will be saved to a json file such that the RobotConfigurationGeneratorModule
     /// will be able to load this configuration in the future.
     pub fn save(&mut self, configuration_name: &str) {
-        self.robot_configuration_module.save_(configuration_name).expect("error");
+        self.robot_configuration_module.save(configuration_name).expect("error");
     }
 
 }
@@ -332,8 +316,6 @@ impl RobotConfigurationModule {
 /// underlying `RobotModelModule`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotConfigurationInfo {
-    configuration_identifier: RobotConfigurationIdentifier,
-    description: Option<String>,
     dead_end_link_idxs: Vec<usize>,
     fixed_joint_infos: Vec<FixedJointInfo>,
     base_offset: OptimaSE3PoseAll,
@@ -343,8 +325,6 @@ impl Default for RobotConfigurationInfo {
     /// By default, we will just have the robot's given base model directly from the robot's URDF.
     fn default() -> Self {
         Self {
-            configuration_identifier: RobotConfigurationIdentifier::BaseModel,
-            description: None,
             dead_end_link_idxs: vec![],
             fixed_joint_infos: vec![],
             base_offset: OptimaSE3PoseAll::new_identity(),
@@ -353,12 +333,6 @@ impl Default for RobotConfigurationInfo {
     }
 }
 impl RobotConfigurationInfo {
-    pub fn configuration_identifier(&self) -> &RobotConfigurationIdentifier {
-        &self.configuration_identifier
-    }
-    pub fn description(&self) -> &Option<String> {
-        &self.description
-    }
     pub fn dead_end_link_idxs(&self) -> &Vec<usize> {
         &self.dead_end_link_idxs
     }

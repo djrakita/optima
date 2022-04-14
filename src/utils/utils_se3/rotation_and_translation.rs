@@ -1,4 +1,4 @@
-use nalgebra::{Unit, Vector3};
+use nalgebra::{Isometry3, Unit, Vector3};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
@@ -69,6 +69,16 @@ impl RotationAndTranslation {
     pub fn displacement(&self, other: &RotationAndTranslation, conversion_if_necessary: bool) -> Result<RotationAndTranslation, OptimaError> {
         return self.inverse().multiply(&other, conversion_if_necessary);
     }
+    pub fn displacement_separate_rotation_and_translation(&self, other: &RotationAndTranslation) -> (OptimaRotation, Vector3<f64>) {
+        let disp_rotation = self.rotation.displacement(other.rotation(), true).expect("error");
+        let disp_translation = other.translation - self.translation;
+        return (disp_rotation, disp_translation);
+    }
+    pub fn slerp(&self, other: &RotationAndTranslation, t: f64, conversion_if_necessary: bool) -> Result<RotationAndTranslation, OptimaError> {
+        let new_rot = self.rotation.slerp(&other.rotation, t, conversion_if_necessary)?;
+        let new_translation = (1.0 - t) * self.translation + t * other.translation;
+        return Ok(Self::new(new_rot, new_translation));
+    }
     /// Provides an approximate distance between two objects.  This is not an
     /// official distance metric, but should still work in some optimization procedures.
     pub fn approximate_distance(&self, other: &RotationAndTranslation, conversion_if_necessary: bool) -> Result<f64, OptimaError> {
@@ -77,10 +87,30 @@ impl RotationAndTranslation {
         return Ok(angle_between + translation_between);
     }
     /// Returns an euler angle and vector representation of the SE(3) pose.
-    pub fn to_euler_angles_and_vector(&self) -> (Vector3<f64>, Vector3<f64>) {
+    pub fn to_euler_angles_and_translation(&self) -> (Vector3<f64>, Vector3<f64>) {
         let rotation = self.rotation();
-        let euler_angles = rotation.get_euler_angles();
+        let euler_angles = rotation.to_euler_angles();
         return (euler_angles, self.translation.clone());
+    }
+    /// Returns an axis angle and translation representation of the SE(3) pose.
+    pub fn to_axis_angle_and_translation(&self) -> (Vector3<f64>, f64, Vector3<f64>) {
+        let axis_angle = match &self.rotation {
+            OptimaRotation::RotationMatrix { data, .. } => { data.axis_angle() }
+            OptimaRotation::UnitQuaternion { data, .. } => { data.axis_angle() }
+        };
+        let (axis, angle) = match axis_angle {
+            None => { (Vector3::new(0.,0.,0.), 0.0) }
+            Some(axis_angle) => { (Vector3::new(axis_angle.0[0], axis_angle.0[1], axis_angle.0[2]), axis_angle.1) }
+        };
+        return (axis, angle, self.translation().clone());
+    }
+    /// Outputs an Isometry3 object in the Nalgebra library that corresponds to the SE(3) pose.
+    pub fn to_nalgebra_isometry(&self) -> Isometry3<f64> {
+        let axis = match &self.rotation {
+            OptimaRotation::RotationMatrix { data, .. } => { data.scaled_axis() }
+            OptimaRotation::UnitQuaternion { data, .. } => { data.scaled_axis() }
+        };
+        return Isometry3::new(self.translation.clone(), axis);
     }
     /// Converts the internal rotation type of the object to another provided rotation type.
     pub fn convert_rotation_type(&mut self, target_type: &OptimaRotationType) {
@@ -124,7 +154,7 @@ impl RotationAndTranslation {
                 }
             }
             OptimaSE3PoseType::EulerAnglesAndTranslation => {
-                let euler_angles_and_rotation = self.to_euler_angles_and_vector();
+                let euler_angles_and_rotation = self.to_euler_angles_and_translation();
                 let e = &euler_angles_and_rotation.0;
                 let t = &euler_angles_and_rotation.1;
                 return OptimaSE3Pose::EulerAnglesAndTranslation {

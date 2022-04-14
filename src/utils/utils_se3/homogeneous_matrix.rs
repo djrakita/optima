@@ -1,4 +1,4 @@
-use nalgebra::{Matrix3, Matrix4, Rotation3, Unit, UnitQuaternion, Vector3, Vector4};
+use nalgebra::{Isometry3, Matrix3, Matrix4, Rotation3, Unit, UnitQuaternion, Vector3, Vector4};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_se3::implicit_dual_quaternion::ImplicitDualQuaternion;
 use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
@@ -99,6 +99,17 @@ impl HomogeneousMatrix {
     pub fn displacement(&self, other: &HomogeneousMatrix) -> HomogeneousMatrix {
         return self.inverse().multiply(&other);
     }
+    pub fn displacement_separate_rotation_and_translation(&self, other: &HomogeneousMatrix) -> (OptimaRotation, Vector3<f64>) {
+        let disp_rotation = OptimaRotation::new_rotation_matrix(self.rotation().clone()).displacement(&OptimaRotation::new_rotation_matrix(other.rotation().clone()), false).expect("error");
+        let disp_translation = other.translation() - self.translation();
+        return (disp_rotation, disp_translation);
+    }
+    pub fn slerp(&self, other: &HomogeneousMatrix, t: f64) -> HomogeneousMatrix {
+        let new_rot = OptimaRotation::new_rotation_matrix(self.rotation().slerp(&other.rotation(), t));
+        let new_translation = (1.0 - t) * self.translation() + t * other.translation();
+        let matrix = Self::rotation_and_translation_to_homogeneous_matrix(&new_rot, &new_translation);
+        return Self::new(matrix);
+    }
     /// Provides an approximate distance between two homogeneous matrices.  This is not an
     /// official distance metric, but should still work in some optimization procedures.
     pub fn approximate_distance(&self, other: &HomogeneousMatrix) -> f64 {
@@ -156,11 +167,25 @@ impl HomogeneousMatrix {
         return (rotation, translation);
     }
     /// Returns an euler angle and vector representation of the SE(3) pose.
-    pub fn to_euler_angles_and_vector(&self) -> (Vector3<f64>, Vector3<f64>) {
+    pub fn to_euler_angles_and_translation(&self) -> (Vector3<f64>, Vector3<f64>) {
         let rotation = self.rotation();
         let euler_angles = rotation.euler_angles();
         let euler_angles_vec = Vector3::new(euler_angles.0, euler_angles.1, euler_angles.2);
         return (euler_angles_vec, self.translation());
+    }
+    /// Returns an axis angle and translation representation of the SE(3) pose.
+    pub fn to_axis_angle_and_translation(&self) -> (Vector3<f64>, f64, Vector3<f64>) {
+        let axis_angle = self.rotation().axis_angle();
+        let (axis, angle) = match axis_angle {
+            None => { (Vector3::new(0.,0.,0.), 0.0) }
+            Some(axis_angle) => { (Vector3::new(axis_angle.0[0], axis_angle.0[1], axis_angle.0[2]), axis_angle.1) }
+        };
+        return (axis, angle, self.translation().clone());
+    }
+    /// Outputs an Isometry3 object in the Nalgebra library that corresponds to the SE(3) pose.
+    pub fn to_nalgebra_isometry(&self) -> Isometry3<f64> {
+        let axis = self.rotation().scaled_axis();
+        return Isometry3::new(self.translation(), axis);
     }
     /// Converts the SE(3) pose to other supported pose types.
     pub fn convert(&self, target_type: &OptimaSE3PoseType) -> OptimaSE3Pose {
@@ -187,7 +212,7 @@ impl HomogeneousMatrix {
                 OptimaSE3Pose::new_rotation_and_translation(data)
             }
             OptimaSE3PoseType::EulerAnglesAndTranslation => {
-                let euler_angles_and_rotation = self.to_euler_angles_and_vector();
+                let euler_angles_and_rotation = self.to_euler_angles_and_translation();
                 let e = &euler_angles_and_rotation.0;
                 let t = &euler_angles_and_rotation.1;
                 return OptimaSE3Pose::EulerAnglesAndTranslation {
