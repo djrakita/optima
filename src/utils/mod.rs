@@ -7,3 +7,5 @@ pub mod utils_shape_geometry;
 pub mod utils_nalgebra;
 pub mod utils_collision;
 pub mod utils_generics;
+pub mod utils_sampling;
+pub mod utils_generic_data_structures;

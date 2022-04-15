@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition};
+use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
 use crate::utils::utils_robot::link::Link;
 
 /// The `RobotMeshFileManagerModule` has numerous utility functions relating to mesh files.
@@ -153,7 +153,7 @@ impl RobotMeshFileManagerModule {
     /// robot model.  If a given link does not have a visual component, the entry will be None.
     /// Files are either drawn from the robot's mesh folder as stls or the robot's grb_mesh directory as grbs.
     /// Files in the grb_mesh directory are prioritized, if present, but they are optional.
-    pub fn get_paths_to_visual_meshes(&self) -> Result<Vec<Option<OptimaPath>>, OptimaError> {
+    pub fn get_paths_to_visual_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let paths_to_meshes = self.get_paths_to_meshes()?;
         let paths_to_glb_meshes = self.get_paths_to_glb_meshes()?;
 
@@ -170,10 +170,10 @@ impl RobotMeshFileManagerModule {
 
     /// Returns the paths to convex shape stls.  The vector here has an entry for each robot link in the
     /// robot model.  If a given link does not have a visual component, the entry will be None.
-    pub fn get_paths_to_convex_shape_meshes(&self) -> Result<Vec<Option<OptimaPath>>, OptimaError> {
+    pub fn get_paths_to_convex_shape_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let mut out_vec = vec![];
 
-        let mut path = OptimaPath::new_asset_path_from_json_file()?;
+        let mut path = OptimaStemCellPath::new_asset_path()?;
         path.append_file_location(&OptimaAssetLocation::RobotConvexShapes { robot_name: self.robot_name.clone() });
         for (i, link) in self.links.iter().enumerate() {
             if link.urdf_link().visual_mesh_filename().is_some() {
@@ -194,12 +194,12 @@ impl RobotMeshFileManagerModule {
 
     /// Returns the paths to convex shape subcomponent stls.  The vector here has a vector entry for
     /// each robot link in the robot model.
-    pub fn get_paths_to_convex_shape_subcomponent_meshes(&self) -> Result<Vec<Vec<OptimaPath>>, OptimaError> {
+    pub fn get_paths_to_convex_shape_subcomponent_meshes(&self) -> Result<Vec<Vec<OptimaStemCellPath>>, OptimaError> {
         let mut out_vec = vec![];
         let num_links = self.links.len();
         for _ in 0..num_links { out_vec.push(vec![]); }
 
-        let mut path = OptimaPath::new_asset_path_from_json_file()?;
+        let mut path = OptimaStemCellPath::new_asset_path()?;
         path.append_file_location(&OptimaAssetLocation::RobotConvexSubcomponents { robot_name: self.robot_name.clone() });
 
         let all_files = path.get_all_items_in_directory(false, false);
@@ -216,10 +216,10 @@ impl RobotMeshFileManagerModule {
         Ok(out_vec)
     }
 
-    fn get_paths_to_meshes(&self) -> Result<Vec<Option<OptimaPath>>, OptimaError> {
+    fn get_paths_to_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let mut out_vec = vec![];
 
-        let mut path = OptimaPath::new_asset_path_from_json_file()?;
+        let mut path = OptimaStemCellPath::new_asset_path()?;
         path.append_file_location(&OptimaAssetLocation::RobotMeshes { robot_name: self.robot_name.clone() });
         for (i, link) in self.links.iter().enumerate() {
             if link.urdf_link().visual_mesh_filename().is_some() {
@@ -238,10 +238,10 @@ impl RobotMeshFileManagerModule {
         Ok(out_vec)
     }
 
-    fn get_paths_to_glb_meshes(&self) -> Result<Vec<Option<OptimaPath>>, OptimaError> {
+    fn get_paths_to_glb_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let mut out_vec = vec![];
 
-        let mut path = OptimaPath::new_asset_path_from_json_file()?;
+        let mut path = OptimaStemCellPath::new_asset_path()?;
         path.append_file_location(&OptimaAssetLocation::RobotGLBMeshes { robot_name: self.robot_name.clone() });
         for (i, link) in self.links.iter().enumerate() {
             if link.urdf_link().visual_mesh_filename().is_some() {

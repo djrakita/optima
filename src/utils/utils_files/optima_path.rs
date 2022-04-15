@@ -54,9 +54,6 @@ impl OptimaStemCellPath {
             optima_file_paths
         })
     }
-    pub fn print_number_of_paths(&self) {
-        println!("{:?}", self.optima_file_paths.len());
-    }
     pub fn append(&mut self, s: &str) {
         for p in &mut self.optima_file_paths {
             p.append(s);
@@ -83,6 +80,9 @@ impl OptimaStemCellPath {
     }
     pub fn get_file_for_writing(&self) -> Result<File, OptimaError> {
         self.try_function_on_all_optima_file_paths(OptimaPath::get_file_for_writing, "get_file_for_writing")
+    }
+    pub fn to_string(&self) -> String {
+        return self.optima_file_paths[0].to_string();
     }
     pub fn filename(&self) -> Option<String> {
         return self.optima_file_paths[0].filename();

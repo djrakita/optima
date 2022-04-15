@@ -12,6 +12,7 @@ use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxis;
+use crate::utils::utils_sampling::SimpleSamplers;
 
 /// The `RobotJointStateModule` organizes and operates over robot states.  "Robot joint states" are vectors
 /// that contain scalar joint values for each joint axis in the robot model.
@@ -251,6 +252,49 @@ impl RobotJointStateModule {
         return Ok(());
     }
 
+    pub fn get_joint_state_bounds(&self, t: &RobotJointStateType) -> Vec<(f64, f64)> {
+        let axes = match t {
+            RobotJointStateType::DOF => { &self.ordered_dof_joint_axes }
+            RobotJointStateType::Full => { &self.ordered_joint_axes }
+        };
+
+        let mut out_vec = vec![];
+
+        for axis in axes {
+            let fixed_value = axis.fixed_value();
+            match fixed_value {
+                None => { out_vec.push( axis.bounds() ) }
+                Some(fixed_value) => { out_vec.push( (fixed_value, fixed_value) ); }
+            }
+        }
+
+        out_vec
+    }
+
+    pub fn sample_joint_state(&self, t: &RobotJointStateType) -> RobotJointState {
+        let axes = match t {
+            RobotJointStateType::DOF => { &self.ordered_dof_joint_axes }
+            RobotJointStateType::Full => { &self.ordered_joint_axes }
+        };
+
+        let mut out_dvec = DVector::zeros(axes.len());
+
+        for (i, axis) in axes.iter().enumerate() {
+            let fixed_value = axis.fixed_value();
+            match fixed_value {
+                None => {
+                    let sample = SimpleSamplers::uniform_samples(&vec![axis.bounds()]);
+                    out_dvec[i] = sample[0];
+                }
+                Some(fixed_value) => {
+                    out_dvec[i] = fixed_value
+                }
+            }
+        }
+
+        return RobotJointState::new(out_dvec, t.clone(), self).expect("error");
+    }
+
     pub fn print_robot_joint_state_summary(&self, robot_joint_state: &RobotJointState)  {
         let joint_axes = match robot_joint_state.robot_joint_state_type {
             RobotJointStateType::DOF => { &self.ordered_dof_joint_axes }
@@ -427,3 +471,4 @@ pub enum RobotJointStateType {
     DOF,
     Full
 }
+

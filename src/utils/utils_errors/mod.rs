@@ -6,7 +6,7 @@ pub enum OptimaError {
     GenericError(String),
     IdxOutOfBoundError(String),
     UnsupportedOperationError(String),
-    RobotStateVecWrongSizeError(String)
+    RobotStateVecWrongSizeError(String),
 }
 impl OptimaError {
     pub fn new_generic_error_str(s: &str, file: &str, line: u32) -> Self {
@@ -18,6 +18,13 @@ impl OptimaError {
         let s = format!("ERROR: Index {:?} is too large for the array of length {:?} -- File: {}, Line: {}", given_idx, length_of_array, file, line);
         // optima_print(&s, PrintMode::Println, PrintColor::Red, true);
         return Self::IdxOutOfBoundError(s)
+    }
+    pub fn new_check_for_out_of_bound_error(given_idx: usize, length_of_array: usize, file: &str, line: u32) -> Result<(), Self> {
+        return if given_idx >= length_of_array {
+            Err(Self::new_idx_out_of_bound_error(given_idx, length_of_array, file, line))
+        } else {
+            Ok(())
+        }
     }
     pub fn new_unsupported_operation_error(function_name: &str, message: &str, file: &str, line: u32) -> Self {
         let s = format!("ERROR: Unsupported operation error in function {}.  {} -- File: {}, Line: {}", function_name, message, file, line);

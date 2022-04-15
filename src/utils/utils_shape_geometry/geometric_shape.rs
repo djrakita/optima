@@ -1,10 +1,12 @@
 use std::sync::Arc;
-use nalgebra::{Point3, Unit, Vector3};
+use std::time::{Duration, Instant};
+use serde::{Serialize, Deserialize};
+use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
 use parry3d_f64::shape::{Cuboid, Shape, Ball, ConvexPolyhedron, TriMesh};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
-use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll};
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
 use crate::utils::utils_shape_geometry::trimesh_engine::TrimeshEngine;
 
 /// A `GeometricShapeObject` contains useful functions for computing intersection, distances,
@@ -80,6 +82,22 @@ impl GeometricShape {
             initial_pose_of_shape: None
         }
     }
+    pub fn to_best_fit_cube(&self) -> Self {
+        let aabb = self.shape.compute_aabb(&Isometry3::identity());
+        let center = aabb.center();
+        let maxs = aabb.maxs;
+
+        let init_pose_of_shape = OptimaSE3Pose::new_from_euler_angles(0.,0.,0., center[0], center[1], center[2], &OptimaSE3PoseType::ImplicitDualQuaternion);
+        return Self::new_cube(maxs[0] - center[0], maxs[1] - center[1], maxs[2] - center[2], self.signature.clone(), Some(init_pose_of_shape));
+    }
+    pub fn to_best_fit_sphere(&self) -> Self {
+        let sphere = self.shape.compute_bounding_sphere(&Isometry3::identity());
+        let center = sphere.center();
+        let radius = sphere.radius() / 2.0;
+
+        let init_pose_of_shape = OptimaSE3Pose::new_from_euler_angles(0.,0.,0., center[0], center[1], center[2], &OptimaSE3PoseType::ImplicitDualQuaternion);
+        return Self::new_sphere(radius, self.signature.clone(), Some(init_pose_of_shape));
+    }
 
     pub fn project_point(&self, pose: &OptimaSE3Pose, point: &Vector3<f64>, solid: bool) -> PointProjection {
         let point = Point3::from_slice(point.data.as_slice());
@@ -88,6 +106,10 @@ impl GeometricShape {
     pub fn contains_point(&self, pose: &OptimaSE3Pose, point: &Vector3<f64>) -> bool {
         let point = Point3::from_slice(point.data.as_slice());
         self.shape.contains_point(&self.recover_transformed_pose_wrt_initial_pose(pose).to_nalgebra_isometry(), &point)
+    }
+    pub fn distance_to_point(&self, pose: &OptimaSE3Pose, point: &Vector3<f64>, solid: bool) -> f64 {
+        let pt = Point3::from_slice(point.as_slice());
+        self.shape.distance_to_point(&self.recover_transformed_pose_wrt_initial_pose(pose).to_nalgebra_isometry(), &pt, solid)
     }
     pub fn intersects_ray(&self, pose: &OptimaSE3Pose, ray: &Ray, max_toi: f64) -> bool {
         self.shape.intersects_ray(&self.recover_transformed_pose_wrt_initial_pose(pose).to_nalgebra_isometry(), ray, max_toi)
@@ -110,7 +132,8 @@ impl GeometricShape {
             None => { pose.clone() }
             Some(initial_pose_of_shape) => {
                 let initial_pose_of_shape = initial_pose_of_shape.get_pose_by_type(pose.map_to_pose_type());
-                pose.multiply(initial_pose_of_shape, false).expect("error")
+                let a = pose.multiply(initial_pose_of_shape, false).expect("error");
+                a
             }
         }
     }
@@ -128,7 +151,7 @@ impl Clone for GeometricShape {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub enum GeometricShapeSignature {
     None,
     Test { a: usize }
@@ -136,38 +159,88 @@ pub enum GeometricShapeSignature {
 
 pub struct GeometricShapeQueries;
 impl GeometricShapeQueries {
+    pub fn generic_group_query(inputs: Vec<GeometricShapeQueryInput>, stop_condition: StopCondition, log_condition: LogCondition, sort_outputs: bool) -> GeometricShapeQueryGroupOutput {
+        let start = Instant::now();
+        let mut outputs = vec![];
+        let mut output_distances: Vec<f64> = vec![];
+        let mut num_queries = 0;
+        let mut intersection_found = false;
+        let mut minimum_distance = f64::INFINITY;
+
+        for input in &inputs {
+            let output = Self::generic_query(input);
+            num_queries += 1;
+            let proxy_dis = output.raw_output.proxy_dis();
+
+            if proxy_dis <= 0.0 { intersection_found = true; }
+            if proxy_dis < minimum_distance { minimum_distance = proxy_dis; }
+
+            let stop = output.raw_output.trigger_stop(&stop_condition);
+
+            if output.raw_output.trigger_log(&log_condition) {
+                if sort_outputs {
+                    let binary_search_res = output_distances.binary_search_by(|x| x.partial_cmp(&proxy_dis).unwrap() );
+                    let idx = match binary_search_res { Ok(i) => {i} Err(i) => {i} };
+                    output_distances.insert(idx, proxy_dis);
+                    outputs.insert(idx, output);
+                } else {
+                    outputs.push(output);
+                }
+            }
+
+            if stop { break; }
+        }
+
+        return GeometricShapeQueryGroupOutput {
+            outputs,
+            duration: start.elapsed(),
+            num_queries,
+            intersection_found,
+            minimum_distance
+        }
+    }
     pub fn generic_query(input: &GeometricShapeQueryInput) -> GeometricShapeQueryOutput {
-        return match input {
+        let start = Instant::now();
+        let raw_output = match input {
             GeometricShapeQueryInput::ProjectPoint { object, pose, point, solid } => {
-                GeometricShapeQueryOutput::ProjectPoint(object.project_point(pose, point, *solid))
+                GeometricShapeQueryRawOutput::ProjectPoint(object.project_point(pose, point, *solid))
             }
             GeometricShapeQueryInput::ContainsPoint { object, pose, point } => {
-                GeometricShapeQueryOutput::ContainsPoint(object.contains_point(pose, point))
+                GeometricShapeQueryRawOutput::ContainsPoint(object.contains_point(pose, point))
+            }
+            GeometricShapeQueryInput::DistanceToPoint { object, pose, point, solid } => {
+                GeometricShapeQueryRawOutput::DistanceToPoint(object.distance_to_point(pose, point, *solid))
             }
             GeometricShapeQueryInput::IntersectsRay { object, pose, ray, max_toi } => {
-                GeometricShapeQueryOutput::IntersectsRay(object.intersects_ray(pose, ray, *max_toi))
+                GeometricShapeQueryRawOutput::IntersectsRay(object.intersects_ray(pose, ray, *max_toi))
             }
             GeometricShapeQueryInput::CastRay { object, pose, ray, max_toi, solid } => {
-                GeometricShapeQueryOutput::CastRay(object.cast_ray(pose, ray, *max_toi, *solid))
+                GeometricShapeQueryRawOutput::CastRay(object.cast_ray(pose, ray, *max_toi, *solid))
             }
             GeometricShapeQueryInput::CastRayAndGetNormal { object, pose, ray, max_toi, solid } => {
-                GeometricShapeQueryOutput::CastRayAndGetNormal(object.cast_ray_and_get_normal(pose, ray, *max_toi, *solid))
+                GeometricShapeQueryRawOutput::CastRayAndGetNormal(object.cast_ray_and_get_normal(pose, ray, *max_toi, *solid))
             }
             GeometricShapeQueryInput::IntersectionTest { object1, object1_pose, object2, object2_pose } => {
-                GeometricShapeQueryOutput::IntersectionTest(Self::intersection_test(object1, object1_pose, object2, object2_pose))
+                GeometricShapeQueryRawOutput::IntersectionTest(Self::intersection_test(object1, object1_pose, object2, object2_pose))
             }
             GeometricShapeQueryInput::Distance { object1, object1_pose, object2, object2_pose } => {
-                GeometricShapeQueryOutput::Distance(Self::distance(object1, object1_pose, object2, object2_pose))
+                GeometricShapeQueryRawOutput::Distance(Self::distance(object1, object1_pose, object2, object2_pose))
             }
             GeometricShapeQueryInput::ClosestPoints { object1, object1_pose, object2, object2_pose, max_dis } => {
-                GeometricShapeQueryOutput::ClosestPoints(Self::closest_points(object1, object1_pose, object2, object2_pose, *max_dis))
+                GeometricShapeQueryRawOutput::ClosestPoints(Self::closest_points(object1, object1_pose, object2, object2_pose, *max_dis))
             }
             GeometricShapeQueryInput::Contact { object1, object1_pose, object2, object2_pose, prediction } => {
-                GeometricShapeQueryOutput::Contact(Self::contact(object1, object1_pose, object2, object2_pose, *prediction))
+                GeometricShapeQueryRawOutput::Contact(Self::contact(object1, object1_pose, object2, object2_pose, *prediction))
             }
             GeometricShapeQueryInput::CCD { object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2 } => {
-                GeometricShapeQueryOutput::CCD(Self::ccd(object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2))
+                GeometricShapeQueryRawOutput::CCD(Self::ccd(object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2))
             }
+        };
+
+        GeometricShapeQueryOutput {
+            raw_output,
+            duration: start.elapsed(),
+            signatures: input.get_signatures()
         }
     }
     pub fn intersection_test(object1: &GeometricShape,
@@ -286,6 +359,7 @@ impl CCDResult {
 pub enum GeometricShapeQueryInput<'a> {
     ProjectPoint { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
     ContainsPoint { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, point: &'a Vector3<f64> },
+    DistanceToPoint { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
     IntersectsRay { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, ray: &'a Ray, max_toi: f64 },
     CastRay { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, ray: &'a Ray, max_toi: f64, solid: bool },
     CastRayAndGetNormal { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, ray: &'a Ray, max_toi: f64, solid: bool },
@@ -295,11 +369,46 @@ pub enum GeometricShapeQueryInput<'a> {
     Contact { object1: &'a GeometricShape, object1_pose: &'a OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: &'a OptimaSE3Pose, prediction: f64 },
     CCD { object1: &'a GeometricShape, object1_pose_t1: &'a OptimaSE3Pose, object1_pose_t2: &'a OptimaSE3Pose, object2: &'a GeometricShape, object2_pose_t1: &'a OptimaSE3Pose, object2_pose_t2: &'a OptimaSE3Pose }
 }
+impl <'a> GeometricShapeQueryInput<'a> {
+    pub fn get_signatures(&self) -> Vec<GeometricShapeSignature> {
+        let mut out_vec = vec![];
+        match self {
+            GeometricShapeQueryInput::ProjectPoint { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQueryInput::ContainsPoint { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQueryInput::DistanceToPoint { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQueryInput::IntersectsRay { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQueryInput::CastRay { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQueryInput::CastRayAndGetNormal { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQueryInput::IntersectionTest { object1, object1_pose: _, object2, object2_pose: _ } => {
+                out_vec.push(object1.signature.clone());
+                out_vec.push(object2.signature.clone());
+            }
+            GeometricShapeQueryInput::Distance { object1, object1_pose: _, object2, object2_pose: _ } => {
+                out_vec.push(object1.signature.clone());
+                out_vec.push(object2.signature.clone());
+            }
+            GeometricShapeQueryInput::ClosestPoints { object1, object1_pose: _, object2, object2_pose: _, max_dis: _ } => {
+                out_vec.push(object1.signature.clone());
+                out_vec.push(object2.signature.clone());
+            }
+            GeometricShapeQueryInput::Contact { object1, object1_pose: _, object2, object2_pose: _, prediction: _ } => {
+                out_vec.push(object1.signature.clone());
+                out_vec.push(object2.signature.clone());
+            }
+            GeometricShapeQueryInput::CCD { object1, object1_pose_t1: _, object1_pose_t2: _, object2, object2_pose_t1: _, object2_pose_t2: _ } => {
+                out_vec.push(object1.signature.clone());
+                out_vec.push(object2.signature.clone());
+            }
+        }
+        out_vec
+    }
+}
 
 #[derive(Clone, Debug)]
-pub enum GeometricShapeQueryOutput {
+pub enum GeometricShapeQueryRawOutput {
     ProjectPoint(PointProjection),
     ContainsPoint(bool),
+    DistanceToPoint(f64),
     IntersectsRay(bool),
     CastRay(Option<f64>),
     CastRayAndGetNormal(Option<RayIntersection>),
@@ -309,67 +418,185 @@ pub enum GeometricShapeQueryOutput {
     Contact(Option<Contact>),
     CCD(Option<CCDResult>)
 }
-impl GeometricShapeQueryOutput {
+impl GeometricShapeQueryRawOutput {
     pub fn unwrap_project_point(&self) -> Result<PointProjection, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::ProjectPoint(p) => { Ok(*p) }
+            GeometricShapeQueryRawOutput::ProjectPoint(p) => { Ok(*p) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_contains_point(&self) -> Result<bool, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::ContainsPoint(c) => { Ok(*c) }
+            GeometricShapeQueryRawOutput::ContainsPoint(c) => { Ok(*c) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_intersects_ray(&self) -> Result<bool, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::IntersectsRay(b) => { Ok(*b) }
+            GeometricShapeQueryRawOutput::IntersectsRay(b) => { Ok(*b) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_cast_ray(&self) -> Result<Option<f64>, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::CastRay(b) => { Ok(*b) }
+            GeometricShapeQueryRawOutput::CastRay(b) => { Ok(*b) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_cast_ray_and_get_normal(&self) -> Result<Option<RayIntersection>, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::CastRayAndGetNormal(b) => { Ok(*b) }
+            GeometricShapeQueryRawOutput::CastRayAndGetNormal(b) => { Ok(*b) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_intersection_test(&self) -> Result<bool, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::IntersectionTest(b) => { Ok(*b) }
+            GeometricShapeQueryRawOutput::IntersectionTest(b) => { Ok(*b) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_distance(&self) -> Result<f64, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::Distance(d) => { Ok(*d) }
+            GeometricShapeQueryRawOutput::Distance(d) => { Ok(*d) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_closest_points(&self) -> Result<&ClosestPoints, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::ClosestPoints(c) => { Ok(c) }
+            GeometricShapeQueryRawOutput::ClosestPoints(c) => { Ok(c) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_contact(&self) -> Result<Option<Contact>, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::Contact(c) => { Ok(*c) }
+            GeometricShapeQueryRawOutput::Contact(c) => { Ok(*c) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
     pub fn unwrap_ccd(&self) -> Result<&Option<CCDResult>, OptimaError> {
         return match self {
-            GeometricShapeQueryOutput::CCD(c) => { Ok(c) }
+            GeometricShapeQueryRawOutput::CCD(c) => { Ok(c) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
+        }
+    }
+    pub fn trigger_stop(&self, stop_condition: &StopCondition) -> bool {
+        let proxy_dis = self.proxy_dis();
+        return match stop_condition {
+            StopCondition::None => { false }
+            StopCondition::Intersection => { proxy_dis <= 0.0 }
+            StopCondition::BelowMinDistance(d) => { proxy_dis < *d }
+        }
+    }
+    pub fn trigger_log(&self, log_condition: &LogCondition) -> bool {
+        let proxy_dis = self.proxy_dis();
+        return match log_condition {
+            LogCondition::LogAll => { true }
+            LogCondition::Intersection => { proxy_dis <= 0.0 }
+            LogCondition::BelowMinDistance(d) => { proxy_dis < *d }
+        }
+    }
+    fn proxy_dis(&self) -> f64 {
+        return match self {
+            GeometricShapeQueryRawOutput::ProjectPoint(r) => {
+                if r.is_inside { -f64::INFINITY } else { f64::INFINITY }
+            }
+            GeometricShapeQueryRawOutput::ContainsPoint(r) => {
+                if *r { -f64::INFINITY } else { f64::INFINITY }
+            }
+            GeometricShapeQueryRawOutput::DistanceToPoint(r) => { return *r }
+            GeometricShapeQueryRawOutput::IntersectsRay(r) => {
+                if *r { -f64::INFINITY } else { f64::INFINITY }
+            }
+            GeometricShapeQueryRawOutput::CastRay(r) => {
+                if r.is_some() { -f64::INFINITY } else { f64::INFINITY }
+            }
+            GeometricShapeQueryRawOutput::CastRayAndGetNormal(r) => {
+                if r.is_some() { -f64::INFINITY } else { f64::INFINITY }
+            }
+            GeometricShapeQueryRawOutput::IntersectionTest(r) => {
+                if *r { -f64::INFINITY } else { f64::INFINITY }
+            }
+            GeometricShapeQueryRawOutput::Distance(r) => {
+                *r
+            }
+            GeometricShapeQueryRawOutput::ClosestPoints(r) => {
+                match r {
+                    ClosestPoints::Intersecting => { -f64::INFINITY }
+                    ClosestPoints::WithinMargin(p1, p2) => {
+                        let dis = (p1 - p2).norm();
+                        dis
+                    }
+                    ClosestPoints::Disjoint => { f64::INFINITY }
+                }
+            }
+            GeometricShapeQueryRawOutput::Contact(r) => {
+                match r {
+                    None => { f64::INFINITY }
+                    Some(c) => { c.dist }
+                }
+            }
+            GeometricShapeQueryRawOutput::CCD(r) => {
+                if r.is_some() { -f64::INFINITY } else { f64::INFINITY }
+            }
         }
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct GeometricShapeQueryOutput {
+    duration: Duration,
+    signatures: Vec<GeometricShapeSignature>,
+    raw_output: GeometricShapeQueryRawOutput
+}
+impl GeometricShapeQueryOutput {
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+    pub fn signatures(&self) -> &Vec<GeometricShapeSignature> {
+        &self.signatures
+    }
+    pub fn raw_output(&self) -> &GeometricShapeQueryRawOutput {
+        &self.raw_output
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GeometricShapeQueryGroupOutput {
+    duration: Duration,
+    num_queries: usize,
+    intersection_found: bool,
+    minimum_distance: f64,
+    outputs: Vec<GeometricShapeQueryOutput>
+}
+impl GeometricShapeQueryGroupOutput {
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+    pub fn num_queries(&self) -> usize {
+        self.num_queries
+    }
+    pub fn intersection_found(&self) -> bool {
+        self.intersection_found
+    }
+    pub fn minimum_distance(&self) -> f64 {
+        self.minimum_distance
+    }
+    pub fn outputs(&self) -> &Vec<GeometricShapeQueryOutput> {
+        &self.outputs
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum StopCondition {
+    None,
+    Intersection,
+    BelowMinDistance(f64)
+}
+
+#[derive(Clone, Debug)]
+pub enum LogCondition {
+    LogAll,
+    Intersection,
+    BelowMinDistance(f64)
+}
 
