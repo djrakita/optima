@@ -532,6 +532,11 @@ impl OptimaSE3Pose {
         return if a.map_to_pose_type() == b.map_to_pose_type() { true } else { false }
     }
 }
+impl Default for OptimaSE3Pose {
+    fn default() -> Self {
+        Self::new_identity()
+    }
+}
 
 /// An Enum that encodes a pose type.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]

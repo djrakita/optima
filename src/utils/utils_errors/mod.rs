@@ -7,6 +7,8 @@ pub enum OptimaError {
     IdxOutOfBoundError(String),
     UnsupportedOperationError(String),
     RobotStateVecWrongSizeError(String),
+    CannotBeNoneError(String),
+    UnreachableCode
 }
 impl OptimaError {
     pub fn new_generic_error_str(s: &str, file: &str, line: u32) -> Self {
@@ -24,6 +26,12 @@ impl OptimaError {
             Err(Self::new_idx_out_of_bound_error(given_idx, length_of_array, file, line))
         } else {
             Ok(())
+        }
+    }
+    pub fn new_check_for_cannot_be_none_error<T>(data: &Option<T>, file: &str, line: u32) -> Result<(), Self> {
+        return match data {
+            None => { Err(Self::CannotBeNoneError(format!("Data cannot be none. -- File {:?}, line {:?}", file, line))) }
+            Some(_) => { Ok(()) }
         }
     }
     pub fn new_unsupported_operation_error(function_name: &str, message: &str, file: &str, line: u32) -> Self {

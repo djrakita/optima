@@ -203,7 +203,7 @@ impl RobotFKModule {
         let link = self.robot_configuration_module.robot_model_module().get_link_by_idx(link_idx)?;
         let preceding_link_option = link.preceding_link_idx();
         if preceding_link_option.is_none() {
-            output.link_entries[link_idx].pose = Some(OptimaSE3Pose::new_from_euler_angles(0.,0.,0.,0.,0.,0., t));
+            output.link_entries[link_idx].pose = Some(self.robot_configuration_module.robot_configuration_info().base_offset().get_pose_by_type(t).clone());
             return Ok(());
         }
 

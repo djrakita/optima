@@ -151,8 +151,8 @@ impl RobotMeshFileManagerModule {
 
     /// Returns the paths to visual meshes.  The vector here has an entry for each robot link in the
     /// robot model.  If a given link does not have a visual component, the entry will be None.
-    /// Files are either drawn from the robot's mesh folder as stls or the robot's grb_mesh directory as grbs.
-    /// Files in the grb_mesh directory are prioritized, if present, but they are optional.
+    /// Files are either drawn from the robot's mesh folder as stls or the robot's glb_mesh directory as glbs.
+    /// Files in the glb_mesh directory are prioritized, if present, but they are optional.
     pub fn get_paths_to_visual_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let paths_to_meshes = self.get_paths_to_meshes()?;
         let paths_to_glb_meshes = self.get_paths_to_glb_meshes()?;
@@ -216,7 +216,7 @@ impl RobotMeshFileManagerModule {
         Ok(out_vec)
     }
 
-    fn get_paths_to_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
+    pub fn get_paths_to_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let mut out_vec = vec![];
 
         let mut path = OptimaStemCellPath::new_asset_path()?;

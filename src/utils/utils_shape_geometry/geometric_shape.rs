@@ -1,6 +1,7 @@
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::{Serialize, Deserialize};
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
 use parry3d_f64::shape::{Cuboid, Shape, Ball, ConvexPolyhedron, TriMesh};
@@ -35,7 +36,8 @@ use crate::utils::utils_shape_geometry::trimesh_engine::TrimeshEngine;
 pub struct GeometricShape {
     shape: Box<Arc<dyn Shape>>,
     signature: GeometricShapeSignature,
-    initial_pose_of_shape: Option<OptimaSE3PoseAll>
+    initial_pose_of_shape: Option<OptimaSE3PoseAll>,
+    spawner: GeometricShapeSpawner
 }
 impl GeometricShape {
     pub fn new_cube(half_extent_x: f64,
@@ -43,34 +45,59 @@ impl GeometricShape {
                     half_extent_z: f64,
                     signature: GeometricShapeSignature,
                     initial_pose_of_shape: Option<OptimaSE3Pose>) -> Self {
+        let spawner = GeometricShapeSpawner::Cube {
+            half_extent_x,
+            half_extent_y,
+            half_extent_z,
+            signature: signature.clone(),
+            initial_pose_of_shape: initial_pose_of_shape.clone()
+        };
         let cube = Cuboid::new(Vector3::new(half_extent_x,half_extent_y,half_extent_z));
 
         Self {
             shape: Box::new(Arc::new(cube)),
             signature,
-            initial_pose_of_shape: Self::recover_initial_pose_all_of_shape_from_option(initial_pose_of_shape)
+            initial_pose_of_shape: Self::recover_initial_pose_all_of_shape_from_option(initial_pose_of_shape),
+            spawner
         }
     }
     pub fn new_sphere(radius: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose>) -> Self {
+        let spawner = GeometricShapeSpawner::Sphere {
+            radius,
+            signature: signature.clone(),
+            initial_pose_of_shape: initial_pose_of_shape.clone()
+        };
         let sphere = Ball::new(radius);
 
         Self {
             shape: Box::new(Arc::new(sphere)),
             signature,
-            initial_pose_of_shape: Self::recover_initial_pose_all_of_shape_from_option(initial_pose_of_shape)
+            initial_pose_of_shape: Self::recover_initial_pose_all_of_shape_from_option(initial_pose_of_shape),
+            spawner
         }
     }
     pub fn new_convex_shape(trimesh_engine: &TrimeshEngine, signature: GeometricShapeSignature) -> Self {
+        let spawner = GeometricShapeSpawner::ConvexShape {
+            trimesh_engine: trimesh_engine.clone(),
+            signature: signature.clone()
+        };
+        
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let convex_shape = ConvexPolyhedron::from_convex_hull(&points).expect("error");
 
         Self {
             shape: Box::new(Arc::new(convex_shape)),
             signature,
-            initial_pose_of_shape: None
+            initial_pose_of_shape: None,
+            spawner
         }
     }
     pub fn new_triangle_mesh(trimesh_engine: &TrimeshEngine, signature: GeometricShapeSignature) -> Self {
+        let spawner = GeometricShapeSpawner::TriangleMesh {
+            trimesh_engine: trimesh_engine.clone(),
+            signature: signature.clone()
+        };
+        
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let indices: Vec<[u32; 3]> = trimesh_engine.indices().iter().map(|i| [i[0] as u32, i[1] as u32, i[2] as u32] ).collect();
 
@@ -79,7 +106,8 @@ impl GeometricShape {
         Self {
             shape: Box::new(Arc::new(tri_mesh)),
             signature,
-            initial_pose_of_shape: None
+            initial_pose_of_shape: None,
+            spawner
         }
     }
     pub fn to_best_fit_cube(&self) -> Self {
@@ -140,21 +168,62 @@ impl GeometricShape {
     pub fn signature(&self) -> &GeometricShapeSignature {
         &self.signature
     }
+    pub fn spawner(&self) -> &GeometricShapeSpawner {
+        &self.spawner
+    }
 }
 impl Clone for GeometricShape {
     fn clone(&self) -> Self {
-        Self {
-            shape: self.shape.clone(),
-            signature: self.signature.clone(),
-            initial_pose_of_shape: self.initial_pose_of_shape.clone()
-        }
+        self.spawner.spawn()
+    }
+}
+impl Serialize for GeometricShape {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serializer.serialize_some(self.spawner())
+    }
+}
+impl<'de> Deserialize<'de> for GeometricShape {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        let s: GeometricShapeSpawner = Deserialize::deserialize(deserializer)?;
+        Ok(s.spawn())
+    }
+}
+impl Debug for GeometricShape {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&format!("{:?}", self.spawner))
     }
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub enum GeometricShapeSignature {
     None,
-    Test { a: usize }
+    RobotLink { link_idx: usize, shape_idx_in_link: usize }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum GeometricShapeSpawner {
+    Cube { half_extent_x: f64, half_extent_y: f64, half_extent_z: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
+    Sphere { radius: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
+    ConvexShape { trimesh_engine: TrimeshEngine, signature: GeometricShapeSignature },
+    TriangleMesh { trimesh_engine: TrimeshEngine, signature: GeometricShapeSignature }
+}
+impl GeometricShapeSpawner {
+    pub fn spawn(&self) -> GeometricShape {
+        match self {
+            GeometricShapeSpawner::Cube { half_extent_x, half_extent_y, half_extent_z, signature, initial_pose_of_shape } => {
+                GeometricShape::new_cube(*half_extent_x, *half_extent_y, *half_extent_z, signature.clone(), initial_pose_of_shape.clone())
+            }
+            GeometricShapeSpawner::Sphere { radius, signature, initial_pose_of_shape } => {
+                GeometricShape::new_sphere( *radius, signature.clone(), initial_pose_of_shape.clone() )
+            }
+            GeometricShapeSpawner::ConvexShape { trimesh_engine, signature } => {
+                GeometricShape::new_convex_shape( &trimesh_engine, signature.clone() )
+            }
+            GeometricShapeSpawner::TriangleMesh { trimesh_engine, signature } => {
+                GeometricShape::new_triangle_mesh( &trimesh_engine, signature.clone() )
+            }
+        }
+    }
 }
 
 pub struct GeometricShapeQueries;
@@ -355,19 +424,18 @@ impl CCDResult {
     }
 }
 
-#[derive(Clone)]
 pub enum GeometricShapeQueryInput<'a> {
-    ProjectPoint { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
-    ContainsPoint { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, point: &'a Vector3<f64> },
-    DistanceToPoint { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
-    IntersectsRay { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, ray: &'a Ray, max_toi: f64 },
-    CastRay { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, ray: &'a Ray, max_toi: f64, solid: bool },
-    CastRayAndGetNormal { object: &'a GeometricShape, pose: &'a OptimaSE3Pose, ray: &'a Ray, max_toi: f64, solid: bool },
-    IntersectionTest { object1: &'a GeometricShape, object1_pose: &'a OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: &'a OptimaSE3Pose },
-    Distance { object1: &'a GeometricShape, object1_pose: &'a OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: &'a OptimaSE3Pose },
-    ClosestPoints { object1: &'a GeometricShape, object1_pose: &'a OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: &'a OptimaSE3Pose, max_dis: f64 },
-    Contact { object1: &'a GeometricShape, object1_pose: &'a OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: &'a OptimaSE3Pose, prediction: f64 },
-    CCD { object1: &'a GeometricShape, object1_pose_t1: &'a OptimaSE3Pose, object1_pose_t2: &'a OptimaSE3Pose, object2: &'a GeometricShape, object2_pose_t1: &'a OptimaSE3Pose, object2_pose_t2: &'a OptimaSE3Pose }
+    ProjectPoint { object: &'a GeometricShape, pose: OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
+    ContainsPoint { object: &'a GeometricShape, pose: OptimaSE3Pose, point: &'a Vector3<f64> },
+    DistanceToPoint { object: &'a GeometricShape, pose: OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
+    IntersectsRay { object: &'a GeometricShape, pose: OptimaSE3Pose, ray: &'a Ray, max_toi: f64 },
+    CastRay { object: &'a GeometricShape, pose: OptimaSE3Pose, ray: &'a Ray, max_toi: f64, solid: bool },
+    CastRayAndGetNormal { object: &'a GeometricShape, pose: OptimaSE3Pose, ray: &'a Ray, max_toi: f64, solid: bool },
+    IntersectionTest { object1: &'a GeometricShape, object1_pose: OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: OptimaSE3Pose },
+    Distance { object1: &'a GeometricShape, object1_pose: OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: OptimaSE3Pose },
+    ClosestPoints { object1: &'a GeometricShape, object1_pose: OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: OptimaSE3Pose, max_dis: f64 },
+    Contact { object1: &'a GeometricShape, object1_pose: OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: OptimaSE3Pose, prediction: f64 },
+    CCD { object1: &'a GeometricShape, object1_pose_t1: OptimaSE3Pose, object1_pose_t2: OptimaSE3Pose, object2: &'a GeometricShape, object2_pose_t1: OptimaSE3Pose, object2_pose_t2: OptimaSE3Pose }
 }
 impl <'a> GeometricShapeQueryInput<'a> {
     pub fn get_signatures(&self) -> Vec<GeometricShapeSignature> {
@@ -428,6 +496,12 @@ impl GeometricShapeQueryRawOutput {
     pub fn unwrap_contains_point(&self) -> Result<bool, OptimaError> {
         return match self {
             GeometricShapeQueryRawOutput::ContainsPoint(c) => { Ok(*c) }
+            _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
+        }
+    }
+    pub fn unwrap_distance_to_point(&self) -> Result<f64, OptimaError> {
+        return match self {
+            GeometricShapeQueryRawOutput::DistanceToPoint(d) => { Ok(*d) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
@@ -599,4 +673,3 @@ pub enum LogCondition {
     Intersection,
     BelowMinDistance(f64)
 }
-

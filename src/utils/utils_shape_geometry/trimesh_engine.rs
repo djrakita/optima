@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::str::FromStr;
-use collada::document::ColladaDocument;
 use collada::PrimitiveElement;
+use serde::{Serialize, Deserialize};
+use collada::document::ColladaDocument;
 use dae_parser::{Document, Transform};
 use nalgebra::{Matrix4, Point3, Unit, UnitQuaternion, Vector3};
 use parry3d_f64::transformation::convex_hull;
@@ -16,7 +17,7 @@ use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
 use crate::utils::utils_se3::rotation_and_translation::RotationAndTranslation;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrimeshEngine {
     vertices: Vec<Vector3<f64>>,
     indices: Vec<[usize; 3]>,
