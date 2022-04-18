@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use nalgebra::{max, Vector3};
+use nalgebra::{Vector3};
 use parry3d_f64::query::Ray;
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
@@ -12,7 +11,7 @@ pub struct GeometricShapeCollection {
     shapes: Vec<GeometricShape>,
     skips: SquareArray2D<bool>,
     average_distances: SquareArray2D<f64>,
-    signature_to_idx_map: HashMap<GeometricShapeSignature, usize>
+    sorted_signatures_with_shape_idxs: Vec<(GeometricShapeSignature, usize)>
 }
 impl GeometricShapeCollection {
     pub fn new_empty() -> Self {
@@ -20,41 +19,39 @@ impl GeometricShapeCollection {
             shapes: vec![],
             skips: SquareArray2D::new(0, true, None),
             average_distances: SquareArray2D::new(0, true, None),
-            signature_to_idx_map: HashMap::new()
+            sorted_signatures_with_shape_idxs: vec![]
         }
     }
     pub fn add_geometric_shape(&mut self, geometric_shape: GeometricShape) {
         let add_idx = self.shapes.len();
-        self.signature_to_idx_map.insert(geometric_shape.signature().clone(), add_idx);
+        let sorted_idx = self.sorted_signatures_with_shape_idxs.binary_search_by(|x| geometric_shape.signature().partial_cmp(&x.0).unwrap() );
+        let sorted_idx = match sorted_idx { Ok(idx) => {idx} Err(idx) => {idx} };
+        self.sorted_signatures_with_shape_idxs.insert(sorted_idx, (geometric_shape.signature().clone(), add_idx));
         self.shapes.push(geometric_shape);
         self.skips.append_new_row_and_column(Some(false));
         self.average_distances.append_new_row_and_column(Some(1.0));
     }
     pub fn set_skip(&mut self, skip: bool, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
-        let idx1 = self.signature_to_idx_map.get(signature1);
-        OptimaError::new_check_for_cannot_be_none_error(&idx1, file!(), line!())?;
-        let idx2 = self.signature_to_idx_map.get(signature2);
-        OptimaError::new_check_for_cannot_be_none_error(&idx2, file!(), line!())?;
+        let idx1 = self.get_shape_idx_from_signature(signature1)?;
+        let idx2 = self.get_shape_idx_from_signature(signature2)?;
 
-        let idx1 = idx1.unwrap();
-        let idx2 = idx2.unwrap();
-
-        self.skips.replace_data(skip, *idx1, *idx2)?;
+        self.skips.replace_data(skip, idx1, idx2)?;
 
         Ok(())
     }
     pub fn set_average_distance(&mut self, dis: f64, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
-        let idx1 = self.signature_to_idx_map.get(signature1);
-        OptimaError::new_check_for_cannot_be_none_error(&idx1, file!(), line!())?;
-        let idx2 = self.signature_to_idx_map.get(signature2);
-        OptimaError::new_check_for_cannot_be_none_error(&idx2, file!(), line!())?;
+        let idx1 = self.get_shape_idx_from_signature(signature1)?;
+        let idx2 = self.get_shape_idx_from_signature(signature2)?;
 
-        let idx1 = idx1.unwrap();
-        let idx2 = idx2.unwrap();
-
-        self.average_distances.replace_data(dis, *idx1, *idx2)?;
+        self.average_distances.replace_data(dis, idx1, idx2)?;
 
         Ok(())
+    }
+    pub fn set_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        self.skips.replace_data(skip, idx1, idx2)
+    }
+    pub fn set_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        self.average_distances.replace_data(dis, idx1, idx2)
     }
     pub fn shapes(&self) -> &Vec<GeometricShape> {
         &self.shapes
@@ -64,6 +61,17 @@ impl GeometricShapeCollection {
     }
     pub fn average_distances(&self) -> &SquareArray2D<f64> {
         &self.average_distances
+    }
+    pub fn get_shape_idx_from_signature(&self, signature: &GeometricShapeSignature) -> Result<usize, OptimaError> {
+        let binary_search_res = self.sorted_signatures_with_shape_idxs.binary_search_by(|x| signature.partial_cmp(&x.0).unwrap());
+        return match binary_search_res {
+            Ok(idx) => {
+                Ok(idx)
+            }
+            Err(_) => {
+                Err(OptimaError::new_generic_error_str(&format!("Shape with signature {:?} not found in GeometricShapeCollection.", signature), file!(), line!()))
+            }
+        };
     }
     pub fn get_geometric_shape_query_input_vec<'a>(&'a self, input: &'a GeometricShapeCollectionQueryInput) -> Result<Vec<GeometricShapeQueryInput<'a>>, OptimaError> {
         return match input {
@@ -260,7 +268,7 @@ impl <'a> GeometricShapeCollectionQueryInput<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeometricShapeCollectionInputPoses {
     poses: Vec<Option<OptimaSE3Pose>>
 }
@@ -277,11 +285,16 @@ impl GeometricShapeCollectionInputPoses {
                                   signature: &GeometricShapeSignature,
                                   pose: OptimaSE3Pose,
                                   geometric_shape_collection: &GeometricShapeCollection) -> Result<(), OptimaError> {
-        let idx = geometric_shape_collection.signature_to_idx_map.get(signature);
-        OptimaError::new_check_for_cannot_be_none_error(&idx, file!(), line!())?;
-        let idx = idx.unwrap();
+        let idx = geometric_shape_collection.get_shape_idx_from_signature(signature)?;
 
-        self.poses[*idx] = Some(pose);
+        self.poses[idx] = Some(pose);
+
+        Ok(())
+    }
+    pub fn insert_or_replace_pose_by_idx(&mut self, idx: usize, pose: OptimaSE3Pose) -> Result<(), OptimaError> {
+        OptimaError::new_check_for_out_of_bound_error(idx, self.poses.len(), file!(), line!())?;
+
+        self.poses[idx] = Some(pose);
 
         Ok(())
     }
@@ -295,3 +308,4 @@ impl GeometricShapeCollectionInputPoses {
         return true;
     }
 }
+

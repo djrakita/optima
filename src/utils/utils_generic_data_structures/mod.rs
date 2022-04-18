@@ -233,4 +233,40 @@ impl Mixable for OptimaSE3Pose {
         self.multiply(other, false).expect("error")
     }
 }
+impl Mixable for AveragingFloat {
+    fn mix(&self, other: &Self) -> Self {
+        let mut out_self = AveragingFloat::new();
+        out_self.absorb(self.value);
+        out_self.absorb(other.value);
+        out_self.counter = self.counter + other.counter;
+        return out_self
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AveragingFloat {
+    total_sum: f64,
+    counter: f64,
+    value: f64
+}
+impl AveragingFloat {
+    pub fn new() -> Self {
+        Self {
+            total_sum: 0.0,
+            counter: 0.0,
+            value: 0.0
+        }
+    }
+    pub fn absorb(&mut self, value: f64) {
+        self.total_sum += value;
+        self.counter += 1.0;
+        self.value = self.total_sum / self.counter;
+    }
+    pub fn value(&self) -> f64 { self.value }
+}
+impl Default for AveragingFloat {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 

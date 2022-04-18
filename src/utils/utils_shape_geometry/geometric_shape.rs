@@ -236,6 +236,7 @@ impl GeometricShapeQueries {
         let mut intersection_found = false;
         let mut minimum_distance = f64::INFINITY;
 
+
         for input in &inputs {
             let output = Self::generic_query(input);
             num_queries += 1;

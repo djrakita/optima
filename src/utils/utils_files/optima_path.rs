@@ -196,7 +196,6 @@ impl OptimaPath {
         }
         Ok(Self::Path(dirs::home_dir().unwrap().to_path_buf()))
     }
-
     pub fn new_asset_path_from_json_file() -> Result<Self, OptimaError> {
         if cfg!(target_arch = "wasm32") {
             return Err(OptimaError::new_unsupported_operation_error("new_asset_path_from_json_file",
@@ -204,7 +203,7 @@ impl OptimaPath {
         }
 
         let mut check_path = Self::new_home_path()?;
-        check_path.append(".optima_asset_path.json");
+        check_path.append(".optima_asset_path.JSON");
         if check_path.exists() {
             let path_to_assets_dir_res = check_path.load_object_from_json_file::<PathToAssetsDir>();
             match path_to_assets_dir_res {
@@ -228,7 +227,6 @@ impl OptimaPath {
             else { return Self::new_asset_path_from_json_file(); }
         }
     }
-
     pub fn new_asset_virtual_path() -> Result<Self, OptimaError> {
         /*
         let root_path = VfsPath::new(PhysicalFS::new(env::current_dir()
@@ -240,20 +238,17 @@ impl OptimaPath {
         let root_path = VfsPath::new(e);
         return Ok(Self::VfsPath(root_path));
     }
-
     pub fn append(&mut self, s: &str) {
         match self {
             OptimaPath::Path(p) => { p.push(s); }
             OptimaPath::VfsPath(p) => { *p = p.join(s).expect("error"); }
         }
     }
-
     pub fn append_vec(&mut self, v: &Vec<String>) {
         for s in v {
             self.append(s);
         }
     }
-
     pub fn append_file_location(&mut self, location: &OptimaAssetLocation) {
         let v = location.get_path_wrt_asset_folder();
         match self {
@@ -265,7 +260,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn read_file_contents_to_string(&self) -> Result<String, OptimaError> {
         return match self {
             OptimaPath::Path(p) => {
@@ -300,7 +294,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn write_string_to_file(&self, s: &String) -> Result<(), OptimaError> {
         return match self {
             OptimaPath::Path(p) => {
@@ -336,14 +329,12 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn exists(&self) -> bool {
         return match self {
             OptimaPath::Path(p) => { p.exists() }
             OptimaPath::VfsPath(p) => { p.exists().expect("error") }
         }
     }
-
     #[allow(unused_must_use)]
     pub fn get_file_for_writing(&self) -> Result<File, OptimaError> {
         return match self {
@@ -359,7 +350,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn to_string(&self) -> String {
         return match self {
             OptimaPath::Path(p) => {
@@ -370,7 +360,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn filename(&self) -> Option<String> {
         return match self {
             OptimaPath::Path(p) => {
@@ -386,7 +375,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn filename_without_extension(&self) -> Option<String> {
         let f = self.filename();
         return match f {
@@ -397,7 +385,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn extension(&self) -> Option<String> {
         return match self {
             OptimaPath::Path(p) => {
@@ -414,7 +401,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn set_extension(&mut self, extension: &str) {
         match self {
             OptimaPath::Path(p) => {
@@ -434,7 +420,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
         return match self {
             OptimaPath::Path(p) => {
@@ -470,7 +455,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn load_object_from_json_file<T: DeserializeOwned>(&self) -> Result<T, OptimaError> {
         let contents = self.read_file_contents_to_string();
         return match &contents {
@@ -482,7 +466,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn walk_directory_and_match(&self, pattern: OptimaPathMatchingPattern, stop_condition: OptimaPathMatchingStopCondition) -> Vec<OptimaPath> {
         let mut out_vec = vec![];
 
@@ -527,7 +510,6 @@ impl OptimaPath {
 
         out_vec
     }
-
     pub fn split_path_into_string_components(&self) -> Vec<String> {
         let mut out_vec = vec![];
 
@@ -562,7 +544,6 @@ impl OptimaPath {
             }
         };
     }
-
     #[allow(unused_must_use)]
     pub fn delete_file(&self) -> Result<(), OptimaError> {
         return match self {
@@ -575,7 +556,6 @@ impl OptimaPath {
             }
         }
     }
-
     #[allow(unused_must_use)]
     pub fn delete_all_items_in_directory(&self) -> Result<(), OptimaError> {
         return match self {
@@ -589,7 +569,6 @@ impl OptimaPath {
             }
         }
     }
-
     #[allow(unused_must_use)]
     pub fn copy_file_to_destination(&self, destination: &OptimaPath) -> Result<(), OptimaError> {
         if !self.exists() {
@@ -617,7 +596,6 @@ impl OptimaPath {
             }
         }
     }
-
     pub fn verify_extension(&self, extensions: &Vec<&str>) -> Result<(), OptimaError> {
         let ext_option = self.extension();
         match ext_option {
@@ -634,7 +612,6 @@ impl OptimaPath {
         }
         return Err(OptimaError::new_generic_error_str(&format!("Path {:?} does not have one of the following extensions: {:?} ", self, extensions), file!(), line!()));
     }
-
     pub fn get_all_items_in_directory(&self, include_directories: bool, include_hidden_files: bool) -> Vec<String> {
         let mut out_vec = vec![];
 
@@ -672,7 +649,6 @@ impl OptimaPath {
 
         out_vec
     }
-
     pub fn get_all_directories_in_directory(&self) -> Vec<String> {
         let mut out_vec = vec![];
 
@@ -705,7 +681,6 @@ impl OptimaPath {
 
         out_vec
     }
-
     pub fn load_urdf(&self) -> Result<Robot, OptimaError> {
         let s = self.read_file_contents_to_string()?;
         let robot_res = urdf_rs::read_from_string(&s);
@@ -714,7 +689,6 @@ impl OptimaPath {
             Err(_) => { Err(OptimaError::new_generic_error_str(&format!("Robot could not be loaded from path {:?}", self), file!(), line!())) }
         }
     }
-
     fn directory_walk_standard_entry(optima_path: &mut OptimaPath,
                                      out_vec: &mut Vec<OptimaPath>,
                                      pattern: &OptimaPathMatchingPattern) -> bool {
@@ -790,7 +764,6 @@ impl OptimaPath {
         }
         return matched;
     }
-
     #[allow(unused_must_use)]
     fn auto_create_optima_asset_path_json_file() -> bool {
         optima_print("Searching for Optima assets folder...", PrintMode::Println, PrintColor::Cyan, true);
@@ -809,7 +782,7 @@ impl OptimaPath {
             match &found_path {
                 OptimaPath::Path(p) => {
                     optima_print(&format!("Optima assets folder found at {:?}", p), PrintMode::Println, PrintColor::Green, true);
-                    home_dir.append(".optima_asset_path.json");
+                    home_dir.append(".optima_asset_path.JSON");
                     optima_print(&format!("Saved found path at {:?}", home_dir), PrintMode::Println, PrintColor::Green, true);
                     let path_to_assets_dir = PathToAssetsDir { path_to_assets_dir: p.clone() };
                     home_dir.save_object_to_file_as_json(&path_to_assets_dir).expect("error");
@@ -932,7 +905,7 @@ impl OptimaAssetLocation {
     }
 }
 
-/// Convenience class that will be used for path_to_assets_dir.json file.
+/// Convenience class that will be used for path_to_assets_dir.JSON file.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct PathToAssetsDir {
     pub path_to_assets_dir: PathBuf
@@ -962,12 +935,14 @@ pub enum OptimaPathMatchingStopCondition {
 /// to handle paths to particular module json files.
 #[derive(Clone, Debug)]
 pub enum RobotModuleJsonType {
-    ModelModule
+    ModelModule,
+    ShapeGeometryModule
 }
 impl RobotModuleJsonType {
     pub fn filename(&self) -> &str {
         match self {
-            RobotModuleJsonType::ModelModule => { "robot_model_module.json" }
+            RobotModuleJsonType::ModelModule => { "robot_model_module.JSON" }
+            RobotModuleJsonType::ShapeGeometryModule => { "robot_shape_geometry_module.JSON" }
         }
     }
 }

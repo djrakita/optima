@@ -1,3 +1,4 @@
+use pbr::ProgressBar;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -134,8 +135,13 @@ impl RobotMeshFileManagerModule {
     /// optima_assets directory.  If the files cannot be found, this function will return an error.
     #[allow(unused_must_use)]
     pub fn find_and_copy_visual_meshes_to_assets(&self) -> Result<(), OptimaError> {
+        optima_print(&format!("Finding and copying visual meshes to assets folder..."), PrintMode::Println, PrintColor::Blue, true);
         let destination = OptimaPath::new_asset_path_from_json_file()?;
         let paths = self.find_optima_paths_to_urdf_link_meshes(&LinkMeshType::Visual)?;
+        let num_paths = paths.len();
+        let mut pb = ProgressBar::new(num_paths as u64);
+        pb.format("╢▌▌░╟");
+
         for (i, path) in paths.iter().enumerate() {
             if let Some(p) = path {
                 let extension = p.extension().unwrap();
@@ -145,7 +151,9 @@ impl RobotMeshFileManagerModule {
                 destination_clone.append(&new_filename);
                 p.copy_file_to_destination(&destination_clone)?;
             }
+            pb.set(i as u64);
         }
+        println!();
         Ok(())
     }
 
