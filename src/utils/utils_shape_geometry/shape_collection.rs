@@ -4,16 +4,35 @@ use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::SquareArray2D;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQueryInput, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQuery, GeometricShapeSignature, LogCondition, StopCondition};
 
+/// A collection of `GeometricShape` objects.  Contains the vector of shapes as well as information
+/// on the relationship between shapes.  The most important function in this struct is
+/// `shape_collection_query`.  This function takes in a `ShapeCollectionQuery` input, resolves
+/// all poses of the geometric shapes in the scene, and automatically invokes the
+/// `GeometricShapeQueries::generic_group_query` function with the correct, corresponding inputs.
+///
+/// The `skips` field is a two dimensional square array that specifies whether a particular pair of shapes
+/// should be skipped in a pairwise geometry query (e.g., intersection checking, distance checking, etc).
+/// Also, the `average_distances` field is a two dimensional square array that allows for thte saving and recall of
+/// precomputed average distances between pairs of shapes (will be 1.0 by default for all shapes
+/// until changed).  A `ShapeCollection` allows for dynamic adding of shapes as well.
+///
+/// The ordering of shapes in the `shapes` field is important; the index that a particular shape is
+/// at in this list correspond to its "shape index".  For example, shapes[0] would have a "shape index"
+/// of 0, shapes[1] would have a "shape index" of 1, etc.  These shape indices also correspond to all
+/// `SquareArray2D` fields in this object.  For example, the skips.data_cell(3, 6) would access whether
+/// any pairwise geometric shape query by GeometricShapeQueries::generic_group_query should skip the
+/// computation between shape with index 3 and shape with index 6.  Use the `get_shape_idx_from_signature`
+/// function to map a signature to a shape index.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GeometricShapeCollection {
+pub struct ShapeCollection {
     shapes: Vec<GeometricShape>,
     skips: SquareArray2D<bool>,
     average_distances: SquareArray2D<f64>,
     sorted_signatures_with_shape_idxs: Vec<(GeometricShapeSignature, usize)>
 }
-impl GeometricShapeCollection {
+impl ShapeCollection {
     pub fn new_empty() -> Self {
         Self {
             shapes: vec![],
@@ -66,29 +85,29 @@ impl GeometricShapeCollection {
         let binary_search_res = self.sorted_signatures_with_shape_idxs.binary_search_by(|x| signature.partial_cmp(&x.0).unwrap());
         return match binary_search_res {
             Ok(idx) => {
-                Ok(idx)
+                Ok(self.sorted_signatures_with_shape_idxs[idx].1)
             }
             Err(_) => {
                 Err(OptimaError::new_generic_error_str(&format!("Shape with signature {:?} not found in GeometricShapeCollection.", signature), file!(), line!()))
             }
         };
     }
-    pub fn get_geometric_shape_query_input_vec<'a>(&'a self, input: &'a GeometricShapeCollectionQueryInput) -> Result<Vec<GeometricShapeQueryInput<'a>>, OptimaError> {
+    pub fn get_geometric_shape_query_input_vec<'a>(&'a self, input: &'a ShapeCollectionQuery) -> Result<Vec<GeometricShapeQuery<'a>>, OptimaError> {
         return match input {
-            GeometricShapeCollectionQueryInput::ProjectPoint { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::ContainsPoint { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::DistanceToPoint { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::IntersectsRay { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::CastRay { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::CastRayAndGetNormal { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::IntersectionTest { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::Distance { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::ClosestPoints { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::Contact { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
-            GeometricShapeCollectionQueryInput::CCD { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::ProjectPoint { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::ContainsPoint { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::DistanceToPoint { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::IntersectsRay { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::CastRay { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::CastRayAndGetNormal { .. } => { self.get_single_object_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::IntersectionTest { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::Distance { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::ClosestPoints { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::Contact { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
+            ShapeCollectionQuery::CCD { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
         }
     }
-    fn get_single_object_geometric_shape_query_input_vec<'a>(&'a self, input: &'a GeometricShapeCollectionQueryInput) -> Result<Vec<GeometricShapeQueryInput<'a>>, OptimaError> {
+    fn get_single_object_geometric_shape_query_input_vec<'a>(&'a self, input: &'a ShapeCollectionQuery) -> Result<Vec<GeometricShapeQuery<'a>>, OptimaError> {
         let mut out_vec = vec![];
 
         let poses = &input.get_poses()?[0].poses;
@@ -96,39 +115,39 @@ impl GeometricShapeCollection {
             let pose = &poses[i];
             if let Some(pose) = pose {
                 match input {
-                    GeometricShapeCollectionQueryInput::ProjectPoint { poses: _, point, solid } => {
-                        out_vec.push(GeometricShapeQueryInput::ProjectPoint {
+                    ShapeCollectionQuery::ProjectPoint { poses: _, point, solid } => {
+                        out_vec.push(GeometricShapeQuery::ProjectPoint {
                             object: s,
                             pose: pose.clone(),
                             point,
                             solid: *solid
                         });
                     }
-                    GeometricShapeCollectionQueryInput::ContainsPoint { poses: _, point } => {
-                        out_vec.push(GeometricShapeQueryInput::ContainsPoint {
+                    ShapeCollectionQuery::ContainsPoint { poses: _, point } => {
+                        out_vec.push(GeometricShapeQuery::ContainsPoint {
                             object: s,
                             pose: pose.clone(),
                             point
                         });
                     }
-                    GeometricShapeCollectionQueryInput::DistanceToPoint { poses: _, point, solid } => {
-                        out_vec.push(GeometricShapeQueryInput::DistanceToPoint {
+                    ShapeCollectionQuery::DistanceToPoint { poses: _, point, solid } => {
+                        out_vec.push(GeometricShapeQuery::DistanceToPoint {
                             object: s,
                             pose: pose.clone(),
                             point,
                             solid: *solid
                         });
                     }
-                    GeometricShapeCollectionQueryInput::IntersectsRay { poses: _, ray, max_toi } => {
-                        out_vec.push(GeometricShapeQueryInput::IntersectsRay {
+                    ShapeCollectionQuery::IntersectsRay { poses: _, ray, max_toi } => {
+                        out_vec.push(GeometricShapeQuery::IntersectsRay {
                             object: s,
                             pose: pose.clone(),
                             ray,
                             max_toi: *max_toi
                         });
                     }
-                    GeometricShapeCollectionQueryInput::CastRay { poses: _, ray, max_toi, solid } => {
-                        out_vec.push(GeometricShapeQueryInput::CastRay {
+                    ShapeCollectionQuery::CastRay { poses: _, ray, max_toi, solid } => {
+                        out_vec.push(GeometricShapeQuery::CastRay {
                             object: s,
                             pose: pose.clone(),
                             ray,
@@ -136,8 +155,8 @@ impl GeometricShapeCollection {
                             solid: *solid
                         });
                     }
-                    GeometricShapeCollectionQueryInput::CastRayAndGetNormal { poses: _, ray, max_toi, solid } => {
-                        out_vec.push(GeometricShapeQueryInput::CastRayAndGetNormal {
+                    ShapeCollectionQuery::CastRayAndGetNormal { poses: _, ray, max_toi, solid } => {
+                        out_vec.push(GeometricShapeQuery::CastRayAndGetNormal {
                             object: s,
                             pose: pose.clone(),
                             ray,
@@ -151,7 +170,7 @@ impl GeometricShapeCollection {
         }
         Ok(out_vec)
     }
-    fn get_pairwise_objects_geometric_shape_query_input_vec<'a>(&'a self, input: &'a GeometricShapeCollectionQueryInput) -> Result<Vec<GeometricShapeQueryInput<'a>>, OptimaError> {
+    fn get_pairwise_objects_geometric_shape_query_input_vec<'a>(&'a self, input: &'a ShapeCollectionQuery) -> Result<Vec<GeometricShapeQuery<'a>>, OptimaError> {
         let mut out_vec = vec![];
 
         let poses = &input.get_poses()?[0].poses;
@@ -166,24 +185,24 @@ impl GeometricShapeCollection {
                             let skip = self.skips.data_cell(i, j)?;
                             if !*skip {
                                 match input {
-                                    GeometricShapeCollectionQueryInput::IntersectionTest { .. } => {
-                                        out_vec.push(GeometricShapeQueryInput::IntersectionTest {
+                                    ShapeCollectionQuery::IntersectionTest { .. } => {
+                                        out_vec.push(GeometricShapeQuery::IntersectionTest {
                                             object1: shape1,
                                             object1_pose: pose1.clone(),
                                             object2: shape2,
                                             object2_pose: pose2.clone()
                                         });
                                     }
-                                    GeometricShapeCollectionQueryInput::Distance { .. } => {
-                                        out_vec.push(GeometricShapeQueryInput::Distance {
+                                    ShapeCollectionQuery::Distance { .. } => {
+                                        out_vec.push(GeometricShapeQuery::Distance {
                                             object1: shape1,
                                             object1_pose: pose1.clone(),
                                             object2: shape2,
                                             object2_pose: pose2.clone()
                                         });
                                     }
-                                    GeometricShapeCollectionQueryInput::ClosestPoints { poses: _, max_dis } => {
-                                        out_vec.push(GeometricShapeQueryInput::ClosestPoints {
+                                    ShapeCollectionQuery::ClosestPoints { poses: _, max_dis } => {
+                                        out_vec.push(GeometricShapeQuery::ClosestPoints {
                                             object1: shape1,
                                             object1_pose: pose1.clone(),
                                             object2: shape2,
@@ -191,8 +210,8 @@ impl GeometricShapeCollection {
                                             max_dis: *max_dis
                                         });
                                     }
-                                    GeometricShapeCollectionQueryInput::Contact { poses: _, prediction } => {
-                                        out_vec.push(GeometricShapeQueryInput::Contact {
+                                    ShapeCollectionQuery::Contact { poses: _, prediction } => {
+                                        out_vec.push(GeometricShapeQuery::Contact {
                                             object1: shape1,
                                             object1_pose: pose1.clone(),
                                             object2: shape2,
@@ -200,12 +219,12 @@ impl GeometricShapeCollection {
                                             prediction: *prediction
                                         });
                                     }
-                                    GeometricShapeCollectionQueryInput::CCD { poses_t1: _, poses_t2 } => {
+                                    ShapeCollectionQuery::CCD { poses_t1: _, poses_t2 } => {
                                         let pose1_t2 = &poses_t2.poses[i];
                                         let pose2_t2 = &poses_t2.poses[j];
                                         if let Some(pose1_t2) = pose1_t2 {
                                             if let Some(pose2_t2) = pose2_t2 {
-                                                out_vec.push(GeometricShapeQueryInput::CCD {
+                                                out_vec.push(GeometricShapeQuery::CCD {
                                                     object1: shape1,
                                                     object1_pose_t1: pose1.clone(),
                                                     object1_pose_t2: pose1_t2.clone(),
@@ -227,54 +246,59 @@ impl GeometricShapeCollection {
 
         Ok(out_vec)
     }
-    pub fn generic_group_query<'a>(&'a self,
-                                   input: &'a GeometricShapeCollectionQueryInput,
-                                   stop_condition: StopCondition,
-                                   log_condition: LogCondition,
-                                   sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
+    pub fn shape_collection_query<'a>(&'a self,
+                                      input: &'a ShapeCollectionQuery,
+                                      stop_condition: StopCondition,
+                                      log_condition: LogCondition,
+                                      sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
         let input_vec = self.get_geometric_shape_query_input_vec(input)?;
         Ok(GeometricShapeQueries::generic_group_query(input_vec, stop_condition, log_condition, sort_outputs))
     }
 }
 
-pub enum GeometricShapeCollectionQueryInput<'a> {
-    ProjectPoint { poses: &'a GeometricShapeCollectionInputPoses, point: &'a Vector3<f64>, solid: bool },
-    ContainsPoint { poses: &'a GeometricShapeCollectionInputPoses, point: &'a Vector3<f64> },
-    DistanceToPoint { poses: &'a GeometricShapeCollectionInputPoses, point: &'a Vector3<f64>, solid: bool },
-    IntersectsRay { poses: &'a GeometricShapeCollectionInputPoses, ray: &'a Ray, max_toi: f64 },
-    CastRay { poses: &'a GeometricShapeCollectionInputPoses, ray: &'a Ray, max_toi: f64, solid: bool },
-    CastRayAndGetNormal { poses: &'a GeometricShapeCollectionInputPoses, ray: &'a Ray, max_toi: f64, solid: bool },
-    IntersectionTest { poses: &'a GeometricShapeCollectionInputPoses },
-    Distance { poses: &'a GeometricShapeCollectionInputPoses },
-    ClosestPoints { poses: &'a GeometricShapeCollectionInputPoses, max_dis: f64 },
-    Contact { poses: &'a GeometricShapeCollectionInputPoses, prediction: f64 },
-    CCD { poses_t1: &'a GeometricShapeCollectionInputPoses, poses_t2: &'a GeometricShapeCollectionInputPoses }
+/// An input into the important `ShapeCollection::shape_collection_query` function.
+pub enum ShapeCollectionQuery<'a> {
+    ProjectPoint { poses: &'a ShapeCollectionInputPoses, point: &'a Vector3<f64>, solid: bool },
+    ContainsPoint { poses: &'a ShapeCollectionInputPoses, point: &'a Vector3<f64> },
+    DistanceToPoint { poses: &'a ShapeCollectionInputPoses, point: &'a Vector3<f64>, solid: bool },
+    IntersectsRay { poses: &'a ShapeCollectionInputPoses, ray: &'a Ray, max_toi: f64 },
+    CastRay { poses: &'a ShapeCollectionInputPoses, ray: &'a Ray, max_toi: f64, solid: bool },
+    CastRayAndGetNormal { poses: &'a ShapeCollectionInputPoses, ray: &'a Ray, max_toi: f64, solid: bool },
+    IntersectionTest { poses: &'a ShapeCollectionInputPoses },
+    Distance { poses: &'a ShapeCollectionInputPoses },
+    ClosestPoints { poses: &'a ShapeCollectionInputPoses, max_dis: f64 },
+    Contact { poses: &'a ShapeCollectionInputPoses, prediction: f64 },
+    CCD { poses_t1: &'a ShapeCollectionInputPoses, poses_t2: &'a ShapeCollectionInputPoses }
 }
-impl <'a> GeometricShapeCollectionQueryInput<'a> {
-    pub fn get_poses(&self) -> Result<Vec<&'a GeometricShapeCollectionInputPoses>, OptimaError> {
+impl <'a> ShapeCollectionQuery<'a> {
+    fn get_poses(&self) -> Result<Vec<&'a ShapeCollectionInputPoses>, OptimaError> {
         match self {
-            GeometricShapeCollectionQueryInput::ProjectPoint { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::ContainsPoint { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::DistanceToPoint { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::IntersectsRay { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::CastRay { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::CastRayAndGetNormal { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::IntersectionTest { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::Distance { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::ClosestPoints { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::Contact { poses, .. } => { Ok(vec![poses]) }
-            GeometricShapeCollectionQueryInput::CCD { poses_t1, poses_t2 } => { Ok(vec![poses_t1, poses_t2]) }
+            ShapeCollectionQuery::ProjectPoint { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::ContainsPoint { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::DistanceToPoint { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::IntersectsRay { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::CastRay { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::CastRayAndGetNormal { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::IntersectionTest { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::Distance { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::ClosestPoints { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::Contact { poses, .. } => { Ok(vec![poses]) }
+            ShapeCollectionQuery::CCD { poses_t1, poses_t2 } => { Ok(vec![poses_t1, poses_t2]) }
         }
     }
 }
 
+/// A convenient way to pass SE(3) pose information into a `ShapeCollectionQuery` object.  The length
+/// of the `poses` field vector will be the same length as the `ShapeCollection shapes` field.  If a
+/// particular pose is `None` in this list, the shape at the corresponding index in `ShapeCollection.shapes`
+/// will be omitted from any computation that uses this object.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GeometricShapeCollectionInputPoses {
+pub struct ShapeCollectionInputPoses {
     poses: Vec<Option<OptimaSE3Pose>>
 }
-impl GeometricShapeCollectionInputPoses {
-    pub fn new(geometric_shape_collection: &GeometricShapeCollection) -> Self {
-        let num_shapes = geometric_shape_collection.shapes.len();
+impl ShapeCollectionInputPoses {
+    pub fn new(shape_collection: &ShapeCollection) -> Self {
+        let num_shapes = shape_collection.shapes.len();
         let mut poses = vec![];
         for _ in 0..num_shapes { poses.push(None); }
         Self {
@@ -284,8 +308,8 @@ impl GeometricShapeCollectionInputPoses {
     pub fn insert_or_replace_pose(&mut self,
                                   signature: &GeometricShapeSignature,
                                   pose: OptimaSE3Pose,
-                                  geometric_shape_collection: &GeometricShapeCollection) -> Result<(), OptimaError> {
-        let idx = geometric_shape_collection.get_shape_idx_from_signature(signature)?;
+                                  shape_collection: &ShapeCollection) -> Result<(), OptimaError> {
+        let idx = shape_collection.get_shape_idx_from_signature(signature)?;
 
         self.poses[idx] = Some(pose);
 
@@ -301,6 +325,7 @@ impl GeometricShapeCollectionInputPoses {
     pub fn poses(&self) -> &Vec<Option<OptimaSE3Pose>> {
         &self.poses
     }
+    /// Returns true if all poses in this object are `Some` and not `None`.
     pub fn is_full(&self) -> bool {
         for p in &self.poses {
             if p.is_none() { return false; }

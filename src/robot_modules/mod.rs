@@ -5,4 +5,4 @@ pub mod robot_file_manager_module;
 pub mod robot_fk_module;
 pub mod robot_preprocessing_module;
 pub mod robot_joint_state_module;
-pub mod robot_shape_geometry_module;
+pub mod robot_geometric_shape_module;

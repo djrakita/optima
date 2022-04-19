@@ -13,7 +13,7 @@ use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
-use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
+use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
 use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad};
 
 /// The `RobotModelModule` is the base description level for a robot.  It reflects component and
@@ -41,67 +41,6 @@ pub struct RobotModelModule {
     joint_name_to_idx_hashmap: HashMap<String, usize>
 }
 impl RobotModelModule {
-    /*
-    /// Creates a new `RobotModelModule`.  The robot_name string is the name of the folder in the
-    /// optima_assets/optima_robots directory.
-    ///
-    /// ## Example
-    /// ```
-    /// use optima::robot_modules::robot_model_module::RobotModelModule;
-    /// let mut r = RobotModelModule::new_from_absolute_paths("ur5");
-    /// ```
-    pub fn new_from_absolute_paths(robot_name: &str) -> Result<Self, OptimaError> {
-        let mut joints = vec![];
-        let mut links = vec![];
-
-        let mut urdf_robot_joints = vec![];
-        let mut urdf_robot_links = vec![];
-
-        let mut link_name_to_idx_hashmap = HashMap::new();
-        let mut joint_name_to_idx_hashmap = HashMap::new();
-
-        let path_to_urdf = RobotDirUtils::get_absolute_path_to_urdf_file(robot_name)?;
-        let urdf_robot_res = urdf_rs::read_file(path_to_urdf);
-        match &urdf_robot_res {
-            Ok(urdf_robot) => {
-                for (i, j) in urdf_robot.joints.iter().enumerate() {
-                    joint_name_to_idx_hashmap.insert(j.name.clone(), i);
-                    joints.push(Joint::new(URDFJoint::new_from_urdf_joint(j), i));
-                    urdf_robot_joints.push(j);
-                }
-                for (i, l) in urdf_robot.links.iter().enumerate() {
-                    link_name_to_idx_hashmap.insert(l.name.clone(), i);
-                    links.push(Link::new(URDFLink::new_from_urdf_link(l), i));
-                    urdf_robot_links.push(l);
-                }
-            }
-            Err(_) => {
-                return Err(OptimaError::new_generic_error_str("Error when parsing urdf."))
-            }
-        }
-
-        let mut out_self = Self {
-            robot_name: robot_name.to_string(),
-            links,
-            joints,
-            world_link_idx: 0,
-            robot_base_link_idx: 0,
-            link_tree_traversal_layers: vec![],
-            link_tree_max_depth: 0,
-            preceding_actuated_joint_idxs: vec![],
-            link_name_to_idx_hashmap,
-            joint_name_to_idx_hashmap
-        };
-
-        out_self.assign_all_link_connections_manual();
-        out_self.assign_all_joint_connections_manual();
-        out_self.set_world_link_idx_manual();
-        out_self.set_link_tree_traversal_info();
-
-        Ok(out_self)
-    }
-    */
-
     /// Creates a new `RobotModelModule`.  The robot_name string is the name of the folder in the
     /// optima_assets/optima_robots directory.
     ///
@@ -573,10 +512,6 @@ impl RobotModelModule {
 impl RobotModuleSaveAndLoad for RobotModelModule {
     fn get_robot_name(&self) -> &str {
         self.robot_name()
-    }
-
-    fn get_robot_module_json_type(&self) -> RobotModuleJsonType {
-        RobotModuleJsonType::ModelModule
     }
 }
 

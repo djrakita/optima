@@ -37,10 +37,10 @@ impl OptimaStemCellPath {
             let p_res = OptimaPath::new_asset_virtual_path();
             if let Ok(p) = p_res { optima_file_paths.push(p); }
         } else if cfg!(feature = "do_not_embed_assets") {
-            let p_res = OptimaPath::new_asset_path_from_json_file();
+            let p_res = OptimaPath::new_asset_physical_path_from_json_file();
             if let Ok(p) = p_res { optima_file_paths.push(p); }
         } else {
-            let p_res1 = OptimaPath::new_asset_path_from_json_file();
+            let p_res1 = OptimaPath::new_asset_physical_path_from_json_file();
             if let Ok(p) = p_res1 { optima_file_paths.push(p); }
             let p_res2 = OptimaPath::new_asset_virtual_path();
             if let Ok(p) = p_res2 { optima_file_paths.push(p); }
@@ -54,10 +54,13 @@ impl OptimaStemCellPath {
             optima_file_paths
         })
     }
+    pub fn new_asset_path_from_string_components(components: &Vec<String>) -> Result<Self, OptimaError> {
+        let mut out_path = Self::new_asset_path()?;
+        for s in components { out_path.append(s); }
+        Ok(out_path)
+    }
     pub fn append(&mut self, s: &str) {
-        for p in &mut self.optima_file_paths {
-            p.append(s);
-        }
+        for p in &mut self.optima_file_paths { p.append(s); }
     }
     pub fn append_vec(&mut self, v: &Vec<String>) {
         for p in &mut self.optima_file_paths {
@@ -100,6 +103,9 @@ impl OptimaStemCellPath {
     }
     pub fn split_path_into_string_components(&self) -> Vec<String> {
         return self.optima_file_paths[0].split_path_into_string_components();
+    }
+    pub fn split_path_into_string_components_back_to_assets_dir(&self) -> Result<Vec<String>, OptimaError> {
+        return self.optima_file_paths[0].split_path_into_string_components_back_to_asset_dir();
     }
     pub fn delete_file(&self) -> Result<(), OptimaError> {
         self.try_function_on_all_optima_file_paths(OptimaPath::delete_file, "delete_file")
@@ -196,7 +202,7 @@ impl OptimaPath {
         }
         Ok(Self::Path(dirs::home_dir().unwrap().to_path_buf()))
     }
-    pub fn new_asset_path_from_json_file() -> Result<Self, OptimaError> {
+    pub fn new_asset_physical_path_from_json_file() -> Result<Self, OptimaError> {
         if cfg!(target_arch = "wasm32") {
             return Err(OptimaError::new_unsupported_operation_error("new_asset_path_from_json_file",
             "Not supported by wasm32.", file!(), line!()));
@@ -213,7 +219,7 @@ impl OptimaPath {
                 Err(_) => {
                     let found = Self::auto_create_optima_asset_path_json_file();
                     if !found { return Err(OptimaError::new_generic_error_str("optima_asset folder not found on computer.", file!(), line!())); }
-                    else { return Self::new_asset_path_from_json_file(); }
+                    else { return Self::new_asset_physical_path_from_json_file(); }
                 }
             }
         } else {
@@ -224,7 +230,7 @@ impl OptimaPath {
             }
             let found = Self::auto_create_optima_asset_path_json_file();
             if !found { return Err(OptimaError::new_generic_error_str("optima_asset folder not found on computer.", file!(), line!())); }
-            else { return Self::new_asset_path_from_json_file(); }
+            else { return Self::new_asset_physical_path_from_json_file(); }
         }
     }
     pub fn new_asset_virtual_path() -> Result<Self, OptimaError> {
@@ -238,7 +244,25 @@ impl OptimaPath {
         let root_path = VfsPath::new(e);
         return Ok(Self::VfsPath(root_path));
     }
+    pub fn new_asset_physical_path_from_string_components(components: &Vec<String>) -> Result<Self, OptimaError> {
+        if cfg!(target_arch = "wasm32") {
+            return Err(OptimaError::new_unsupported_operation_error("new_asset_physical_path_from_string_components",
+            "Not supported by wasm32.", file!(), line!()));
+        }
+
+        let mut path = Self::new_asset_physical_path_from_json_file()?;
+        for s in components { path.append(s); }
+
+        return Ok(path);
+    }
+    pub fn new_asset_virtual_path_from_string_components(components: &Vec<String>) -> Result<Self, OptimaError> {
+        let mut path = Self::new_asset_virtual_path()?;
+        for s in components { path.append(s); }
+
+        return Ok(path);
+    }
     pub fn append(&mut self, s: &str) {
+        if s == "" { return; }
         match self {
             OptimaPath::Path(p) => { p.push(s); }
             OptimaPath::VfsPath(p) => { *p = p.join(s).expect("error"); }
@@ -456,6 +480,7 @@ impl OptimaPath {
         }
     }
     pub fn load_object_from_json_file<T: DeserializeOwned>(&self) -> Result<T, OptimaError> {
+        OptimaError::new_check_for_path_does_not_exist(self, file!(), line!())?;
         let contents = self.read_file_contents_to_string();
         return match &contents {
             Ok(s) => {
@@ -543,6 +568,39 @@ impl OptimaPath {
                 }
             }
         };
+    }
+    pub fn split_path_into_string_components_back_to_asset_dir(&self) -> Result<Vec<String>, OptimaError> {
+        return match self {
+            OptimaPath::Path(_) => {
+                let string_components = self.split_path_into_string_components();
+                let mut optima_assets_idx: Option<usize> = None;
+                for (i, s) in string_components.iter().enumerate() {
+                    if s == "optima_assets" {
+                        optima_assets_idx = Some(i);
+                        break;
+                    }
+                }
+
+                if optima_assets_idx.is_none() {
+                    return Err(OptimaError::new_generic_error_str(&format!("optima_assets was not found on the given path {:?}", self), file!(), line!()));
+                }
+
+                let optima_assets_idx = optima_assets_idx.unwrap();
+                let num_string_components = string_components.len();
+
+                if optima_assets_idx == num_string_components - 1 { return Ok(vec![]); }
+
+                let mut out_vec = vec![];
+                for i in optima_assets_idx + 1..num_string_components {
+                    out_vec.push(string_components[i].clone());
+                }
+
+                Ok(out_vec)
+            }
+            OptimaPath::VfsPath(_) => {
+                Ok(self.split_path_into_string_components())
+            }
+        }
     }
     #[allow(unused_must_use)]
     pub fn delete_file(&self) -> Result<(), OptimaError> {
@@ -794,6 +852,12 @@ impl OptimaPath {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum OptimaPathType {
+    Path,
+    Vfs
+}
+
 /// Loads an object that implements the `Deserialize` trait from a deserialized json string.
 pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Result<T, OptimaError> {
     let o_res = serde_json::from_str(json_str);
@@ -936,13 +1000,15 @@ pub enum OptimaPathMatchingStopCondition {
 #[derive(Clone, Debug)]
 pub enum RobotModuleJsonType {
     ModelModule,
-    ShapeGeometryModule
+    ShapeGeometryModule,
+    ShapeGeometryModulePermanent
 }
 impl RobotModuleJsonType {
     pub fn filename(&self) -> &str {
         match self {
             RobotModuleJsonType::ModelModule => { "robot_model_module.JSON" }
             RobotModuleJsonType::ShapeGeometryModule => { "robot_shape_geometry_module.JSON" }
+            RobotModuleJsonType::ShapeGeometryModulePermanent => { "robot_shape_geometry_module_permanent.JSON" }
         }
     }
 }

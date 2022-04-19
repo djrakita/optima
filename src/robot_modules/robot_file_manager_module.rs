@@ -1,4 +1,3 @@
-use pbr::ProgressBar;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -7,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
-use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{get_default_progress_bar, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
 use crate::utils::utils_robot::link::Link;
@@ -23,14 +22,12 @@ impl RobotMeshFileManagerModule {
         let robot_model_module = RobotModelModule::new(robot_name)?;
         return Self::new(&robot_model_module);
     }
-
     pub fn new(robot_model_module: &RobotModelModule) -> Result<Self, OptimaError> {
         Ok(Self {
             robot_name: robot_model_module.robot_name().to_string(),
             links: robot_model_module.links().clone()
         })
     }
-
     fn get_urdf_link_mesh_path_split_vecs(&self, link_mesh_type: &LinkMeshType) -> Vec<Option<Vec<String>>> {
         let mut out_vec = vec![];
 
@@ -56,7 +53,6 @@ impl RobotMeshFileManagerModule {
 
         out_vec
     }
-
     fn get_final_n_subcomponents_from_urdf_link_mesh_path_split_vecs(&self, link_mesh_type: &LinkMeshType, n: usize) -> Vec<Option<Vec<String>>> {
         let mut out_vec = vec![];
 
@@ -77,7 +73,6 @@ impl RobotMeshFileManagerModule {
 
         out_vec
     }
-
     fn find_optima_paths_to_urdf_link_meshes(&self, link_mesh_type: &LinkMeshType) -> Result<Vec<Option<OptimaPath>>, OptimaError> {
         let mut out_vec = vec![];
 
@@ -128,7 +123,6 @@ impl RobotMeshFileManagerModule {
 
         Ok(out_vec)
     }
-
     /// Attempts to find mesh files on the user's computer based on the file paths specified in the robot URDF.
     /// The mesh files can be anywhere on the computer, but these files will be easiest to find in
     /// a major directory like the desktop.  If the files are found, they are copied to the local
@@ -136,11 +130,10 @@ impl RobotMeshFileManagerModule {
     #[allow(unused_must_use)]
     pub fn find_and_copy_visual_meshes_to_assets(&self) -> Result<(), OptimaError> {
         optima_print(&format!("Finding and copying visual meshes to assets folder..."), PrintMode::Println, PrintColor::Blue, true);
-        let destination = OptimaPath::new_asset_path_from_json_file()?;
+        let destination = OptimaPath::new_asset_physical_path_from_json_file()?;
         let paths = self.find_optima_paths_to_urdf_link_meshes(&LinkMeshType::Visual)?;
         let num_paths = paths.len();
-        let mut pb = ProgressBar::new(num_paths as u64);
-        pb.format("╢▌▌░╟");
+        let mut pb = get_default_progress_bar(num_paths);
 
         for (i, path) in paths.iter().enumerate() {
             if let Some(p) = path {
@@ -156,7 +149,6 @@ impl RobotMeshFileManagerModule {
         println!();
         Ok(())
     }
-
     /// Returns the paths to visual meshes.  The vector here has an entry for each robot link in the
     /// robot model.  If a given link does not have a visual component, the entry will be None.
     /// Files are either drawn from the robot's mesh folder as stls or the robot's glb_mesh directory as glbs.
@@ -175,7 +167,6 @@ impl RobotMeshFileManagerModule {
 
         Ok(out_vec)
     }
-
     /// Returns the paths to convex shape stls.  The vector here has an entry for each robot link in the
     /// robot model.  If a given link does not have a visual component, the entry will be None.
     pub fn get_paths_to_convex_shape_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
@@ -199,7 +190,6 @@ impl RobotMeshFileManagerModule {
 
         Ok(out_vec)
     }
-
     /// Returns the paths to convex shape subcomponent stls.  The vector here has a vector entry for
     /// each robot link in the robot model.
     pub fn get_paths_to_convex_shape_subcomponent_meshes(&self) -> Result<Vec<Vec<OptimaStemCellPath>>, OptimaError> {
@@ -223,7 +213,6 @@ impl RobotMeshFileManagerModule {
 
         Ok(out_vec)
     }
-
     pub fn get_paths_to_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let mut out_vec = vec![];
 
@@ -245,7 +234,6 @@ impl RobotMeshFileManagerModule {
 
         Ok(out_vec)
     }
-
     fn get_paths_to_glb_meshes(&self) -> Result<Vec<Option<OptimaStemCellPath>>, OptimaError> {
         let mut out_vec = vec![];
 
@@ -267,6 +255,9 @@ impl RobotMeshFileManagerModule {
 
 
         Ok(out_vec)
+    }
+    pub fn robot_name(&self) -> &str {
+        &self.robot_name
     }
 }
 

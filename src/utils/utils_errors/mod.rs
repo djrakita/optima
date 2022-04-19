@@ -1,5 +1,7 @@
 // use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 
+use crate::utils::utils_files::optima_path::OptimaPath;
+
 /// A common error type returned by functions throughout the toolbox.
 #[derive(Clone, Debug)]
 pub enum OptimaError {
@@ -8,7 +10,8 @@ pub enum OptimaError {
     UnsupportedOperationError(String),
     RobotStateVecWrongSizeError(String),
     CannotBeNoneError(String),
-    UnreachableCode
+    UnreachableCode,
+    PathDoesNotExist(String)
 }
 impl OptimaError {
     pub fn new_generic_error_str(s: &str, file: &str, line: u32) -> Self {
@@ -32,6 +35,11 @@ impl OptimaError {
         return match data {
             None => { Err(Self::CannotBeNoneError(format!("Data cannot be none. -- File {:?}, line {:?}", file, line))) }
             Some(_) => { Ok(()) }
+        }
+    }
+    pub fn new_check_for_path_does_not_exist(path: &OptimaPath, file: &str, line: u32) -> Result<(), Self> {
+        return if path.exists() { Ok(()) } else {
+            Err(Self::PathDoesNotExist(format!("path: {:?} -- file: {:?}, line: {:?}", path, file, line)))
         }
     }
     pub fn new_unsupported_operation_error(function_name: &str, message: &str, file: &str, line: u32) -> Self {

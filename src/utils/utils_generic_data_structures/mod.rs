@@ -149,6 +149,29 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
             }
         }
     }
+    pub fn adjust_data<F: Fn(&mut T)>(&mut self, adjustment: F, row_idx: usize, col_idx: usize) -> Result<(), OptimaError> {
+        OptimaError::new_check_for_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
+
+        let data = &mut self.array[row_idx][col_idx];
+        adjustment(data);
+
+        if self.symmetric {
+            let data = &mut self.array[col_idx][row_idx];
+            adjustment(data);
+        }
+
+        Ok(())
+    }
+    pub fn adjust_data_on_every_cell<F: Fn(&mut T)>(&mut self, adjustment: F) {
+        let l = self.side_length;
+        for row in 0..l {
+            for col in 0..l {
+                let data = &mut self.array[row][col];
+                adjustment(data);
+            }
+        }
+    }
     pub fn append_new_row_and_column(&mut self, data: Option<T>) {
         for col in &mut self.array {
             match &data {
@@ -201,12 +224,6 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
         OptimaError::new_check_for_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
 
         Ok(&self.array[row_idx][col_idx])
-    }
-    pub fn data_cell_mut(&mut self, row_idx: usize, col_idx: usize) -> Result<&mut T, OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
-        OptimaError::new_check_for_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
-
-        Ok(&mut self.array[row_idx][col_idx])
     }
 }
 

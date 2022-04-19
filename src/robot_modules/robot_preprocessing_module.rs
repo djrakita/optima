@@ -4,16 +4,15 @@ use pyo3::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use pbr::ProgressBar;
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
-use crate::utils::utils_console::{ConsoleInputUtils, optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{ConsoleInputUtils, get_default_progress_bar, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::robot_modules::robot_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_model_module::RobotModelModule;
-use crate::robot_modules::robot_shape_geometry_module::RobotShapeGeometryModule;
+use crate::robot_modules::robot_geometric_shape_module::RobotGeometricShapeModule;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
 use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
@@ -39,6 +38,7 @@ impl RobotPreprocessingModule {
                     optima_print(&format!(" Could not successfully preprocess robot {:?}.  Encountered error {:?}", robot_name, res), PrintMode::Println, PrintColor::Red, true);
                 }
             }
+            return Ok(());
         }
 
         let line = ConsoleInputUtils::get_console_input_string("Replace robot model module?  (y or n)", PrintColor::Blue)?;
@@ -105,7 +105,7 @@ impl RobotPreprocessingModule {
             file_path.delete_file()?;
 
             let robot_model_module = RobotModelModule::new(robot_name)?;
-            robot_model_module.save_to_json_file()?;
+            robot_model_module.save_to_json_file(RobotModuleJsonType::ModelModule)?;
 
             optima_print("Successfully preprocessed robot model module.", PrintMode::Println, PrintColor::Blue, true);
         }
@@ -133,8 +133,8 @@ impl RobotPreprocessingModule {
         let robot_model_module = RobotModelModule::new(robot_name)?;
         let links = robot_model_module.links();
 
-        let mut pb = ProgressBar::new(links.len() as u64);
-        pb.format("╢▌▌░╟");
+        let mut pb = get_default_progress_bar(links.len());
+        pb.show_counter = true;
 
         for (i, link) in links.iter().enumerate() {
             let has_visual_mesh = link.urdf_link().visual_mesh_filename().is_some();
@@ -144,7 +144,16 @@ impl RobotPreprocessingModule {
                     return Err(OptimaError::new_generic_error_str(&format!("Path for link {:?} does not exist in {:?}.", i, base_meshes_directory_path), file!(), line!()));
                 }
                 let optima_path = res[0].clone();
-                let trimesh = optima_path.load_file_to_trimesh_engine()?;
+                let mut trimesh = optima_path.load_file_to_trimesh_engine()?;
+
+                let visual_origin_rpy = link.urdf_link().visual_origin_rpy();
+                let visual_origin_xyz = link.urdf_link().visual_origin_xyz();
+                if let Some(r) = visual_origin_rpy  {
+                    if let Some(t) = visual_origin_xyz {
+                        let pose = OptimaSE3Pose::new_from_euler_angles(r[0], r[1], r[2], t[0], t[1], t[2], &OptimaSE3PoseType::ImplicitDualQuaternion);
+                        trimesh.transform_vertices(&pose);
+                    }
+                }
 
                 let mut directory_path_copy = directory_path.clone();
                 directory_path_copy.append(&format!("{}.stl", i));
@@ -166,13 +175,13 @@ impl RobotPreprocessingModule {
             directory_path.delete_all_items_in_directory()?;
 
             let mut base_meshes_directory_path = OptimaStemCellPath::new_asset_path()?;
-            base_meshes_directory_path.append_file_location(&OptimaAssetLocation::RobotInputMeshes {robot_name: robot_name.to_string()});
+            base_meshes_directory_path.append_file_location(&OptimaAssetLocation::RobotMeshes {robot_name: robot_name.to_string()});
 
             let robot_model_module = RobotModelModule::new(robot_name)?;
             let links = robot_model_module.links();
 
-            let mut pb = ProgressBar::new(links.len() as u64);
-            pb.format("╢▌▌░╟");
+            let mut pb = get_default_progress_bar(links.len());
+            pb.show_counter = true;
 
             for (i, link) in links.iter().enumerate() {
                 let has_visual_mesh = link.urdf_link().visual_mesh_filename().is_some();
@@ -202,14 +211,15 @@ impl RobotPreprocessingModule {
             directory_path.delete_all_items_in_directory()?;
 
             let mut base_meshes_directory_path = OptimaStemCellPath::new_asset_path()?;
-            base_meshes_directory_path.append_file_location(&OptimaAssetLocation::RobotInputMeshes {robot_name: robot_name.to_string()});
+            base_meshes_directory_path.append_file_location(&OptimaAssetLocation::RobotMeshes {robot_name: robot_name.to_string()});
 
             let robot_model_module = RobotModelModule::new(robot_name)?;
             let links = robot_model_module.links();
 
-            let mut pb = ProgressBar::new(links.len() as u64);
-            pb.format("╢▌▌░╟");
+            let mut pb = get_default_progress_bar(links.len());
+            pb.show_counter = true;
 
+            let mut messages = vec![];
             for (i, link) in links.iter().enumerate() {
                 let has_visual_mesh = link.urdf_link().visual_mesh_filename().is_some();
                 if has_visual_mesh {
@@ -218,6 +228,7 @@ impl RobotPreprocessingModule {
                     let trimesh = optima_path.load_file_to_trimesh_engine()?;
 
                     let convex_components = trimesh.compute_convex_decomposition();
+                    messages.push(format!("{:?} convex subcomponents for link {:?}: {}. ", convex_components.len(), link.link_idx(), link.name()));
                     for (j, c) in convex_components.iter().enumerate() {
                         let mut directory_path_copy = directory_path.clone();
                         directory_path_copy.append(&format!("{}_{}.stl", i, j));
@@ -228,6 +239,8 @@ impl RobotPreprocessingModule {
             }
 
             println!();
+            for m in messages { println!("{}", m); }
+
         }
         Ok(())
     }
@@ -235,11 +248,14 @@ impl RobotPreprocessingModule {
         let mut directory_path = OptimaStemCellPath::new_asset_path()?;
         directory_path.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModule });
 
-        if !directory_path.exists() || self.replace_robot_link_convex_shapes || self.replace_robot_link_convex_shape_subcomponents {
+        let mut directory_path_permanent = OptimaStemCellPath::new_asset_path()?;
+        directory_path_permanent.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModule });
+
+        if !directory_path.exists() || !directory_path_permanent.exists() || self.replace_robot_link_convex_shapes || self.replace_robot_link_convex_shape_subcomponents {
             optima_print("Preprocessing robot shape geometry module...", PrintMode::Println, PrintColor::Blue, true);
-            let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name, None)?;
-            let robot_shape_geometry_module = RobotShapeGeometryModule::new_not_loaded(&robot_configuration_module)?;
-            directory_path.save_object_to_file_as_json(&robot_shape_geometry_module)?;
+            let robot_shape_geometry_module = RobotGeometricShapeModule::new_from_names(robot_name, None, true)?;
+            robot_shape_geometry_module.save_to_json_file(RobotModuleJsonType::ShapeGeometryModule)?;
+            robot_shape_geometry_module.save_to_json_file(RobotModuleJsonType::ShapeGeometryModulePermanent)?;
         }
         Ok(())
     }
@@ -267,5 +283,3 @@ impl RobotPreprocessingModule {
         self.preprocess_robot(robot_name).expect("error");
     }
 }
-
-

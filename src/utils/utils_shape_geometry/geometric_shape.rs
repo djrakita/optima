@@ -6,9 +6,9 @@ use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
 use parry3d_f64::shape::{Cuboid, Shape, Ball, ConvexPolyhedron, TriMesh};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::OptimaStemCellPath;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
-use crate::utils::utils_shape_geometry::trimesh_engine::TrimeshEngine;
 
 /// A `GeometricShapeObject` contains useful functions for computing intersection, distances,
 /// contacts, raycasting, etc between geometric objects in a scene.  This object has a few  fields:
@@ -76,9 +76,10 @@ impl GeometricShape {
             spawner
         }
     }
-    pub fn new_convex_shape(trimesh_engine: &TrimeshEngine, signature: GeometricShapeSignature) -> Self {
+    pub fn new_convex_shape(trimesh_engine_path: &OptimaStemCellPath, signature: GeometricShapeSignature) -> Self {
+        let trimesh_engine= trimesh_engine_path.load_file_to_trimesh_engine().expect("error");
         let spawner = GeometricShapeSpawner::ConvexShape {
-            trimesh_engine: trimesh_engine.clone(),
+            path_string_components: trimesh_engine_path.split_path_into_string_components_back_to_assets_dir().expect("error"),
             signature: signature.clone()
         };
         
@@ -92,9 +93,10 @@ impl GeometricShape {
             spawner
         }
     }
-    pub fn new_triangle_mesh(trimesh_engine: &TrimeshEngine, signature: GeometricShapeSignature) -> Self {
+    pub fn new_triangle_mesh(trimesh_engine_path: &OptimaStemCellPath, signature: GeometricShapeSignature) -> Self {
+        let trimesh_engine= trimesh_engine_path.load_file_to_trimesh_engine().expect("error");
         let spawner = GeometricShapeSpawner::TriangleMesh {
-            trimesh_engine: trimesh_engine.clone(),
+            path_string_components: trimesh_engine_path.split_path_into_string_components_back_to_assets_dir().expect("error"),
             signature: signature.clone()
         };
         
@@ -194,18 +196,24 @@ impl Debug for GeometricShape {
     }
 }
 
+/// A `GeometricShapeSignature` is used to identify a particular `GeometricShape`.  Importantly,
+/// a signature is serializable, can be equal or non-equal via PartialEq and Eq, and able to be
+/// sorted via PartialOrd and Ord.
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub enum GeometricShapeSignature {
     None,
     RobotLink { link_idx: usize, shape_idx_in_link: usize }
 }
 
+/// A `GeometricShapeSpawner` is the main object that allows a `GeometricShape` to be serializable
+/// and deserializable.  This spawner object contains all necessary information in order to construct
+/// a `GeometricShape` from scratch.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum GeometricShapeSpawner {
     Cube { half_extent_x: f64, half_extent_y: f64, half_extent_z: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
     Sphere { radius: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
-    ConvexShape { trimesh_engine: TrimeshEngine, signature: GeometricShapeSignature },
-    TriangleMesh { trimesh_engine: TrimeshEngine, signature: GeometricShapeSignature }
+    ConvexShape { path_string_components: Vec<String>, signature: GeometricShapeSignature },
+    TriangleMesh { path_string_components: Vec<String>, signature: GeometricShapeSignature }
 }
 impl GeometricShapeSpawner {
     pub fn spawn(&self) -> GeometricShape {
@@ -216,19 +224,22 @@ impl GeometricShapeSpawner {
             GeometricShapeSpawner::Sphere { radius, signature, initial_pose_of_shape } => {
                 GeometricShape::new_sphere( *radius, signature.clone(), initial_pose_of_shape.clone() )
             }
-            GeometricShapeSpawner::ConvexShape { trimesh_engine, signature } => {
-                GeometricShape::new_convex_shape( &trimesh_engine, signature.clone() )
+            GeometricShapeSpawner::ConvexShape { path_string_components, signature } => {
+                let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
+                GeometricShape::new_convex_shape( &path, signature.clone() )
             }
-            GeometricShapeSpawner::TriangleMesh { trimesh_engine, signature } => {
-                GeometricShape::new_triangle_mesh( &trimesh_engine, signature.clone() )
+            GeometricShapeSpawner::TriangleMesh { path_string_components, signature } => {
+                let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
+                GeometricShape::new_triangle_mesh( &path, signature.clone() )
             }
         }
     }
 }
 
+/// Utility class that holds important geometric shape query functions.
 pub struct GeometricShapeQueries;
 impl GeometricShapeQueries {
-    pub fn generic_group_query(inputs: Vec<GeometricShapeQueryInput>, stop_condition: StopCondition, log_condition: LogCondition, sort_outputs: bool) -> GeometricShapeQueryGroupOutput {
+    pub fn generic_group_query(inputs: Vec<GeometricShapeQuery>, stop_condition: StopCondition, log_condition: LogCondition, sort_outputs: bool) -> GeometricShapeQueryGroupOutput {
         let start = Instant::now();
         let mut outputs = vec![];
         let mut output_distances: Vec<f64> = vec![];
@@ -269,40 +280,40 @@ impl GeometricShapeQueries {
             minimum_distance
         }
     }
-    pub fn generic_query(input: &GeometricShapeQueryInput) -> GeometricShapeQueryOutput {
+    pub fn generic_query(input: &GeometricShapeQuery) -> GeometricShapeQueryOutput {
         let start = Instant::now();
         let raw_output = match input {
-            GeometricShapeQueryInput::ProjectPoint { object, pose, point, solid } => {
+            GeometricShapeQuery::ProjectPoint { object, pose, point, solid } => {
                 GeometricShapeQueryRawOutput::ProjectPoint(object.project_point(pose, point, *solid))
             }
-            GeometricShapeQueryInput::ContainsPoint { object, pose, point } => {
+            GeometricShapeQuery::ContainsPoint { object, pose, point } => {
                 GeometricShapeQueryRawOutput::ContainsPoint(object.contains_point(pose, point))
             }
-            GeometricShapeQueryInput::DistanceToPoint { object, pose, point, solid } => {
+            GeometricShapeQuery::DistanceToPoint { object, pose, point, solid } => {
                 GeometricShapeQueryRawOutput::DistanceToPoint(object.distance_to_point(pose, point, *solid))
             }
-            GeometricShapeQueryInput::IntersectsRay { object, pose, ray, max_toi } => {
+            GeometricShapeQuery::IntersectsRay { object, pose, ray, max_toi } => {
                 GeometricShapeQueryRawOutput::IntersectsRay(object.intersects_ray(pose, ray, *max_toi))
             }
-            GeometricShapeQueryInput::CastRay { object, pose, ray, max_toi, solid } => {
+            GeometricShapeQuery::CastRay { object, pose, ray, max_toi, solid } => {
                 GeometricShapeQueryRawOutput::CastRay(object.cast_ray(pose, ray, *max_toi, *solid))
             }
-            GeometricShapeQueryInput::CastRayAndGetNormal { object, pose, ray, max_toi, solid } => {
+            GeometricShapeQuery::CastRayAndGetNormal { object, pose, ray, max_toi, solid } => {
                 GeometricShapeQueryRawOutput::CastRayAndGetNormal(object.cast_ray_and_get_normal(pose, ray, *max_toi, *solid))
             }
-            GeometricShapeQueryInput::IntersectionTest { object1, object1_pose, object2, object2_pose } => {
+            GeometricShapeQuery::IntersectionTest { object1, object1_pose, object2, object2_pose } => {
                 GeometricShapeQueryRawOutput::IntersectionTest(Self::intersection_test(object1, object1_pose, object2, object2_pose))
             }
-            GeometricShapeQueryInput::Distance { object1, object1_pose, object2, object2_pose } => {
+            GeometricShapeQuery::Distance { object1, object1_pose, object2, object2_pose } => {
                 GeometricShapeQueryRawOutput::Distance(Self::distance(object1, object1_pose, object2, object2_pose))
             }
-            GeometricShapeQueryInput::ClosestPoints { object1, object1_pose, object2, object2_pose, max_dis } => {
+            GeometricShapeQuery::ClosestPoints { object1, object1_pose, object2, object2_pose, max_dis } => {
                 GeometricShapeQueryRawOutput::ClosestPoints(Self::closest_points(object1, object1_pose, object2, object2_pose, *max_dis))
             }
-            GeometricShapeQueryInput::Contact { object1, object1_pose, object2, object2_pose, prediction } => {
+            GeometricShapeQuery::Contact { object1, object1_pose, object2, object2_pose, prediction } => {
                 GeometricShapeQueryRawOutput::Contact(Self::contact(object1, object1_pose, object2, object2_pose, *prediction))
             }
-            GeometricShapeQueryInput::CCD { object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2 } => {
+            GeometricShapeQuery::CCD { object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2 } => {
                 GeometricShapeQueryRawOutput::CCD(Self::ccd(object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2))
             }
         };
@@ -405,6 +416,10 @@ impl GeometricShapeQueries {
     }
 }
 
+/// Holds a result from a continuous collision detection (CCD) computation.
+/// Here, `toi` refers to time of impact, `collision_point` is the point in global space that the
+/// shapes collide at, and `normal1` and `normal2` vectors are the direction that shapes should
+/// instantaneously move to alleviate the collision.
 #[derive(Clone, Debug)]
 pub struct CCDResult {
     toi: f64,
@@ -425,7 +440,9 @@ impl CCDResult {
     }
 }
 
-pub enum GeometricShapeQueryInput<'a> {
+/// Holds all possible inputs into the `GeometricShapeQueries::generic_group_query` and
+/// `GeometricShapeQueries::generic_query` functions.
+pub enum GeometricShapeQuery<'a> {
     ProjectPoint { object: &'a GeometricShape, pose: OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
     ContainsPoint { object: &'a GeometricShape, pose: OptimaSE3Pose, point: &'a Vector3<f64> },
     DistanceToPoint { object: &'a GeometricShape, pose: OptimaSE3Pose, point: &'a Vector3<f64>, solid: bool },
@@ -438,33 +455,33 @@ pub enum GeometricShapeQueryInput<'a> {
     Contact { object1: &'a GeometricShape, object1_pose: OptimaSE3Pose, object2: &'a GeometricShape, object2_pose: OptimaSE3Pose, prediction: f64 },
     CCD { object1: &'a GeometricShape, object1_pose_t1: OptimaSE3Pose, object1_pose_t2: OptimaSE3Pose, object2: &'a GeometricShape, object2_pose_t1: OptimaSE3Pose, object2_pose_t2: OptimaSE3Pose }
 }
-impl <'a> GeometricShapeQueryInput<'a> {
+impl <'a> GeometricShapeQuery<'a> {
     pub fn get_signatures(&self) -> Vec<GeometricShapeSignature> {
         let mut out_vec = vec![];
         match self {
-            GeometricShapeQueryInput::ProjectPoint { object, .. } => { out_vec.push(object.signature.clone()) }
-            GeometricShapeQueryInput::ContainsPoint { object, .. } => { out_vec.push(object.signature.clone()) }
-            GeometricShapeQueryInput::DistanceToPoint { object, .. } => { out_vec.push(object.signature.clone()) }
-            GeometricShapeQueryInput::IntersectsRay { object, .. } => { out_vec.push(object.signature.clone()) }
-            GeometricShapeQueryInput::CastRay { object, .. } => { out_vec.push(object.signature.clone()) }
-            GeometricShapeQueryInput::CastRayAndGetNormal { object, .. } => { out_vec.push(object.signature.clone()) }
-            GeometricShapeQueryInput::IntersectionTest { object1, object1_pose: _, object2, object2_pose: _ } => {
+            GeometricShapeQuery::ProjectPoint { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQuery::ContainsPoint { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQuery::DistanceToPoint { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQuery::IntersectsRay { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQuery::CastRay { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQuery::CastRayAndGetNormal { object, .. } => { out_vec.push(object.signature.clone()) }
+            GeometricShapeQuery::IntersectionTest { object1, object1_pose: _, object2, object2_pose: _ } => {
                 out_vec.push(object1.signature.clone());
                 out_vec.push(object2.signature.clone());
             }
-            GeometricShapeQueryInput::Distance { object1, object1_pose: _, object2, object2_pose: _ } => {
+            GeometricShapeQuery::Distance { object1, object1_pose: _, object2, object2_pose: _ } => {
                 out_vec.push(object1.signature.clone());
                 out_vec.push(object2.signature.clone());
             }
-            GeometricShapeQueryInput::ClosestPoints { object1, object1_pose: _, object2, object2_pose: _, max_dis: _ } => {
+            GeometricShapeQuery::ClosestPoints { object1, object1_pose: _, object2, object2_pose: _, max_dis: _ } => {
                 out_vec.push(object1.signature.clone());
                 out_vec.push(object2.signature.clone());
             }
-            GeometricShapeQueryInput::Contact { object1, object1_pose: _, object2, object2_pose: _, prediction: _ } => {
+            GeometricShapeQuery::Contact { object1, object1_pose: _, object2, object2_pose: _, prediction: _ } => {
                 out_vec.push(object1.signature.clone());
                 out_vec.push(object2.signature.clone());
             }
-            GeometricShapeQueryInput::CCD { object1, object1_pose_t1: _, object1_pose_t2: _, object2, object2_pose_t1: _, object2_pose_t2: _ } => {
+            GeometricShapeQuery::CCD { object1, object1_pose_t1: _, object1_pose_t2: _, object2, object2_pose_t1: _, object2_pose_t2: _ } => {
                 out_vec.push(object1.signature.clone());
                 out_vec.push(object2.signature.clone());
             }
@@ -473,6 +490,7 @@ impl <'a> GeometricShapeQueryInput<'a> {
     }
 }
 
+/// A raw output from a single `GeometricShapeQuery`.
 #[derive(Clone, Debug)]
 pub enum GeometricShapeQueryRawOutput {
     ProjectPoint(PointProjection),
@@ -617,6 +635,13 @@ impl GeometricShapeQueryRawOutput {
     }
 }
 
+/// Output from the `GeometricShapeQueries::generic_query` function. Contains a `GeometricShapeQueryRawOutput`,
+/// the signatures of the shape (or shapes) involved in the query, and the amount of time it took
+/// to complete the query.
+///
+/// The `signatures` field is a vector that will hold either one or two `GeometricShapeSignature`
+/// objects depending on how many shapes are involved in the computation. For example, `ProjectPoint`
+/// only needs one object while `IntersectionTest` needs two objects.
 #[derive(Clone, Debug)]
 pub struct GeometricShapeQueryOutput {
     duration: Duration,
@@ -635,6 +660,13 @@ impl GeometricShapeQueryOutput {
     }
 }
 
+/// Output from the `GeometricShapeQueries::generic_group_query` function.  Contains a vector of
+/// `GeometricShapeQueryOutput` objects, the minimum distance found in the query, if an intersection
+/// was found on the query, the number of total queries involved in the group query, and the total
+/// amount of time needed to compute the group query.
+///
+/// For reference on what a "distance" means for a particular output type, look at what
+/// is returned by the `GeometricShapeQueryRawOutput proxy_dis` function.
 #[derive(Clone, Debug)]
 pub struct GeometricShapeQueryGroupOutput {
     duration: Duration,
@@ -661,6 +693,8 @@ impl GeometricShapeQueryGroupOutput {
     }
 }
 
+/// Allows for control over when the `GeometricShapeQueries::generic_group_query` function should
+/// be early terminated.
 #[derive(Clone, Debug)]
 pub enum StopCondition {
     None,
@@ -668,9 +702,13 @@ pub enum StopCondition {
     BelowMinDistance(f64)
 }
 
+/// Allows for control over when the `GeometricShapeQueries::generic_group_query` function should
+/// log a `GeometricShapeQueryOutput` into the outputs field in `GeometricShapeQueryGroupOutput`.
 #[derive(Clone, Debug)]
 pub enum LogCondition {
     LogAll,
+    /// Only logs the output when it is an intersection.
     Intersection,
+    /// Only logs the output when it is below the given distance.
     BelowMinDistance(f64)
 }

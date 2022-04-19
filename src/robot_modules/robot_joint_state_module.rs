@@ -80,12 +80,10 @@ impl RobotJointStateModule {
 
         return out_self;
     }
-
     pub fn new_from_names(robot_name: &str, configuration_name: Option<&str>) -> Result<Self, OptimaError> {
         let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name, configuration_name)?;
         return Ok(Self::new(robot_configuration_module));
     }
-
     fn set_ordered_joint_axes(&mut self) {
         for j in self.robot_configuration_module.robot_model_module().joints() {
             if j.active() {
@@ -99,7 +97,6 @@ impl RobotJointStateModule {
             }
         }
     }
-
     fn initialize_joint_idx_to_dof_state_idxs(&mut self) {
         let mut out_vec = vec![];
         let num_joints = self.robot_configuration_module.robot_model_module().joints().len();
@@ -111,7 +108,6 @@ impl RobotJointStateModule {
 
         self.joint_idx_to_dof_state_idxs_mapping = out_vec;
     }
-
     fn initialize_joint_idx_to_full_state_idxs(&mut self) {
         let mut out_vec = vec![];
         let num_joints = self.robot_configuration_module.robot_model_module().joints().len();
@@ -123,25 +119,20 @@ impl RobotJointStateModule {
 
         self.joint_idx_to_full_state_idxs_mapping = out_vec;
     }
-
     pub fn num_dofs(&self) -> usize {
         self.num_dofs
     }
-
     pub fn num_axes(&self) -> usize {
         self.num_axes
     }
-
     /// Returns joint axes in order (excluding fixed axes, thus only corresponding to degrees of freedom).
     pub fn ordered_dof_joint_axes(&self) -> &Vec<JointAxis> {
         &self.ordered_dof_joint_axes
     }
-
     /// Returns all joint axes in order (included fixed axes).
     pub fn ordered_joint_axes(&self) -> &Vec<JointAxis> {
         &self.ordered_joint_axes
     }
-
     /// Converts a joint state to a full state.
     pub fn convert_joint_state_to_full_state(&self, joint_state: &RobotJointState) -> Result<RobotJointState, OptimaError> {
         if joint_state.len() != self.num_dofs {
@@ -165,7 +156,6 @@ impl RobotJointStateModule {
 
         return Ok(RobotJointState::new(out_robot_state_vector, RobotJointStateType::Full, self)?);
     }
-
     /// Converts a joint state to a dof joint state.
     pub fn convert_joint_state_to_dof_state(&self, joint_state: &RobotJointState) -> Result<RobotJointState, OptimaError> {
         if joint_state.len() != self.num_axes() {
@@ -187,7 +177,6 @@ impl RobotJointStateModule {
 
         return Ok(RobotJointState::new(out_robot_state_vector, RobotJointStateType::DOF, self)?);
     }
-
     pub fn map_joint_idx_to_joint_state_idxs(&self, joint_idx: usize, joint_state_type: &RobotJointStateType) -> Result<&Vec<usize>, OptimaError> {
         match joint_state_type {
             RobotJointStateType::DOF => {
@@ -206,7 +195,6 @@ impl RobotJointStateModule {
             }
         }
     }
-
     pub fn map_joint_idx_and_sub_dof_idx_to_joint_state_idx(&self, joint_idx: usize, joint_sub_dof_idx: usize, joint_state_type: &RobotJointStateType) -> Result<usize, OptimaError> {
         let idxs = self.map_joint_idx_to_joint_state_idxs(joint_idx, joint_state_type)?;
         if joint_sub_dof_idx >= idxs.len() {
@@ -214,15 +202,12 @@ impl RobotJointStateModule {
         }
         return Ok(idxs[joint_sub_dof_idx]);
     }
-
     pub fn spawn_robot_joint_state(&self, joint_state: DVector<f64>, robot_joint_state_type: RobotJointStateType) -> Result<RobotJointState, OptimaError> {
         return RobotJointState::new(joint_state, robot_joint_state_type, self);
     }
-
     pub fn spawn_robot_joint_state_try_auto_type(&self, joint_state: DVector<f64>) -> Result<RobotJointState, OptimaError> {
         return RobotJointState::new_try_auto_type(joint_state, self);
     }
-
     pub fn spawn_zeros_robot_joint_state(&self, robot_state_type: RobotJointStateType) -> RobotJointState {
         let mut out_joint_state = match robot_state_type {
             RobotJointStateType::DOF => { DVector::zeros(self.num_dofs) }
@@ -244,14 +229,12 @@ impl RobotJointStateModule {
             }
         }
     }
-
     pub fn inject_joint_value_into_robot_joint_state(&self, robot_joint_state: &mut RobotJointState, joint_idx: usize, joint_sub_dof_idx: usize, joint_value: f64) -> Result<(), OptimaError> {
         let idx = self.map_joint_idx_and_sub_dof_idx_to_joint_state_idx(joint_idx, joint_sub_dof_idx, &robot_joint_state.robot_joint_state_type)?;
         robot_joint_state.joint_state[idx] = joint_value;
 
         return Ok(());
     }
-
     pub fn get_joint_state_bounds(&self, t: &RobotJointStateType) -> Vec<(f64, f64)> {
         let axes = match t {
             RobotJointStateType::DOF => { &self.ordered_dof_joint_axes }
@@ -270,7 +253,6 @@ impl RobotJointStateModule {
 
         out_vec
     }
-
     pub fn sample_joint_state(&self, t: &RobotJointStateType) -> RobotJointState {
         let axes = match t {
             RobotJointStateType::DOF => { &self.ordered_dof_joint_axes }
@@ -294,7 +276,6 @@ impl RobotJointStateModule {
 
         return RobotJointState::new(out_dvec, t.clone(), self).expect("error");
     }
-
     pub fn print_robot_joint_state_summary(&self, robot_joint_state: &RobotJointState)  {
         let joint_axes = match robot_joint_state.robot_joint_state_type {
             RobotJointStateType::DOF => { &self.ordered_dof_joint_axes }
@@ -309,6 +290,9 @@ impl RobotJointStateModule {
             optima_print(&format!("   > axis: {:?}", joint_axis.axis()), PrintMode::Println, PrintColor::None, false);
             optima_print(&format!("   > joint value: {}", robot_joint_state[i]), PrintMode::Println, PrintColor::None, false);
         }
+    }
+    pub fn robot_name(&self) -> &str {
+        return self.robot_configuration_module.robot_name()
     }
 }
 

@@ -48,7 +48,6 @@ impl RobotConfigurationModule {
             }
         }
     }
-
     /// Returns the robot's base model configuration.  It is possible to initialize a
     /// `RobotConfigurationModel` using this function, but it is recommended to use the
     /// `RobotConfigurationGeneratorModule` for all initializations.
@@ -60,7 +59,6 @@ impl RobotConfigurationModule {
             base_robot_model_module: robot_model_module
         })
     }
-
     /// Returns a robot configuration based on the given base model module and robot configuration info.
     /// The end user should not need to use this function as it is called automatically by the
     /// `RobotConfigurationGeneratorModule`.  It is recommended to use the `RobotConfigurationGeneratorModule`
@@ -76,7 +74,6 @@ impl RobotConfigurationModule {
 
         return Ok(out_self);
     }
-
     fn update(&mut self) -> Result<(), OptimaError> {
         let mut robot_model_module = self.base_robot_model_module.clone();
         let robot_configuration_info = &self.robot_configuration_info;
@@ -99,18 +96,15 @@ impl RobotConfigurationModule {
         self.robot_model_module = robot_model_module;
         Ok(())
     }
-
     /// Returns a reference to the `RobotConfigurationInfo` that was used to change the configuration's
     /// underlying model module.
     pub fn robot_configuration_info(&self) -> &RobotConfigurationInfo {
         &self.robot_configuration_info
     }
-
     /// Returns a reference to the robot model module that reflects the configuration's `RobotConfigurationInfo`.
     pub fn robot_model_module(&self) -> &RobotModelModule {
         &self.robot_model_module
     }
-
     /// Sets the given link as a "dead end" link.  A dead end link is a link such that it and all
     /// links that occur as successors in the kinematic chain will be inactive (essentially, removed)
     /// from the robot model.
@@ -118,7 +112,6 @@ impl RobotConfigurationModule {
         self.robot_configuration_info.dead_end_link_idxs.push(link_idx);
         return self.update();
     }
-
     /// Removes the given link as a dead end link.
     pub fn remove_dead_end_link(&mut self, link_idx: usize) -> Result<(), OptimaError> {
         self.robot_configuration_info.dead_end_link_idxs =
@@ -126,7 +119,6 @@ impl RobotConfigurationModule {
             .iter().filter_map(|s| if *s == link_idx { None } else { Some(*s) } ).collect();
         return self.update();
     }
-
     /// Fixes the given joint to the given value.  Thus, this joint will not be a degree of freedom
     /// in the current configuration.
     pub fn set_fixed_joint(&mut self, joint_idx: usize, joint_sub_idx: usize, fixed_joint_value: f64) -> Result<(), OptimaError> {
@@ -137,7 +129,6 @@ impl RobotConfigurationModule {
         });
         return self.update();
     }
-
     /// Removes the given joint as a fixed joint.  Thus, this joint will become a degree of freedom.
     pub fn remove_fixed_joint(&mut self, joint_idx: usize, joint_sub_idx: usize) -> Result<(), OptimaError> {
         self.robot_configuration_info.fixed_joint_infos =
@@ -146,19 +137,16 @@ impl RobotConfigurationModule {
 
         return self.update();
     }
-
     /// Sets the mobile base mode of the robot configuration.
     pub fn set_mobile_base_mode(&mut self, mobile_base_mode: MobileBaseInfo) -> Result<(), OptimaError> {
         self.robot_configuration_info.mobile_base_mode = mobile_base_mode;
         return self.update();
     }
-
     /// sets the base offset of the robot configuration.
     pub fn set_base_offset(&mut self, p: &OptimaSE3Pose) -> Result<(), OptimaError> {
         self.robot_configuration_info.base_offset = OptimaSE3PoseAll::new(p);
         return self.update();
     }
-
     /*
     /// Saves the `RobotConfigurationModule` to its robot's `RobotConfigurationGeneratorModule`.
     /// The configuration will be saved to a json file such that the `RobotConfigurationGeneratorModule`
@@ -170,7 +158,6 @@ impl RobotConfigurationModule {
         Ok(())
     }
     */
-
     pub fn save(&self, configuration_name: &str) -> Result<(), OptimaError> {
         let mut path = OptimaStemCellPath::new_asset_path()?;
         path.append_file_location(&OptimaAssetLocation::RobotConfigurations { robot_name: self.robot_model_module.robot_name().to_string() });
@@ -189,10 +176,12 @@ impl RobotConfigurationModule {
 
         Ok(())
     }
-
     /// Prints summary of underlying robot model module.
     pub fn print_summary(&self) {
         self.robot_model_module.print_summary();
+    }
+    pub fn robot_name(&self) -> &str {
+        return self.robot_model_module.robot_name()
     }
 }
 

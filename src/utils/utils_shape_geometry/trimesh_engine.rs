@@ -21,14 +21,12 @@ use crate::utils::utils_se3::rotation_and_translation::RotationAndTranslation;
 pub struct TrimeshEngine {
     vertices: Vec<Vector3<f64>>,
     indices: Vec<[usize; 3]>,
-    normals: Option<Vec<Vector3<f64>>>
 }
 impl TrimeshEngine {
-    pub fn new_from_vertices_and_indices(vertices: Vec<Vector3<f64>>, indices: Vec<[usize; 3]>, normals: Option<Vec<Vector3<f64>>>) -> Self {
+    fn new_from_vertices_and_indices(vertices: Vec<Vector3<f64>>, indices: Vec<[usize; 3]>) -> Self {
         Self {
             vertices,
-            indices,
-            normals
+            indices
         }
     }
     pub fn compute_convex_decomposition(&self) -> Vec<TrimeshEngine> {
@@ -36,6 +34,7 @@ impl TrimeshEngine {
         let indices: Vec<[u32; 3]> = self.indices.iter().map(|i| [i[0] as u32, i[1] as u32, i[2] as u32] ).collect();
 
         let params = VHACDParameters {
+            max_convex_hulls: 2, // this generally creates 1 - (3 * max_convex_hulls) convex hulls per object
             ..Default::default()
         };
         let v = VHACD::decompose(&params, points.as_slice(), indices.as_slice(), true);
@@ -45,7 +44,7 @@ impl TrimeshEngine {
         for res in &res_vec {
             let vertices: Vec<Vector3<f64>> = res.0.iter().map(|p| NalgebraConversions::point3_to_vector3(p) ).collect();
             let indices: Vec<[usize; 3]> = res.1.iter().map(|i| [i[0] as usize, i[1] as usize, i[2] as usize] ).collect();
-            out_vec.push(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, None));
+            out_vec.push(TrimeshEngine::new_from_vertices_and_indices(vertices, indices));
         }
 
         return out_vec;
@@ -58,16 +57,18 @@ impl TrimeshEngine {
         let vertices: Vec<Vector3<f64>> = res.0.iter().map(|p| NalgebraConversions::point3_to_vector3(p) ).collect();
         let indices: Vec<[usize; 3]> = res.1.iter().map(|i| [i[0] as usize, i[1] as usize, i[2] as usize] ).collect();
 
-        return TrimeshEngine::new_from_vertices_and_indices(vertices, indices, None);
+        return TrimeshEngine::new_from_vertices_and_indices(vertices, indices);
+    }
+    pub fn transform_vertices(&mut self, pose: &OptimaSE3Pose) {
+        for v in &mut self.vertices {
+            *v = pose.multiply_by_point(v);
+        }
     }
     pub fn vertices(&self) -> &Vec<Vector3<f64>> {
         &self.vertices
     }
     pub fn indices(&self) -> &Vec<[usize; 3]> {
         &self.indices
-    }
-    pub fn normals(&self) -> &Option<Vec<Vector3<f64>>> {
-        &self.normals
     }
 }
 
@@ -133,7 +134,7 @@ impl OptimaPath {
             indices.push(f.vertices.clone());
         }
 
-        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, None));
+        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices));
     }
     pub fn load_dae_to_trimesh_engine(&self) -> Result<TrimeshEngine, OptimaError> {
         let collada_dae = self.load_collada_dae()?;
@@ -281,7 +282,7 @@ impl OptimaPath {
             }
         }
 
-        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, None));
+        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices));
     }
     pub fn load_stl(&self) -> Result<IndexedMesh, OptimaError> {
         self.verify_extension(&vec!["stl", "STL"])?;
@@ -352,8 +353,6 @@ impl OptimaPath {
     pub fn save_trimesh_engine_to_stl(&self, trimesh_engine: &TrimeshEngine) -> Result<(), OptimaError> {
         self.verify_extension(&vec!["stl", "STL"])?;
 
-        let normals_option = &trimesh_engine.normals;
-
         let mut mesh = vec![];
         let l = trimesh_engine.indices.len();
         for i in 0..l {
@@ -365,19 +364,11 @@ impl OptimaPath {
             let v2 = stl_io::Vertex::new( [_v2[0] as f32, _v2[1] as f32, _v2[2] as f32]  );
             let v3 = stl_io::Vertex::new( [_v3[0] as f32, _v3[1] as f32, _v3[2] as f32]  );
 
-            let normal = match normals_option {
-                None => {
-                    let a = &_v2 - &_v1;
-                    let b = &_v3 - &_v2;
-                    let n = a.cross(&b);
+            let a = &_v2 - &_v1;
+            let b = &_v3 - &_v2;
+            let n = a.cross(&b);
 
-                    stl_io::Normal::new([n[0] as f32, n[1] as f32, n[2] as f32])
-                }
-                Some(normals) => {
-                    let n = normals[i].clone();
-                    stl_io::Normal::new([n[0] as f32, n[1] as f32, n[2] as f32])
-                }
-            };
+            let normal = stl_io::Normal::new([n[0] as f32, n[1] as f32, n[2] as f32]);
 
             let triangle = stl_io::Triangle{ normal, vertices: [v1, v2, v3] };
             mesh.push(triangle);

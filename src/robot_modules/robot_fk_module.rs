@@ -199,6 +199,9 @@ impl RobotFKModule {
 
         return Ok(output);
     }
+    pub fn robot_name(&self) -> &str {
+        return self.robot_configuration_module.robot_model_module().robot_name()
+    }
     fn compute_fk_on_single_link(&self, joint_state: &RobotJointState, link_idx: usize, t: &OptimaSE3PoseType, output: &mut RobotFKResult) -> Result<(), OptimaError> {
         let link = self.robot_configuration_module.robot_model_module().get_link_by_idx(link_idx)?;
         let preceding_link_option = link.preceding_link_idx();
