@@ -1,11 +1,11 @@
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_fk_module::{RobotFKModule, RobotFKResult};
+use crate::robot_modules::robot_fk_module::{FloatingLinkInput, RobotFKModule, RobotFKResult};
 use crate::robot_modules::robot_joint_state_module::RobotJointStateModule;
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseType};
 
 pub struct RobotSetFKModule {
     robot_fk_modules: Vec<RobotFKModule>
@@ -37,6 +37,9 @@ impl RobotSetFKModule {
         Ok(RobotSetFKResult {
             robot_fk_results: out_vec
         })
+    }
+    pub fn compute_fk_floating_chain(&self, joint_state: &RobotSetJointState, t: &OptimaSE3PoseType, floating_link_inputs: Vec<Option<FloatingLinkInput>>) -> Result<RobotFKResult, OptimaError> {
+        todo!()
     }
 }
 

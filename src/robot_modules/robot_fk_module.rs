@@ -131,7 +131,11 @@ impl RobotFKModule {
     /// If this is None, the whole forward kinematics process will play out from the start_link_idx on.
     /// - start_link_pose: An optional SE(3) pose used to situate the beginning link (start_link_idx) in the chain.
     /// If this is None, this pose will be the default pose just based on the given `RobotState`.
-    pub fn compute_fk_floating_chain(&self, joint_state: &RobotJointState, t: &OptimaSE3PoseType, start_link_idx: Option<usize>, end_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3Pose>) -> Result<RobotFKResult, OptimaError> {
+    pub fn compute_fk_floating_chain(&self, joint_state: &RobotJointState, t: &OptimaSE3PoseType, floating_link_input: FloatingLinkInput) -> Result<RobotFKResult, OptimaError> {
+        let start_link_idx = floating_link_input.start_link_idx;
+        let end_link_idx = floating_link_input.end_link_idx;
+        let start_link_pose = floating_link_input.start_link_pose;
+
         let num_links = self.robot_configuration_module.robot_model_module().links().len();
         if let Some(start_link_idx) = start_link_idx {
             if start_link_idx >= num_links {
@@ -256,6 +260,13 @@ impl RobotFKModule {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct FloatingLinkInput {
+    start_link_idx: Option<usize>,
+    end_link_idx: Option<usize>,
+    start_link_pose: Option<OptimaSE3Pose>
+}
+
 /// Python implementations.
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
@@ -329,6 +340,9 @@ pub struct RobotFKResult {
     link_entries: Vec<RobotFKResultLinkEntry>
 }
 impl RobotFKResult {
+    pub fn new_empty(robot_fk_module: &RobotFKModule) -> Self {
+        return robot_fk_module.starter_result.clone();
+    }
     /// Returns a reference to the results link entries.
     pub fn link_entries(&self) -> &Vec<RobotFKResultLinkEntry> {
         &self.link_entries
