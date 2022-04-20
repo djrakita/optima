@@ -889,6 +889,8 @@ struct AssetEmbed;
 /// the asset folder.
 #[derive(Clone, Debug)]
 pub enum OptimaAssetLocation {
+    RobotSets,
+    RobotSet { set_name: String },
     Robots,
     Robot { robot_name: String },
     RobotConfigurations { robot_name: String },
@@ -906,6 +908,14 @@ pub enum OptimaAssetLocation {
 impl OptimaAssetLocation {
     pub fn get_path_wrt_asset_folder(&self) -> Vec<String> {
         return match self {
+            OptimaAssetLocation::RobotSets => {
+                vec!["optima_robot_sets".to_string()]
+            }
+            OptimaAssetLocation::RobotSet { set_name } => {
+                let mut v = Self::RobotSets.get_path_wrt_asset_folder();
+                v.push(set_name.clone());
+                v
+            }
             OptimaAssetLocation::Robots => {
                 vec!["optima_robots".to_string()]
             }

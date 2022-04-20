@@ -198,7 +198,7 @@ impl RobotModelModule {
     /// ```
     /// Here, the numbers are link indices, and the lines represent joints that connect links together
     /// in the hierarchical chain.  In this case, the output of this function will be:
-    /// [[0], [2,3], [1,4,5]].
+    /// \[\[0\], \[2,3\], \[1,4,5\]\].
     pub fn link_tree_traversal_layers(&self) -> &Vec<Vec<usize>> {
         &self.link_tree_traversal_layers
     }
@@ -418,7 +418,6 @@ impl RobotModelModule {
             optima_print(&format!("layer {}: ", i), PrintMode::Print, PrintColor::Blue, true);
             for j in 0..l {
                 let idx = self.link_tree_traversal_layers[i][j];
-                // print!("{}, ", self.links[idx].name());
                 optima_print(&format!("{}, ", self.links[idx].name()), PrintMode::Print, PrintColor::None, false);
             }
             optima_print("\n", PrintMode::Print, PrintColor::None, false);
@@ -496,18 +495,6 @@ impl RobotModelModule {
         self.print_joints();
         print!("\n");
     }
-
-    /*
-
-
-    pub fn print_joint_order(&self) {
-        for (i, j) in self.joints.iter().enumerate() {
-            optima_print(&format!("joint {} ---> ", i), PrintMode::Print, PrintColor::Blue, true);
-            optima_print(&format!(" {} --- active: {} --- num dofs: {} \n", self.joints[i].name(), self.joints[i].active(), self.joints[i].num_dofs()), PrintMode::Print, PrintColor::None, false);
-        }
-        println!();
-    }
-    */
 }
 impl RobotModuleSaveAndLoad for RobotModelModule {
     fn get_robot_name(&self) -> &str {

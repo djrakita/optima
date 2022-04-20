@@ -30,3 +30,30 @@ pub trait RobotModuleSaveAndLoad where Self: Serialize + DeserializeOwned {
         return RobotModuleUtils::load_from_json_file_generic::<Self>(robot_name, robot_module_json_type);
     }
 }
+
+/// Used to initialize robot modules.
+#[derive(Clone, Debug)]
+pub struct RobotNames<'a> {
+    robot_name: &'a str,
+    configuration_name: Option<&'a str>
+}
+impl <'a> RobotNames<'a> {
+    pub fn new_base(robot_name: &'a str) -> Self {
+        Self {
+            robot_name,
+            configuration_name: None
+        }
+    }
+    pub fn new(robot_name: &'a str, configuration_name: Option<&'a str>) -> Self {
+        Self {
+            robot_name,
+            configuration_name
+        }
+    }
+    pub fn robot_name(&self) -> &'a str {
+        self.robot_name
+    }
+    pub fn configuration_name(&self) -> Option<&'a str> {
+        self.configuration_name
+    }
+}

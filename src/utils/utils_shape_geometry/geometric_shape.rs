@@ -11,7 +11,9 @@ use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
 
 /// A `GeometricShapeObject` contains useful functions for computing intersection, distances,
-/// contacts, raycasting, etc between geometric objects in a scene.  This object has a few  fields:
+/// contacts, raycasting, etc between geometric objects in a scene.
+///
+/// This object has a few  fields:
 /// - shape: The geometric shape object from the parry3d library.
 /// - signature: A `GeometricShapeSignature` used to recognize a particular geometric shape object.
 /// - initial_pose_of_shape: The SE(3) pose of the underlying shape when it is initialized.  This is a
@@ -23,13 +25,13 @@ use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, 
 /// so it should not be thought of as stateful.  Instead, it represents only the static pose of the
 /// underlying geometric shape when it is first initialized.  To illustrate, suppose a simple cube geometric
 /// shape is initialized as a `GeometricShapeObject` and the `initial_pose_of_shape` is set as an SE(3) pose
-/// composed of a unit quaternion [0,0.383,0,0.924] with a translation of [1,0,0].  Thus, this cube is
+/// composed of a unit quaternion \[0,0.383,0,0.924\] with a translation of \[1,0,0\].  Thus, this cube is
 /// initially placed 1 unit forward on the x axis and exhibits a rotation of 45 degrees around the y axis.
 /// Now, ALL GeometricShapeObject transformations for geometric queries will be made with respect to this initial
 /// pose!  For example, if a geometric query is invoked on our cube shape above with an SE(3) pose composed
-/// of an identity unit quaternion [0,0,0,1] and translation of [0,1,0], the geometric operation will
-/// take place on the underlying cube with unit quaternion rotation [0,0.383,0,0.924] * [0,0,0,1] = [0,0.383,0,0.924]
-/// and translation [1,0,0] + [0,1,0] = [1,1,0].
+/// of an identity unit quaternion \[0,0,0,1\] and translation of \[0,1,0\], the geometric operation will
+/// take place on the underlying cube with unit quaternion rotation \[0,0.383,0,0.924\] * \[0,0,0,1\] = \[0,0.383,0,0.924\]
+/// and translation \[1,0,0\] + \[0,1,0\] = \[1,1,0\].
 ///
 /// NOTE: If `initial_pose_of_shape` is None, this "initial pose" is assumed to be the identity rotation
 /// and translation such that the pose is initial posed at the origin with no rotation.

@@ -10,11 +10,18 @@ use crate::utils::utils_console::{get_default_progress_bar, optima_print, PrintC
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{RobotModuleJsonType};
 use crate::utils::utils_generic_data_structures::{AveragingFloat, SquareArray2D};
-use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad, RobotModuleUtils};
+use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad, RobotModuleUtils, RobotNames};
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 use crate::utils::utils_shape_geometry::shape_collection::{ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery};
 
+/// Robot module that provides useful functions over geometric shapes.  For example, the module is
+/// able to compute if a robot is in collision given a particular robot joint state.  For all geometry
+/// query types, refer to the `RobotShapeCollectionQuery` enum.
+///
+/// The most important function here is `RobotGeometricShapeModule.shape_collection_query`.  This
+/// function takes in a `RobotShapeCollectionQuery` as input and outputs a
+/// corresponding `GeometricShapeQueryGroupOutput`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotGeometricShapeModule {
     robot_fk_module: RobotFKModule,
@@ -39,9 +46,9 @@ impl RobotGeometricShapeModule {
             }
         }
     }
-    pub fn new_from_names(robot_name: &str, configuration_name: Option<&str>, force_preprocessing: bool) -> Result<Self, OptimaError> {
-        let robot_fk_module = RobotFKModule::new_from_names(robot_name, configuration_name)?;
-        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_name)?;
+    pub fn new_from_names(robot_names: RobotNames, force_preprocessing: bool) -> Result<Self, OptimaError> {
+        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_names.robot_name())?;
+        let robot_fk_module = RobotFKModule::new_from_names(robot_names)?;
         Self::new(robot_fk_module, robot_mesh_file_manager_module, force_preprocessing)
     }
     fn preprocessing(&mut self) -> Result<(), OptimaError> {
@@ -67,8 +74,8 @@ impl RobotGeometricShapeModule {
         // variations of this model, not just particular configurations.
         let robot_name = self.robot_fk_module.robot_name();
         let base_robot_model_module = RobotModelModule::new(robot_name)?;
-        let base_robot_fk_module = RobotFKModule::new_from_names(robot_name, None)?;
-        let base_robot_joint_state_module = RobotJointStateModule::new_from_names(robot_name, None)?;
+        let base_robot_fk_module = RobotFKModule::new_from_names(RobotNames::new_base(robot_name))?;
+        let base_robot_joint_state_module = RobotJointStateModule::new_from_names(RobotNames::new_base(robot_name))?;
         let num_links = base_robot_model_module.links().len();
 
         // Initialize GeometricShapeCollision.
@@ -386,7 +393,7 @@ impl RobotModuleSaveAndLoad for RobotGeometricShapeModule {
     fn load_from_json_file(robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<Self, OptimaError> {
         let robot_geometric_shape_collections: Vec<RobotShapeCollection> = RobotModuleUtils::load_from_json_file_generic(robot_name, robot_module_json_type)?;
         let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_name)?;
-        let robot_fk_module = RobotFKModule::new_from_names(robot_name, None)?;
+        let robot_fk_module = RobotFKModule::new_from_names(RobotNames::new_base(robot_name))?;
         Ok(Self {
             robot_fk_module,
             robot_mesh_file_manager_module,

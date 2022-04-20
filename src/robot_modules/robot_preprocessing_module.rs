@@ -11,7 +11,7 @@ use crate::robot_modules::robot_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::robot_modules::robot_geometric_shape_module::RobotGeometricShapeModule;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
-use crate::utils::utils_robot::robot_module_utils::RobotModuleSaveAndLoad;
+use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad, RobotNames};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -253,7 +253,7 @@ impl RobotPreprocessingModule {
 
         if !directory_path.exists() || !directory_path_permanent.exists() || self.replace_robot_link_convex_shapes || self.replace_robot_link_convex_shape_subcomponents {
             optima_print("Preprocessing robot shape geometry module...", PrintMode::Println, PrintColor::Blue, true);
-            let robot_shape_geometry_module = RobotGeometricShapeModule::new_from_names(robot_name, None, true)?;
+            let robot_shape_geometry_module = RobotGeometricShapeModule::new_from_names(RobotNames::new_base(robot_name), true)?;
             robot_shape_geometry_module.save_to_json_file(RobotModuleJsonType::ShapeGeometryModule)?;
             robot_shape_geometry_module.save_to_json_file(RobotModuleJsonType::ShapeGeometryModulePermanent)?;
         }

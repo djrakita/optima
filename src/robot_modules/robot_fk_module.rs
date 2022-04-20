@@ -11,6 +11,7 @@ use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxisPrimitiveType;
+use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 
 /// The `RobotFKModule` computes the forward kinematics of a robot configuration.  Forward kinematics
@@ -21,12 +22,13 @@ use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType}
 /// use nalgebra::DVector;
 /// use optima::robot_modules::robot_fk_module::RobotFKModule;
 /// use optima::robot_modules::robot_joint_state_module::RobotJointStateModule;
+/// use optima::utils::utils_robot::robot_module_utils::RobotNames;
 /// use optima::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 ///
-/// let robot_joint_state_module = RobotJointStateModule::new_from_names("ur5", None).expect("error");
+/// let robot_joint_state_module = RobotJointStateModule::new_from_names(RobotNames::new_base("ur5")).expect("error");
 /// let robot_joint_state = robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::zeros(6)).expect("error");
 ///
-/// let robot_fk_module = RobotFKModule::new_from_names("ur5", None).expect("error");
+/// let robot_fk_module = RobotFKModule::new_from_names(RobotNames::new_base("ur5")).expect("error");
 /// let fk_res = robot_fk_module.compute_fk(&robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
 /// fk_res.print_summary();
 ///
@@ -102,8 +104,8 @@ impl RobotFKModule {
             starter_result
         }
     }
-    pub fn new_from_names(robot_name: &str, configuration_name: Option<&str>) -> Result<Self, OptimaError> {
-        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name, configuration_name)?;
+    pub fn new_from_names(robot_names: RobotNames) -> Result<Self, OptimaError> {
+        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_names)?;
         let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         return Ok(Self::new(robot_configuration_module, robot_joint_state_module));
     }
@@ -260,7 +262,7 @@ impl RobotFKModule {
 impl RobotFKModule {
     #[new]
     pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotFKModule {
-        return Self::new_from_names(robot_name, configuration_name).expect("error");
+        return Self::new_from_names(RobotNames::new(robot_name, configuration_name)).expect("error");
     }
     #[args(pose_type = "\"ImplicitDualQuaternion\"")]
     pub fn compute_fk_py(&self, joint_state: Vec<f64>, pose_type: &str) -> RobotFKResult {

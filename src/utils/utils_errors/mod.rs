@@ -1,6 +1,6 @@
 // use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 
-use crate::utils::utils_files::optima_path::OptimaPath;
+use crate::utils::utils_files::optima_path::{OptimaPath, OptimaStemCellPath};
 
 /// A common error type returned by functions throughout the toolbox.
 #[derive(Clone, Debug)]
@@ -38,6 +38,11 @@ impl OptimaError {
         }
     }
     pub fn new_check_for_path_does_not_exist(path: &OptimaPath, file: &str, line: u32) -> Result<(), Self> {
+        return if path.exists() { Ok(()) } else {
+            Err(Self::PathDoesNotExist(format!("path: {:?} -- file: {:?}, line: {:?}", path, file, line)))
+        }
+    }
+    pub fn new_check_for_stem_cell_path_does_not_exist(path: &OptimaStemCellPath, file: &str, line: u32) -> Result<(), Self> {
         return if path.exists() { Ok(()) } else {
             Err(Self::PathDoesNotExist(format!("path: {:?} -- file: {:?}, line: {:?}", path, file, line)))
         }

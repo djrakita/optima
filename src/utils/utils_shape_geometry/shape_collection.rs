@@ -19,8 +19,8 @@ use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, Geomet
 /// until changed).  A `ShapeCollection` allows for dynamic adding of shapes as well.
 ///
 /// The ordering of shapes in the `shapes` field is important; the index that a particular shape is
-/// at in this list correspond to its "shape index".  For example, shapes[0] would have a "shape index"
-/// of 0, shapes[1] would have a "shape index" of 1, etc.  These shape indices also correspond to all
+/// at in this list correspond to its "shape index".  For example, shapes\[0\] would have a "shape index"
+/// of 0, shapes\[1\] would have a "shape index" of 1, etc.  These shape indices also correspond to all
 /// `SquareArray2D` fields in this object.  For example, the skips.data_cell(3, 6) would access whether
 /// any pairwise geometric shape query by GeometricShapeQueries::generic_group_query should skip the
 /// computation between shape with index 3 and shape with index 6.  Use the `get_shape_idx_from_signature`
@@ -268,6 +268,7 @@ pub enum ShapeCollectionQuery<'a> {
     Distance { poses: &'a ShapeCollectionInputPoses },
     ClosestPoints { poses: &'a ShapeCollectionInputPoses, max_dis: f64 },
     Contact { poses: &'a ShapeCollectionInputPoses, prediction: f64 },
+    /// Continuous collision detection.
     CCD { poses_t1: &'a ShapeCollectionInputPoses, poses_t2: &'a ShapeCollectionInputPoses }
 }
 impl <'a> ShapeCollectionQuery<'a> {

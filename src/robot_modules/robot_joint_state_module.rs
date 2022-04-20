@@ -1,4 +1,3 @@
-use std::ops::{Add, Index, Mul};
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -7,11 +6,13 @@ use wasm_bindgen::prelude::*;
 
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
+use std::ops::{Add, Index, Mul};
 use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxis;
+use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_sampling::SimpleSamplers;
 
 /// The `RobotJointStateModule` organizes and operates over robot states.  "Robot joint states" are vectors
@@ -80,8 +81,8 @@ impl RobotJointStateModule {
 
         return out_self;
     }
-    pub fn new_from_names(robot_name: &str, configuration_name: Option<&str>) -> Result<Self, OptimaError> {
-        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name, configuration_name)?;
+    pub fn new_from_names(robot_names: RobotNames) -> Result<Self, OptimaError> {
+        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_names)?;
         return Ok(Self::new(robot_configuration_module));
     }
     fn set_ordered_joint_axes(&mut self) {
@@ -302,7 +303,7 @@ impl RobotJointStateModule {
 impl RobotJointStateModule {
     #[new]
     pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotJointStateModule {
-        return Self::new_from_names(robot_name, configuration_name).expect("error");
+        return Self::new_from_names(RobotNames::new(robot_name, configuration_name)).expect("error");
     }
 
     pub fn convert_joint_state_to_full_state_py(&self, joint_state: Vec<f64>) -> Vec<f64> {

@@ -4,6 +4,7 @@ use crate::robot_modules::robot_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_fk_module::RobotFKModule;
 use crate::robot_modules::robot_joint_state_module::RobotJointStateModule;
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_robot::robot_module_utils::RobotNames;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Robot {
@@ -13,8 +14,8 @@ pub struct Robot {
     robot_fk_module: RobotFKModule
 }
 impl Robot {
-    pub fn new_from_names(robot_name: &str, configuration_name: Option<&str>) -> Result<Self, OptimaError> {
-        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name, configuration_name)?;
+    pub fn new_from_names(robot_name: RobotNames) -> Result<Self, OptimaError> {
+        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name.clone())?;
         let robot_file_manager_module = RobotMeshFileManagerModule::new(robot_configuration_module.robot_model_module())?;
         let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_fk_module = RobotFKModule::new(robot_configuration_module.clone(), robot_joint_state_module.clone());
