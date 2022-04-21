@@ -41,9 +41,8 @@ impl RobotSetJointStateModule {
         }
 
         let mut out_dvec = DVector::zeros(self.num_axes);
-        let mut out_joint_states = vec![];
 
-        let joint_states = &robot_set_joint_state.robot_joint_states;
+        let joint_states = &self.split_robot_set_joint_state_into_robot_joint_states(robot_set_joint_state)?;
         let mut curr_idx = 0;
         for (i, r) in self.robot_joint_state_modules.iter().enumerate() {
             let converted_robot_joint_state = r.convert_joint_state_to_full_state(&joint_states[i])?;
@@ -53,13 +52,11 @@ impl RobotSetJointStateModule {
                 out_dvec[curr_idx] = dv[j];
                 curr_idx += 1;
             }
-            out_joint_states.push(converted_robot_joint_state);
         }
 
         return Ok(RobotSetJointState {
             robot_set_joint_state_type: RobotSetJointStateType::Full,
-            concatenated_state: out_dvec,
-            robot_joint_states: out_joint_states
+            concatenated_state: out_dvec
         });
     }
     pub fn convert_state_to_dof_state(&self, robot_set_joint_state: &RobotSetJointState) -> Result<RobotSetJointState, OptimaError> {
@@ -68,9 +65,8 @@ impl RobotSetJointStateModule {
         }
 
         let mut out_dvec = DVector::zeros(self.num_dofs);
-        let mut out_joint_states = vec![];
 
-        let joint_states = &robot_set_joint_state.robot_joint_states;
+        let joint_states = &self.split_robot_set_joint_state_into_robot_joint_states(robot_set_joint_state)?;
         let mut curr_idx = 0;
         for (i, r) in self.robot_joint_state_modules.iter().enumerate() {
             let converted_robot_joint_state = r.convert_joint_state_to_dof_state(&joint_states[i])?;
@@ -80,26 +76,26 @@ impl RobotSetJointStateModule {
                 out_dvec[curr_idx] = dv[j];
                 curr_idx += 1;
             }
-            out_joint_states.push(converted_robot_joint_state);
         }
 
         return Ok(RobotSetJointState {
             robot_set_joint_state_type: RobotSetJointStateType::DOF,
-            concatenated_state: out_dvec,
-            robot_joint_states: out_joint_states
+            concatenated_state: out_dvec
         });
     }
     pub fn spawn_robot_set_joint_state(&self, concatenated_state: DVector<f64>, robot_set_joint_state_type: RobotSetJointStateType) -> Result<RobotSetJointState, OptimaError> {
-        let split = self.split_concatenated_dvec_into_separate_robot_dvecs(&concatenated_state, &robot_set_joint_state_type)?;
-        let mut robot_joint_states = vec![];
-        for (i, r) in self.robot_joint_state_modules.iter().enumerate() {
-            robot_joint_states.push(r.spawn_robot_joint_state(split[i].clone(), robot_set_joint_state_type.map_to_robot_joint_state_type())?);
+        let correct_length = match robot_set_joint_state_type {
+            RobotSetJointStateType::DOF => { self.num_dofs }
+            RobotSetJointStateType::Full => { self.num_axes }
+        };
+
+        if concatenated_state.len() != correct_length {
+            return Err(OptimaError::new_robot_state_vec_wrong_size_error("spawn_robot_set_joint_state", concatenated_state.len(), correct_length, file!(), line!()));
         }
 
         Ok(RobotSetJointState {
             robot_set_joint_state_type,
-            concatenated_state,
-            robot_joint_states
+            concatenated_state
         })
     }
     pub fn spawn_robot_set_joint_state_try_auto_type(&self, concatenated_state: DVector<f64>) -> Result<RobotSetJointState, OptimaError> {
@@ -131,8 +127,6 @@ impl RobotSetJointStateModule {
             RobotSetJointStateType::Full => { DVector::zeros(self.num_axes) }
         };
 
-        let mut out_joint_states = vec![];
-
         let mut curr_idx = 0;
         for r in &self.robot_joint_state_modules {
             let joint_state = r.sample_joint_state(&t.map_to_robot_joint_state_type());
@@ -143,15 +137,22 @@ impl RobotSetJointStateModule {
                 out_dvec[curr_idx] = dv[i];
                 curr_idx += 1;
             }
-
-            out_joint_states.push(joint_state);
         }
 
         RobotSetJointState {
             robot_set_joint_state_type: t.clone(),
-            concatenated_state: out_dvec,
-            robot_joint_states: out_joint_states
+            concatenated_state: out_dvec
         }
+    }
+    pub fn split_robot_set_joint_state_into_robot_joint_states(&self, robot_set_joint_state: &RobotSetJointState) -> Result<Vec<RobotJointState>, OptimaError> {
+        let split = self.split_concatenated_dvec_into_separate_robot_dvecs(&robot_set_joint_state.concatenated_state, &robot_set_joint_state.robot_set_joint_state_type)?;
+
+        let mut out_states = vec![];
+        for (i, s) in split.iter().enumerate() {
+            out_states.push( self.robot_joint_state_modules[i].spawn_robot_joint_state(s.clone(), robot_set_joint_state.robot_set_joint_state_type().map_to_robot_joint_state_type())? )
+        }
+
+        Ok(out_states)
     }
     fn split_concatenated_dvec_into_separate_robot_dvecs(&self, concatenated_state: &DVector<f64>, robot_set_joint_state_type: &RobotSetJointStateType) -> Result<Vec<DVector<f64>>, OptimaError> {
         match robot_set_joint_state_type {
@@ -192,8 +193,7 @@ impl RobotSetJointStateModule {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetJointState {
     robot_set_joint_state_type: RobotSetJointStateType,
-    concatenated_state: DVector<f64>,
-    robot_joint_states: Vec<RobotJointState>
+    concatenated_state: DVector<f64>
 }
 impl RobotSetJointState {
     pub fn robot_set_joint_state_type(&self) -> &RobotSetJointStateType {
@@ -201,9 +201,6 @@ impl RobotSetJointState {
     }
     pub fn concatenated_state(&self) -> &DVector<f64> {
         &self.concatenated_state
-    }
-    pub fn robot_joint_states(&self) -> &Vec<RobotJointState> {
-        &self.robot_joint_states
     }
 }
 impl Add for RobotSetJointState {
@@ -213,21 +210,13 @@ impl Add for RobotSetJointState {
             return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot set states of different types ({:?} + {:?}).", self.robot_set_joint_state_type(), rhs.robot_set_joint_state_type()), file!(), line!()));
         }
 
-        if self.robot_joint_states.len() != rhs.robot_joint_states.len() {
-            return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot set states from different robot sets."), file!(), line!()));
+        if self.concatenated_state.len() != rhs.concatenated_state.len() {
+            return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot set states of different lengths ({:?} + {:?}).", self.concatenated_state.len(), rhs.concatenated_state.len()), file!(), line!()));
         }
 
-        let added_dvec = &self.concatenated_state + &rhs.concatenated_state;
-        let mut out_robot_joint_states = vec![];
-        let l = self.robot_joint_states.len();
-        for i in 0..l {
-            out_robot_joint_states.push( (self.robot_joint_states[i].clone() + rhs.robot_joint_states[i].clone())? )
-        }
-
-        Ok(RobotSetJointState {
+        return Ok(RobotSetJointState {
             robot_set_joint_state_type: self.robot_set_joint_state_type.clone(),
-            concatenated_state: added_dvec,
-            robot_joint_states: out_robot_joint_states
+            concatenated_state: self.concatenated_state + rhs.concatenated_state
         })
     }
 }
@@ -235,17 +224,9 @@ impl Mul<RobotSetJointState> for f64 {
     type Output = RobotSetJointState;
 
     fn mul(self, rhs: RobotSetJointState) -> Self::Output {
-        let multiplied_dvec = self * rhs.concatenated_state;
-        let mut out_joint_states = vec![];
-        for j in &rhs.robot_joint_states {
-            out_joint_states.push( self * j.clone() )
-        }
-
-        RobotSetJointState {
-            robot_set_joint_state_type: rhs.robot_set_joint_state_type.clone(),
-            concatenated_state: multiplied_dvec,
-            robot_joint_states: out_joint_states
-        }
+        let mut output = rhs.clone();
+        output.concatenated_state *= self;
+        output
     }
 }
 impl Index<usize> for RobotSetJointState {

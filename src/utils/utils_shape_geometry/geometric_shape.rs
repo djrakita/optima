@@ -175,6 +175,9 @@ impl GeometricShape {
     pub fn spawner(&self) -> &GeometricShapeSpawner {
         &self.spawner
     }
+    pub fn set_signature(&mut self, signature: GeometricShapeSignature) {
+        self.signature = signature;
+    }
 }
 impl Clone for GeometricShape {
     fn clone(&self) -> Self {
@@ -204,7 +207,8 @@ impl Debug for GeometricShape {
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub enum GeometricShapeSignature {
     None,
-    RobotLink { link_idx: usize, shape_idx_in_link: usize }
+    RobotLink { link_idx: usize, shape_idx_in_link: usize },
+    RobotSetLink { robot_idx_in_set: usize, link_idx_in_robot: usize, shape_idx_in_link: usize }
 }
 
 /// A `GeometricShapeSpawner` is the main object that allows a `GeometricShape` to be serializable

@@ -1,13 +1,15 @@
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_fk_module::{FloatingLinkInput, RobotFKModule, RobotFKResult};
+use crate::robot_modules::robot_fk_module::{RobotFKModule, RobotFKResult};
 use crate::robot_modules::robot_joint_state_module::RobotJointStateModule;
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
-use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
+use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateModule};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseType};
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetFKModule {
+    robot_set_joint_state_module: RobotSetJointStateModule,
     robot_fk_modules: Vec<RobotFKModule>
 }
 impl RobotSetFKModule {
@@ -19,6 +21,7 @@ impl RobotSetFKModule {
             robot_fk_modules.push(robot_fk_module);
         }
         Self {
+            robot_set_joint_state_module: RobotSetJointStateModule::new(robot_set_configuration_module),
             robot_fk_modules
         }
     }
@@ -29,7 +32,9 @@ impl RobotSetFKModule {
     pub fn compute_fk(&self, set_joint_state: &RobotSetJointState, t: &OptimaSE3PoseType) -> Result<RobotSetFKResult, OptimaError> {
         let mut out_vec = vec![];
 
-        for (i, joint_state) in set_joint_state.robot_joint_states().iter().enumerate() {
+        let joint_states = &self.robot_set_joint_state_module.split_robot_set_joint_state_into_robot_joint_states(set_joint_state)?;
+
+        for (i, joint_state) in joint_states.iter().enumerate() {
             let fk_res = self.robot_fk_modules[i].compute_fk(joint_state, t)?;
             out_vec.push(fk_res);
         }
@@ -38,9 +43,11 @@ impl RobotSetFKModule {
             robot_fk_results: out_vec
         })
     }
+    /*
     pub fn compute_fk_floating_chain(&self, joint_state: &RobotSetJointState, t: &OptimaSE3PoseType, floating_link_inputs: Vec<Option<FloatingLinkInput>>) -> Result<RobotFKResult, OptimaError> {
         todo!()
     }
+    */
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

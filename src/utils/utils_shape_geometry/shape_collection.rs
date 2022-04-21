@@ -254,6 +254,20 @@ impl ShapeCollection {
         let input_vec = self.get_geometric_shape_query_input_vec(input)?;
         Ok(GeometricShapeQueries::generic_group_query(input_vec, stop_condition, log_condition, sort_outputs))
     }
+    pub fn set_skips(&mut self, skips: SquareArray2D<bool>) -> Result<(), OptimaError> {
+        if skips.side_length() != self.skips.side_length() {
+            return Err(OptimaError::new_generic_error_str(&format!("Tried to set skips with incorrect size matrix."), file!(), line!()));
+        }
+        self.skips = skips;
+        Ok(())
+    }
+    pub fn set_average_distances(&mut self, average_distances: SquareArray2D<f64>) -> Result<(), OptimaError> {
+        if average_distances.side_length() != self.average_distances.side_length() {
+            return Err(OptimaError::new_generic_error_str(&format!("Tried to set average distances with incorrect size matrix."), file!(), line!()));
+        }
+        self.average_distances = average_distances;
+        Ok(())
+    }
 }
 
 /// An input into the important `ShapeCollection::shape_collection_query` function.

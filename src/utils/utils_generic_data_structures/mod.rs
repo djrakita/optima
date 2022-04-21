@@ -87,11 +87,11 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
     /// Concatenation places the second matrix in the lower right corner such that an m x m matrix
     /// concatenated with an n x n matrix will become an m + n x m + n matrix.  Off diagonal terms
     /// will be T::default
-    pub fn new_concatenated(s1: &SquareArray2D<T>, s2: &SquareArray2D<T>, symmetric: bool) -> Self {
+    pub fn new_concatenated(s1: &SquareArray2D<T>, s2: &SquareArray2D<T>, symmetric: bool, off_diagonal_value: Option<T>) -> Self {
         let l1 = s1.side_length;
         let l2 = s2.side_length;
 
-        let mut out_self = Self::new(l1 + l2, symmetric, None);
+        let mut out_self = Self::new(l1 + l2, symmetric, off_diagonal_value);
 
         for i in 0..l1 {
             for j in 0..l1 {
@@ -209,10 +209,10 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
     /// Concatenation places the second matrix in the lower right corner such that an m x m matrix
     /// concatenated with an n x n matrix will become an m + n x m + n matrix.  Off diagonal terms
     /// will be T::default
-    pub fn concatenate_in_place(&mut self, other: &Self) {
+    pub fn concatenate_in_place(&mut self, other: &Self, off_diagonal_value: Option<T>) {
         let l1 = self.side_length;
         let l2 = other.side_length;
-        for _ in 0..l2 { self.append_new_row_and_column(None); }
+        for _ in 0..l2 { self.append_new_row_and_column(off_diagonal_value.clone()); }
         for i in 0..l2 {
             for j in 0..l2 {
                 self.array[i + l1][j + l1] = other.array[i][j].clone();
@@ -224,6 +224,9 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
         OptimaError::new_check_for_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
 
         Ok(&self.array[row_idx][col_idx])
+    }
+    pub fn side_length(&self) -> usize {
+        self.side_length
     }
 }
 

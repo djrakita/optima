@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_console::{ConsoleInputUtils, get_default_progress_bar, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
-use crate::robot_modules::robot_file_manager_module::RobotMeshFileManagerModule;
+use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::robot_modules::robot_geometric_shape_module::RobotGeometricShapeModule;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};

@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
-use crate::robot_modules::robot_file_manager_module::RobotMeshFileManagerModule;
+use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_fk_module::RobotFKModule;
 use crate::robot_modules::robot_joint_state_module::RobotJointStateModule;
 use crate::utils::utils_errors::OptimaError;

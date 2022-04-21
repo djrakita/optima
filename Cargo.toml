@@ -30,6 +30,7 @@ rand_distr = "0.4.3"
 permutation = "0.4.0"
 serde_with = "1.12.1"
 pbr = "1.0.4"
+rayon = "1.5.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }

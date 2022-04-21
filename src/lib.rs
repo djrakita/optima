@@ -19,6 +19,6 @@ fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<robot_modules::robot_configuration_module::RobotConfigurationModule>()?;
     m.add_class::<robot_modules::robot_joint_state_module::RobotJointStateModule>()?;
     m.add_class::<robot_modules::robot_fk_module::RobotFKModule>()?;
-    m.add_class::<robot_modules::robot_file_manager_module::RobotMeshFileManagerModule>()?;
+    m.add_class::<robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule>()?;
     Ok(())
 }
