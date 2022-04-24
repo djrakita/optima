@@ -13,8 +13,9 @@ use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::urdf_joint::URDFJoint;
 use crate::utils::utils_robot::urdf_link::URDFLink;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
-use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
-use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad};
+use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
+use crate::utils::utils_generic_data_structures::SquareArray2D;
+use crate::utils::utils_traits::{AssetSaveAndLoadable, SaveAndLoadable};
 
 /// The `RobotModelModule` is the base description level for a robot.  It reflects component and
 /// connectivity information about the robot as specified directly by the URDF.
@@ -37,6 +38,7 @@ pub struct RobotModelModule {
     link_tree_traversal_layers: Vec<Vec<usize>>,
     link_tree_max_depth: usize,
     preceding_actuated_joint_idxs: Vec<Option<usize>>,
+    link_chains: SquareArray2D<Vec<usize>>,
     link_name_to_idx_hashmap: HashMap<String, usize>,
     joint_name_to_idx_hashmap: HashMap<String, usize>
 }
@@ -50,6 +52,9 @@ impl RobotModelModule {
     /// let mut r = RobotModelModule::new_from_absolute_paths("ur5");
     /// ```
     pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
+        let load_result = Self::load_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ModelModule });
+        if let Ok(load_result) = load_result { return Ok(load_result); }
+
         let mut joints = vec![];
         let mut links = vec![];
 
@@ -81,6 +86,8 @@ impl RobotModelModule {
             urdf_robot_links.push(l);
         }
 
+        let num_links = links.len();
+
         let mut out_self = Self {
             robot_name: robot_name.to_string(),
             links,
@@ -90,6 +97,7 @@ impl RobotModelModule {
             link_tree_traversal_layers: vec![],
             link_tree_max_depth: 0,
             preceding_actuated_joint_idxs: vec![],
+            link_chains: SquareArray2D::new(num_links, false, None),
             link_name_to_idx_hashmap,
             joint_name_to_idx_hashmap
         };
@@ -98,13 +106,9 @@ impl RobotModelModule {
         out_self.assign_all_joint_connections_manual();
         out_self.set_world_link_idx_manual();
         out_self.set_link_tree_traversal_info();
+        out_self.assign_all_link_chains();
 
         Ok(out_self)
-    }
-
-    /// Loads module from a json string.  Will throw an error if the json string is not compatible.
-    pub fn new_from_json_string(json_string: &str) -> Result<Self, OptimaError> {
-        load_object_from_json_string(json_string)
     }
 
     fn assign_all_link_connections_manual(&mut self) {
@@ -138,6 +142,31 @@ impl RobotModelModule {
             self.joints[i].set_preceding_link_idx(link_idx);
             let link_idx = self.get_link_idx_from_name(  &self.joints[i].urdf_joint().child_link().to_string()  );
             self.joints[i].set_child_link_idx(link_idx);
+        }
+    }
+
+    fn assign_all_link_chains(&mut self) {
+        let num_links = self.links.len();
+        for i in 0..num_links {
+            for j in 0..num_links {
+                self.assign_link_chain(i, j);
+            }
+        }
+    }
+
+    fn assign_link_chain(&mut self, from_idx: usize, to_idx: usize) {
+        let mut out_vec = vec![to_idx];
+        loop {
+            let curr_link_idx = out_vec[0];
+            let link = &self.links[curr_link_idx];
+            let preceding_link_idx_option = link.preceding_link_idx();
+            if preceding_link_idx_option.is_none() { return; }
+            let preceding_link_idx = preceding_link_idx_option.unwrap();
+            out_vec.insert(0, preceding_link_idx);
+            if preceding_link_idx == from_idx {
+                self.link_chains.adjust_data(|x| *x = out_vec.clone(), from_idx, to_idx).expect("error");
+                return;
+            }
         }
     }
 
@@ -475,6 +504,18 @@ impl RobotModelModule {
         Ok(())
     }
 
+    pub fn get_link_chain(&self, from_link_idx: usize, to_link_idx: usize) -> Result<Option<&Vec<usize>>, OptimaError> {
+        OptimaError::new_check_for_idx_out_of_bound_error(from_link_idx, self.links.len(), file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(to_link_idx, self.links.len(), file!(), line!())?;
+
+        let res = self.link_chains.data_cell(from_link_idx, to_link_idx)?;
+        return if res.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(res))
+        }
+    }
+
     pub fn print_links(&self) {
         for l in self.links.iter() {
             l.print_summary();
@@ -496,9 +537,23 @@ impl RobotModelModule {
         print!("\n");
     }
 }
+/*
 impl RobotModuleSaveAndLoad for RobotModelModule {
     fn get_robot_name(&self) -> &str {
         self.robot_name()
+    }
+}
+*/
+impl SaveAndLoadable for RobotModelModule {
+    type SaveType = Self;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType { self.clone() }
+    fn load_from_path(path: &OptimaStemCellPath) -> Result<Self, OptimaError> {
+        return path.load_object_from_json_file();
+    }
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        return Ok(load);
     }
 }
 

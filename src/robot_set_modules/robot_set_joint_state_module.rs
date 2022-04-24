@@ -1,9 +1,11 @@
-use std::ops::{Add, Index, Mul};
+use std::ops::{Add, Index, IndexMut, Mul};
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJointStateModule, RobotJointStateType};
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::load_object_from_json_string;
+use crate::utils::utils_traits::SaveAndLoadable;
 
 /// RobotSet analogue of the `RobotJointStateModule`.  The same concepts apply, just on a set of possibly
 /// multiple robots.
@@ -113,6 +115,22 @@ impl RobotSetJointStateModule {
             self.spawn_robot_set_joint_state(concatenated_state, RobotSetJointStateType::DOF)
         }
     }
+    pub fn spawn_zeros_robot_set_joint_state(&self, robot_set_state_type: RobotSetJointStateType) -> RobotSetJointState {
+        return match robot_set_state_type {
+            RobotSetJointStateType::DOF => {
+                RobotSetJointState {
+                    robot_set_joint_state_type: RobotSetJointStateType::DOF,
+                    concatenated_state: DVector::from_vec(vec![0.0; self.num_dofs])
+                }
+            }
+            RobotSetJointStateType::Full => {
+                RobotSetJointState {
+                    robot_set_joint_state_type: RobotSetJointStateType::Full,
+                    concatenated_state: DVector::from_vec(vec![0.0; self.num_axes])
+                }
+            }
+        }
+    }
     pub fn get_joint_state_bounds(&self, t: &RobotSetJointStateType) -> Vec<(f64, f64)> {
         let mut out_vec = vec![];
         for r in &self.robot_joint_state_modules {
@@ -186,6 +204,34 @@ impl RobotSetJointStateModule {
 
         Ok(out_vec)
     }
+    pub fn num_dofs(&self) -> usize {
+        self.num_dofs
+    }
+    pub fn num_axes(&self) -> usize {
+        self.num_axes
+    }
+    pub fn robot_joint_state_modules(&self) -> &Vec<RobotJointStateModule> {
+        &self.robot_joint_state_modules
+    }
+}
+impl SaveAndLoadable for RobotSetJointStateModule {
+    type SaveType = (usize, usize, String);
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        (self.num_dofs, self.num_axes, self.robot_joint_state_modules.get_serialization_string())
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+
+        let robot_joint_state_modules = Vec::load_from_json_string(&load.2)?;
+
+        Ok(Self {
+            num_dofs: load.0,
+            num_axes: load.1,
+            robot_joint_state_modules
+        })
+    }
 }
 
 /// RobotSet analogue of the `RobotJointState`.  The same concepts apply, just on a set of possibly
@@ -234,6 +280,11 @@ impl Index<usize> for RobotSetJointState {
 
     fn index(&self, index: usize) -> &Self::Output {
         return &self.concatenated_state[index];
+    }
+}
+impl IndexMut<usize> for RobotSetJointState {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.concatenated_state[index]
     }
 }
 

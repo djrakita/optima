@@ -2,6 +2,8 @@ use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::load_object_from_json_string;
+use crate::utils::utils_traits::SaveAndLoadable;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetMeshFileManagerModule {
@@ -26,5 +28,20 @@ impl RobotSetMeshFileManagerModule {
     }
     pub fn robot_mesh_file_manager_modules(&self) -> &Vec<RobotMeshFileManagerModule> {
         &self.robot_mesh_file_manager_modules
+    }
+}
+impl SaveAndLoadable for RobotSetMeshFileManagerModule {
+    type SaveType = String;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.robot_mesh_file_manager_modules.get_serialization_string()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        let robot_mesh_file_manager_modules = Vec::load_from_json_string(&load)?;
+        Ok(Self {
+            robot_mesh_file_manager_modules
+        })
     }
 }

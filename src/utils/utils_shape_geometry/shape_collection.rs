@@ -2,14 +2,16 @@ use nalgebra::{Vector3};
 use parry3d_f64::query::Ray;
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_generic_data_structures::SquareArray2D;
+use crate::utils::utils_files::optima_path::{load_object_from_json_string};
+use crate::utils::utils_generic_data_structures::{MemoryCell, SquareArray2D};
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQuery, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_traits::{SaveAndLoadable};
 
 /// A collection of `GeometricShape` objects.  Contains the vector of shapes as well as information
 /// on the relationship between shapes.  The most important function in this struct is
 /// `shape_collection_query`.  This function takes in a `ShapeCollectionQuery` input, resolves
-/// all poses of the geometric shapes in the scene, and automatically invokes the
+/// all poses of the geometric shapes in the scenes, and automatically invokes the
 /// `GeometricShapeQueries::generic_group_query` function with the correct, corresponding inputs.
 ///
 /// The `skips` field is a two dimensional square array that specifies whether a particular pair of shapes
@@ -28,8 +30,8 @@ use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, Geomet
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ShapeCollection {
     shapes: Vec<GeometricShape>,
-    skips: SquareArray2D<bool>,
-    average_distances: SquareArray2D<f64>,
+    skips: SquareArray2D<MemoryCell<bool>>,
+    average_distances: SquareArray2D<MemoryCell<f64>>,
     sorted_signatures_with_shape_idxs: Vec<(GeometricShapeSignature, usize)>
 }
 impl ShapeCollection {
@@ -47,38 +49,51 @@ impl ShapeCollection {
         let sorted_idx = match sorted_idx { Ok(idx) => {idx} Err(idx) => {idx} };
         self.sorted_signatures_with_shape_idxs.insert(sorted_idx, (geometric_shape.signature().clone(), add_idx));
         self.shapes.push(geometric_shape);
-        self.skips.append_new_row_and_column(Some(false));
-        self.average_distances.append_new_row_and_column(Some(1.0));
+        self.skips.append_new_row_and_column(Some(MemoryCell::new(false)));
+        self.average_distances.append_new_row_and_column(Some(MemoryCell::new(1.0)));
     }
-    pub fn set_skip(&mut self, skip: bool, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
+    pub fn set_base_skip(&mut self, skip: bool, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
         let idx1 = self.get_shape_idx_from_signature(signature1)?;
         let idx2 = self.get_shape_idx_from_signature(signature2)?;
 
-        self.skips.replace_data(skip, idx1, idx2)?;
+        self.skips.adjust_data(|x| x.replace_base_value(skip), idx1, idx2)?;
 
         Ok(())
     }
-    pub fn set_average_distance(&mut self, dis: f64, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
+    pub fn replace_skip(&mut self, skip: bool, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
         let idx1 = self.get_shape_idx_from_signature(signature1)?;
         let idx2 = self.get_shape_idx_from_signature(signature2)?;
 
-        self.average_distances.replace_data(dis, idx1, idx2)?;
+        self.replace_skip_from_idxs(skip, idx1, idx2)
+    }
+    pub fn replace_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        self.skips.adjust_data(|x| x.replace_value(skip, false), idx1, idx2)
+    }
+    pub fn set_base_average_distance(&mut self, dis: f64, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
+        let idx1 = self.get_shape_idx_from_signature(signature1)?;
+        let idx2 = self.get_shape_idx_from_signature(signature2)?;
+
+        // self.average_distances.replace_data(dis, idx1, idx2)?;
+        self.average_distances.adjust_data(|x| x.replace_base_value(dis), idx1, idx2 )?;
 
         Ok(())
     }
-    pub fn set_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
-        self.skips.replace_data(skip, idx1, idx2)
+    pub fn replace_average_distance(&mut self, dis: f64, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
+        let idx1 = self.get_shape_idx_from_signature(signature1)?;
+        let idx2 = self.get_shape_idx_from_signature(signature2)?;
+
+        self.replace_average_distance_from_idxs(dis, idx1, idx2)
     }
-    pub fn set_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
-        self.average_distances.replace_data(dis, idx1, idx2)
+    pub fn replace_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        self.average_distances.adjust_data(|x| x.replace_value(dis, false), idx1, idx2 )
     }
     pub fn shapes(&self) -> &Vec<GeometricShape> {
         &self.shapes
     }
-    pub fn skips(&self) -> &SquareArray2D<bool> {
+    pub fn skips(&self) -> &SquareArray2D<MemoryCell<bool>> {
         &self.skips
     }
-    pub fn average_distances(&self) -> &SquareArray2D<f64> {
+    pub fn average_distances(&self) -> &SquareArray2D<MemoryCell<f64>> {
         &self.average_distances
     }
     pub fn get_shape_idx_from_signature(&self, signature: &GeometricShapeSignature) -> Result<usize, OptimaError> {
@@ -182,7 +197,7 @@ impl ShapeCollection {
                     let pose2 = &poses[j];
                     if let Some(pose2) = pose2 {
                         if i <= j {
-                            let skip = self.skips.data_cell(i, j)?;
+                            let skip = self.skips.data_cell(i, j)?.curr_value();
                             if !*skip {
                                 match input {
                                     ShapeCollectionQuery::IntersectionTest { .. } => {
@@ -254,19 +269,46 @@ impl ShapeCollection {
         let input_vec = self.get_geometric_shape_query_input_vec(input)?;
         Ok(GeometricShapeQueries::generic_group_query(input_vec, stop_condition, log_condition, sort_outputs))
     }
-    pub fn set_skips(&mut self, skips: SquareArray2D<bool>) -> Result<(), OptimaError> {
+    pub fn set_skips(&mut self, skips: SquareArray2D<MemoryCell<bool>>) -> Result<(), OptimaError> {
         if skips.side_length() != self.skips.side_length() {
             return Err(OptimaError::new_generic_error_str(&format!("Tried to set skips with incorrect size matrix."), file!(), line!()));
         }
         self.skips = skips;
         Ok(())
     }
-    pub fn set_average_distances(&mut self, average_distances: SquareArray2D<f64>) -> Result<(), OptimaError> {
+    pub fn set_average_distances(&mut self, average_distances: SquareArray2D<MemoryCell<f64>>) -> Result<(), OptimaError> {
         if average_distances.side_length() != self.average_distances.side_length() {
             return Err(OptimaError::new_generic_error_str(&format!("Tried to set average distances with incorrect size matrix."), file!(), line!()));
         }
         self.average_distances = average_distances;
         Ok(())
+    }
+}
+impl SaveAndLoadable for ShapeCollection {
+    type SaveType = (String, String, String, Vec<(GeometricShapeSignature, usize)>);
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        (self.shapes.get_serialization_string(),
+         self.skips.convert_to_standard_cells().get_serialization_string(),
+         self.average_distances.convert_to_standard_cells().get_serialization_string(),
+         self.sorted_signatures_with_shape_idxs.clone())
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        let shapes = Vec::load_from_json_string(&load.0)?;
+        let skips_standard: SquareArray2D<bool> = load_object_from_json_string(&load.1)?;
+        let average_distances_standard: SquareArray2D<f64> = load_object_from_json_string(&load.2)?;
+        let skips = skips_standard.convert_to_memory_cells();
+        let average_distances = average_distances_standard.convert_to_memory_cells();
+        let sorted_signatures_with_shape_idxs = load.3.clone();
+
+        Ok(Self {
+            shapes,
+            skips,
+            average_distances,
+            sorted_signatures_with_shape_idxs
+        })
     }
 }
 
@@ -331,7 +373,7 @@ impl ShapeCollectionInputPoses {
         Ok(())
     }
     pub fn insert_or_replace_pose_by_idx(&mut self, idx: usize, pose: OptimaSE3Pose) -> Result<(), OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(idx, self.poses.len(), file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(idx, self.poses.len(), file!(), line!())?;
 
         self.poses[idx] = Some(pose);
 

@@ -7,6 +7,7 @@
 
 pub mod robot_modules;
 pub mod robot_set_modules;
+pub mod scenes;
 pub mod utils;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -18,7 +19,7 @@ fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<robot_modules::robot_model_module::RobotModelModule>()?;
     m.add_class::<robot_modules::robot_configuration_module::RobotConfigurationModule>()?;
     m.add_class::<robot_modules::robot_joint_state_module::RobotJointStateModule>()?;
-    m.add_class::<robot_modules::robot_fk_module::RobotFKModule>()?;
+    m.add_class::<robot_modules::robot_kinematics_module::RobotKinematicsModule>()?;
     m.add_class::<robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule>()?;
     Ok(())
 }

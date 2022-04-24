@@ -6,14 +6,16 @@ use wasm_bindgen::prelude::*;
 
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
-use std::ops::{Add, Index, Mul};
-use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
+use std::ops::{Add, Index, IndexMut, Mul};
+use crate::robot_modules::robot_configuration_module::{RobotConfigurationModule};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::{load_object_from_json_string};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxis;
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_sampling::SimpleSamplers;
+use crate::utils::utils_traits::SaveAndLoadable;
 
 /// The `RobotJointStateModule` organizes and operates over robot states.  "Robot joint states" are vectors
 /// that contain scalar joint values for each joint axis in the robot model.
@@ -296,6 +298,19 @@ impl RobotJointStateModule {
         return self.robot_configuration_module.robot_name()
     }
 }
+impl SaveAndLoadable for RobotJointStateModule {
+    type SaveType = String;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.robot_configuration_module.get_serialization_string()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        let robot_configuration_module = RobotConfigurationModule::load_from_json_string(&load)?;
+        return Ok(RobotJointStateModule::new(robot_configuration_module));
+    }
+}
 
 /// Python implementations.
 #[cfg(not(target_arch = "wasm32"))]
@@ -448,6 +463,11 @@ impl Index<usize> for RobotJointState {
 
     fn index(&self, index: usize) -> &Self::Output {
         return &self.joint_state[index];
+    }
+}
+impl IndexMut<usize> for RobotJointState {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.joint_state[index]
     }
 }
 

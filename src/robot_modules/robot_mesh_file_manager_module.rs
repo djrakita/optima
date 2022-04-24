@@ -8,8 +8,9 @@ use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_console::{get_default_progress_bar, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
+use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
 use crate::utils::utils_robot::link::Link;
+use crate::utils::utils_traits::SaveAndLoadable;
 
 /// The `RobotMeshFileManagerModule` has numerous utility functions relating to mesh files.
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -258,6 +259,18 @@ impl RobotMeshFileManagerModule {
     }
     pub fn robot_name(&self) -> &str {
         &self.robot_name
+    }
+}
+impl SaveAndLoadable for RobotMeshFileManagerModule {
+    type SaveType = String;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.robot_name.clone()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let robot_name: Self::SaveType = load_object_from_json_string(json_str)?;
+        return RobotMeshFileManagerModule::new_from_name(&robot_name);
     }
 }
 

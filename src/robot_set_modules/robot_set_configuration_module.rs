@@ -4,6 +4,7 @@ use crate::utils::utils_console::{ConsoleInputUtils, optima_print, PrintColor, P
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
+use crate::utils::utils_traits::SaveAndLoadable;
 
 /// The robot set analogue of the `RobotConfigurationModule`.  Multiple robot configurations
 /// can be added and configured in the set of robots here, then can be saved to disk for loading
@@ -25,28 +26,24 @@ impl RobotSetConfigurationModule {
         OptimaError::new_check_for_stem_cell_path_does_not_exist(&path, file!(), line!())?;
         path.append(&("robot_set_configuration_module.JSON"));
         OptimaError::new_check_for_stem_cell_path_does_not_exist(&path, file!(), line!())?;
-        return path.load_object_from_json_file();
+        return Self::load_from_path(&path);
     }
     pub fn add_robot_configuration_from_names(&mut self, robot_names: RobotNames) -> Result<(), OptimaError> {
         let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_names)?;
-        self.robot_configuration_modules.push(robot_configuration_module);
+        return self.add_robot_configuration(robot_configuration_module);
+    }
+    pub fn add_robot_configuration(&mut self, robot_configuration: RobotConfigurationModule) -> Result<(), OptimaError> {
+        self.robot_configuration_modules.push(robot_configuration);
         Ok(())
     }
     pub fn robot_configuration_modules(&self) -> &Vec<RobotConfigurationModule> {
         &self.robot_configuration_modules
     }
-    pub fn robot_configuration_modules_mut(&mut self) -> &mut Vec<RobotConfigurationModule> {
-        &mut self.robot_configuration_modules
-    }
     pub fn robot_configuration_module(&self, idx: usize) -> Result<&RobotConfigurationModule, OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(idx, self.robot_configuration_modules.len(), file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(idx, self.robot_configuration_modules.len(), file!(), line!())?;
         Ok(&self.robot_configuration_modules[idx])
     }
-    pub fn robot_configuration_module_mut(&mut self, idx: usize) -> Result<&mut RobotConfigurationModule, OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(idx, self.robot_configuration_modules.len(), file!(), line!())?;
-        Ok(&mut self.robot_configuration_modules[idx])
-    }
-    pub fn save(&self, set_name: &str) -> Result<(), OptimaError> {
+    pub fn save_robot_set_configuration_module(&self, set_name: &str) -> Result<(), OptimaError> {
         if self.robot_configuration_modules.len() <= 1 {
             optima_print("WARNING: Cannot save RobotSetConfigurationModule with <= 1 robot.", PrintMode::Println, PrintColor::Yellow, true);
             return Ok(());
@@ -59,15 +56,30 @@ impl RobotSetConfigurationModule {
             if response == "y" {
                 path.delete_all_items_in_directory()?;
                 path.append(&("robot_set_configuration_module.JSON"));
-                path.save_object_to_file_as_json(&self)?;
+                self.save_to_path(&path)?;
             } else {
                 return Ok(());
             }
         } else {
             path.append(&("robot_set_configuration_module.JSON"));
-            path.save_object_to_file_as_json(&self)?;
+            self.save_to_path(&path)?;
         }
 
         Ok(())
+    }
+}
+impl SaveAndLoadable for RobotSetConfigurationModule {
+    type SaveType = Vec<String>;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.robot_configuration_modules.get_save_serialization_object()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load = Vec::load_from_json_string(&json_str)?;
+
+        Ok(Self {
+            robot_configuration_modules: load
+        })
     }
 }

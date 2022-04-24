@@ -3,7 +3,9 @@ use serde_with::{serde_as};
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
+use crate::utils::utils_traits::SaveAndLoadable;
 
 #[serde_as]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -29,7 +31,7 @@ impl <T> Array1D <T> where T: Clone + Debug + Serialize + DeserializeOwned + Def
         }
     }
     pub fn replace_data(&mut self, data: T, idx: usize) -> Result<(), OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(idx, self.array.len(), file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(idx, self.array.len(), file!(), line!())?;
 
         self.array[idx] = data;
 
@@ -57,16 +59,26 @@ impl <T> Array1D <T> where T: Clone + Debug + Serialize + DeserializeOwned + Def
         Ok(())
     }
     pub fn data_cell(&self, idx: usize) -> Result<&T, OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(idx, self.array.len(), file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(idx, self.array.len(), file!(), line!())?;
 
         Ok(&self.array[idx])
     }
     pub fn data_cell_mut(&mut self, idx: usize) -> Result<&mut T, OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(idx, self.array.len(), file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(idx, self.array.len(), file!(), line!())?;
 
         Ok(&mut self.array[idx])
     }
     pub fn len(&self) -> usize { self.array.len() }
+    pub fn convert_to_memory_cells(&self) -> Array1D<MemoryCell<T>> {
+        let mut out = Array1D::new(self.len(), None);
+
+        let l = self.len();
+        for i in 0..l {
+            out.replace_data(MemoryCell::new(self.array[i].clone()), i).expect("error");
+        }
+
+        out
+    }
 }
 
 #[serde_as]
@@ -128,10 +140,10 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
         }
     }
     pub fn replace_data(&mut self, data: T, row_idx: usize, col_idx: usize) -> Result<(), OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
-        OptimaError::new_check_for_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
 
-        if self.symmetric {
+        if self.symmetric && row_idx != col_idx {
             self.array[row_idx][col_idx] = data.clone();
             self.array[col_idx][row_idx] = data;
         } else {
@@ -150,13 +162,13 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
         }
     }
     pub fn adjust_data<F: Fn(&mut T)>(&mut self, adjustment: F, row_idx: usize, col_idx: usize) -> Result<(), OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
-        OptimaError::new_check_for_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
 
         let data = &mut self.array[row_idx][col_idx];
         adjustment(data);
 
-        if self.symmetric {
+        if self.symmetric && row_idx != col_idx {
             let data = &mut self.array[col_idx][row_idx];
             adjustment(data);
         }
@@ -220,13 +232,110 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
         }
     }
     pub fn data_cell(&self, row_idx: usize, col_idx: usize) -> Result<&T, OptimaError> {
-        OptimaError::new_check_for_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
-        OptimaError::new_check_for_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
 
         Ok(&self.array[row_idx][col_idx])
     }
     pub fn side_length(&self) -> usize {
         self.side_length
+    }
+    pub fn convert_to_memory_cells(&self) -> SquareArray2D<MemoryCell<T>> {
+        let mut out_self = SquareArray2D::new(self.side_length, self.symmetric, None);
+        for i in 0..self.side_length {
+            for j in 0..self.side_length {
+                out_self.replace_data(MemoryCell::new(self.array[i][j].clone()), i, j).expect("error");
+            }
+        }
+        return out_self;
+    }
+}
+impl <T> SaveAndLoadable for SquareArray2D<T> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
+    type SaveType = Self;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.clone()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        return Ok(load);
+    }
+}
+
+impl <T> SquareArray2D<MemoryCell<T>> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
+    pub fn convert_to_standard_cells(&self) -> SquareArray2D<T> {
+        let mut out = SquareArray2D::new(self.side_length, self.symmetric, None);
+
+        let l = self.side_length;
+        for i in 0..l {
+            for j in 0..l {
+                let val = self.array[i][j].curr_value.clone();
+                out.replace_data(val, i, j).expect("error");
+            }
+        }
+
+        out
+    }
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MemoryCell <T> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
+    #[serde_as(as = "_")]
+    curr_value: T,
+    #[serde_as(as = "_")]
+    base_value: T,
+    #[serde_as(as = "Vec<_>")]
+    history: Vec<T>
+}
+impl <T> MemoryCell<T> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
+    pub fn new(value: T) -> Self {
+        Self {
+            curr_value: value.clone(),
+            base_value: value.clone(),
+            history: vec![value.clone()]
+        }
+    }
+    pub fn new_default() -> Self {
+        return Self::new(T::default());
+    }
+    pub fn replace_value(&mut self, data: T, add_to_history: bool) {
+        if add_to_history {
+            self.history.push(self.curr_value.clone());
+            self.curr_value = data.clone();
+        } else {
+            self.curr_value = data;
+        }
+    }
+    pub fn replace_base_value(&mut self, data: T) {
+        self.base_value = data;
+    }
+    pub fn adjust_value<F: Fn(&mut T)>(&mut self, f: F, add_to_history: bool) {
+        if add_to_history {
+            self.history.push(self.curr_value.clone());
+        }
+        f(&mut self.curr_value);
+    }
+    pub fn reset_to_base_value(&mut self, add_to_history: bool) {
+        if add_to_history {
+            self.history.push(self.curr_value.clone());
+        }
+        self.curr_value = self.base_value.clone();
+    }
+    pub fn curr_value(&self) -> &T {
+        &self.curr_value
+    }
+    pub fn base_value(&self) -> &T {
+        &self.base_value
+    }
+    pub fn history(&self) -> &Vec<T> {
+        &self.history
+    }
+}
+impl <T> Default for MemoryCell<T> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
+    fn default() -> Self {
+        MemoryCell::new_default()
     }
 }
 
@@ -262,6 +371,21 @@ impl Mixable for AveragingFloat {
         return out_self
     }
 }
+impl <T> Mixable for Vec<T>  where T: Clone {
+    fn mix(&self, other: &Self) -> Self {
+        let mut out_vec = vec![];
+
+        for o in self { out_vec.push(o.clone()) }
+        for o in other { out_vec.push(o.clone()) }
+
+        out_vec
+    }
+}
+impl <T> Mixable for MemoryCell<T> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
+    fn mix(&self, other: &Self) -> Self {
+        MemoryCell::new(self.curr_value.mix(&other.curr_value))
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AveragingFloat {
@@ -289,4 +413,5 @@ impl Default for AveragingFloat {
         Self::new()
     }
 }
+
 

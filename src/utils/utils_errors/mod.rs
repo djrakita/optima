@@ -24,7 +24,14 @@ impl OptimaError {
         // optima_print(&s, PrintMode::Println, PrintColor::Red, true);
         return Self::IdxOutOfBoundError(s)
     }
-    pub fn new_check_for_out_of_bound_error(given_idx: usize, length_of_array: usize, file: &str, line: u32) -> Result<(), Self> {
+    pub fn new_check_from_idx_out_of_bound_error(given_idx: usize, length_of_array: usize, file: &str, line: u32) -> Result<(), Self> {
+        return if given_idx >= length_of_array {
+            Err(Self::new_idx_out_of_bound_error(given_idx, length_of_array, file, line))
+        } else {
+            Ok(())
+        }
+    }
+    pub fn new_check_for_idx_out_of_bound_error(given_idx: usize, length_of_array: usize, file: &str, line: u32) -> Result<(), Self> {
         return if given_idx >= length_of_array {
             Err(Self::new_idx_out_of_bound_error(given_idx, length_of_array, file, line))
         } else {

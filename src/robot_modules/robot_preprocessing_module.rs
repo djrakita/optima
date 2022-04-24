@@ -11,8 +11,9 @@ use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerMo
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::robot_modules::robot_geometric_shape_module::RobotGeometricShapeModule;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
-use crate::utils::utils_robot::robot_module_utils::{RobotModuleSaveAndLoad, RobotNames};
+use crate::utils::utils_robot::robot_module_utils::{RobotNames};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
+use crate::utils::utils_traits::AssetSaveAndLoadable;
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
@@ -105,7 +106,7 @@ impl RobotPreprocessingModule {
             file_path.delete_file()?;
 
             let robot_model_module = RobotModelModule::new(robot_name)?;
-            robot_model_module.save_to_json_file(RobotModuleJsonType::ModelModule)?;
+            robot_model_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ModelModule })?;
 
             optima_print("Successfully preprocessed robot model module.", PrintMode::Println, PrintColor::Blue, true);
         }
@@ -254,8 +255,8 @@ impl RobotPreprocessingModule {
         if !directory_path.exists() || !directory_path_permanent.exists() || self.replace_robot_link_convex_shapes || self.replace_robot_link_convex_shape_subcomponents {
             optima_print("Preprocessing robot shape geometry module...", PrintMode::Println, PrintColor::Blue, true);
             let robot_shape_geometry_module = RobotGeometricShapeModule::new_from_names(RobotNames::new_base(robot_name), true)?;
-            robot_shape_geometry_module.save_to_json_file(RobotModuleJsonType::ShapeGeometryModule)?;
-            robot_shape_geometry_module.save_to_json_file(RobotModuleJsonType::ShapeGeometryModulePermanent)?;
+            robot_shape_geometry_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModule })?;
+            robot_shape_geometry_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModulePermanent })?;
         }
         Ok(())
     }

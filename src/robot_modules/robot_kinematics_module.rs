@@ -1,3 +1,4 @@
+use nalgebra::{DMatrix, Vector3};
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -9,18 +10,21 @@ use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
 use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJointStateModule, RobotJointStateType};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaStemCellPath};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxisPrimitiveType;
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
+use crate::utils::utils_traits::SaveAndLoadable;
 
-/// The `RobotFKModule` computes the forward kinematics of a robot configuration.  Forward kinematics
+/// The `RobotKinematicsModule` performs operations related to a robot's kinematics.
+/// For instance, one of the main subroutines afforded by this module is forward kinematics which
 /// takes as input a robot joint_state and outputs the SE(3) poses of all links on the robot.
 ///
 /// # Example
 /// ```
 /// use nalgebra::DVector;
-/// use optima::robot_modules::robot_fk_module::RobotFKModule;
+/// use optima::robot_modules::robot_kinematics_module::RobotKinematicsModule;
 /// use optima::robot_modules::robot_joint_state_module::RobotJointStateModule;
 /// use optima::utils::utils_robot::robot_module_utils::RobotNames;
 /// use optima::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
@@ -28,8 +32,8 @@ use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType}
 /// let robot_joint_state_module = RobotJointStateModule::new_from_names(RobotNames::new_base("ur5")).expect("error");
 /// let robot_joint_state = robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::zeros(6)).expect("error");
 ///
-/// let robot_fk_module = RobotFKModule::new_from_names(RobotNames::new_base("ur5")).expect("error");
-/// let fk_res = robot_fk_module.compute_fk(&robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+/// let robot_kinematics_module = RobotKinematicsModule::new_from_names(RobotNames::new_base("ur5")).expect("error");
+/// let fk_res = robot_kinematics_module.compute_fk(&robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
 /// fk_res.print_summary();
 ///
 /// // Output:
@@ -81,13 +85,15 @@ use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType}
 /// ```
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
-pub struct RobotFKModule {
+pub struct RobotKinematicsModule {
     robot_configuration_module: RobotConfigurationModule,
     robot_joint_state_module: RobotJointStateModule,
     starter_result: RobotFKResult
 }
-impl RobotFKModule {
-    pub fn new(robot_configuration_module: RobotConfigurationModule, robot_joint_state_module: RobotJointStateModule) -> Self {
+impl RobotKinematicsModule {
+    pub fn new(robot_configuration_module: RobotConfigurationModule) -> Self {
+        let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
+
         let mut starter_result = RobotFKResult { link_entries: vec![] };
         let links = robot_configuration_module.robot_model_module().links();
         for (i, link) in links.iter().enumerate() {
@@ -106,8 +112,7 @@ impl RobotFKModule {
     }
     pub fn new_from_names(robot_names: RobotNames) -> Result<Self, OptimaError> {
         let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_names)?;
-        let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
-        return Ok(Self::new(robot_configuration_module, robot_joint_state_module));
+        return Ok(Self::new(robot_configuration_module));
     }
     pub fn compute_fk(&self, joint_state: &RobotJointState, t: &OptimaSE3PoseType) -> Result<RobotFKResult, OptimaError> {
         let joint_state = self.robot_joint_state_module.convert_joint_state_to_full_state(joint_state)?;
@@ -131,22 +136,14 @@ impl RobotFKModule {
     /// If this is None, the whole forward kinematics process will play out from the start_link_idx on.
     /// - start_link_pose: An optional SE(3) pose used to situate the beginning link (start_link_idx) in the chain.
     /// If this is None, this pose will be the default pose just based on the given `RobotState`.
-    pub fn compute_fk_floating_chain(&self, joint_state: &RobotJointState, t: &OptimaSE3PoseType, floating_link_input: FloatingLinkInput) -> Result<RobotFKResult, OptimaError> {
+    pub fn compute_fk_floating_chain(&self, joint_state: &RobotJointState, t: &OptimaSE3PoseType, floating_link_input: &FloatingLinkInput) -> Result<RobotFKResult, OptimaError> {
         let start_link_idx = floating_link_input.start_link_idx;
         let end_link_idx = floating_link_input.end_link_idx;
-        let start_link_pose = floating_link_input.start_link_pose;
+        let start_link_pose = floating_link_input.start_link_pose.clone();
 
         let num_links = self.robot_configuration_module.robot_model_module().links().len();
-        if let Some(start_link_idx) = start_link_idx {
-            if start_link_idx >= num_links {
-            return Err(OptimaError::new_idx_out_of_bound_error(start_link_idx, num_links, file!(), line!()));
-        }
-        }
-        if let Some(end_link_idx) = end_link_idx {
-            if end_link_idx >= num_links {
-                return Err(OptimaError::new_idx_out_of_bound_error(end_link_idx, num_links, file!(), line!()));
-            }
-        }
+        if let Some(start_link_idx) = start_link_idx { OptimaError::new_check_for_idx_out_of_bound_error(start_link_idx, num_links, file!(), line!())?; }
+        if let Some(end_link_idx) = end_link_idx { OptimaError::new_check_for_idx_out_of_bound_error(end_link_idx, num_links, file!(), line!())?;}
 
         let joint_state = self.robot_joint_state_module.convert_joint_state_to_full_state(joint_state)?;
         let mut output = self.starter_result.clone();
@@ -179,31 +176,165 @@ impl RobotFKModule {
             }
         }
 
-        let link_tree_traversal_layers = self.robot_configuration_module.robot_model_module().link_tree_traversal_layers();
-
         let links = self.robot_configuration_module.robot_model_module().links();
 
-        for link_tree_traversal_layer in link_tree_traversal_layers {
-            for link_idx in link_tree_traversal_layer {
-                let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
-                if predecessor_link_idx_option.is_none() { continue; }
-                let predecessor_link_idx = predecessor_link_idx_option.unwrap();
-                if output.link_entries[predecessor_link_idx].pose.is_some() {
-                    self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
-                    if let Some(end_link_idx_) = end_link_idx {
-                        if end_link_idx_ == *link_idx {
-                            return Ok(output);
+        match end_link_idx {
+            None => {
+                let link_tree_traversal_layers = self.robot_configuration_module.robot_model_module().link_tree_traversal_layers();
+                for link_tree_traversal_layer in link_tree_traversal_layers {
+                    for link_idx in link_tree_traversal_layer {
+                        let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
+                        if predecessor_link_idx_option.is_none() { continue; }
+                        let predecessor_link_idx = predecessor_link_idx_option.unwrap();
+                        if output.link_entries[predecessor_link_idx].pose.is_some() {
+                            self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                        }
+                    }
+                }
+            }
+            Some(end_link_idx) => {
+                let chain = self.robot_configuration_module.robot_model_module().get_link_chain(start_link_idx, end_link_idx)?;
+                if chain.is_none() {
+                    return Err(OptimaError::new_generic_error_str(&format!("No link chain exists between link {} and link {}", start_link_idx, end_link_idx), file!(), line!()));
+                }
+                let chain = chain.unwrap();
+                for link_idx in chain {
+                    if output.link_entries[*link_idx].pose.is_some() { continue; }
+                    let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
+                    if predecessor_link_idx_option.is_none() { continue; }
+                    let predecessor_link_idx = predecessor_link_idx_option.unwrap();
+                    if output.link_entries[predecessor_link_idx].pose.is_some() {
+                        self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                    }
+                }
+            }
+        }
+
+        return Ok(output);
+    }
+    pub fn compute_fk_dof_perturbations(&self, joint_state: &RobotJointState, t: &OptimaSE3PoseType, perturbation: Option<f64>) -> Result<RobotFKDOFPerturbationsResult, OptimaError> {
+        let perturbation = match perturbation {
+            None => { 0.00001 }
+            Some(p) => { p }
+        };
+
+        let dof_joint_state = self.robot_joint_state_module.convert_joint_state_to_dof_state(joint_state)?;
+
+        let central_fk_result = self.compute_fk(&dof_joint_state, t)?;
+
+        let mut fk_dof_perturbation_results = vec![];
+
+        let len = dof_joint_state.joint_state().len();
+        for i in 0..len {
+            let mut dof_joint_state_copy = dof_joint_state.clone();
+            dof_joint_state_copy[i] += perturbation;
+            let fk_res = self.compute_fk(&dof_joint_state_copy, t)?;
+            fk_dof_perturbation_results.push(fk_res);
+        }
+
+        Ok(RobotFKDOFPerturbationsResult {
+            perturbation,
+            central_fk_result,
+            fk_dof_perturbation_results
+        })
+    }
+    pub fn compute_jacobian(&self,
+                            joint_state: &RobotJointState,
+                            start_link_idx: Option<usize>,
+                            end_link_idx: usize,
+                            robot_jacobian_end_point: &JacobianEndPoint,
+                            start_link_pose: Option<OptimaSE3Pose>,
+                            jacobian_mode: JacobianMode) -> Result<DMatrix<f64>, OptimaError> {
+        let num_dofs = self.robot_joint_state_module.num_dofs();
+        let num_rows = match jacobian_mode {
+            JacobianMode::Full => { 6 }
+            JacobianMode::Translational => { 3 }
+            JacobianMode::Rotational => { 3 }
+        };
+        let mut jacobian = DMatrix::zeros(num_rows, num_dofs);
+
+        let floating_link_input = FloatingLinkInput {
+            start_link_idx,
+            end_link_idx: Some(end_link_idx),
+            start_link_pose
+        };
+        let fk_res = self.compute_fk_floating_chain(joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion, &floating_link_input)?;
+        let link_entries = &fk_res.link_entries;
+
+        let end_pose = link_entries.get(end_link_idx).unwrap().pose.as_ref().unwrap().unwrap_implicit_dual_quaternion()?;
+
+        let end_point = match robot_jacobian_end_point {
+            JacobianEndPoint::Link => { end_pose.translation().clone() }
+            JacobianEndPoint::Local(p) => { end_pose.multiply_by_point(p) }
+            JacobianEndPoint::Global(p) => { p.clone() }
+            JacobianEndPoint::InertialOrigin => {
+                let link = self.robot_configuration_module.robot_model_module().links().get(end_link_idx).unwrap();
+                let inertial_center = link.urdf_link().inertial_origin_xyz();
+                end_pose.multiply_by_point(&inertial_center)
+            }
+        };
+
+        for link_entry in link_entries {
+            if let Some(pose) = &link_entry.pose {
+                let link_idx = link_entry.link_idx;
+                let joint_idx = self.robot_configuration_module.robot_model_module().links().get(link_idx).unwrap().preceding_joint_idx();
+                if let Some(joint_idx) = joint_idx {
+                    let joint_state_idxs = self.robot_joint_state_module.map_joint_idx_to_joint_state_idxs(joint_idx, &RobotJointStateType::DOF)?;
+                    for joint_state_idx in joint_state_idxs {
+                        let pose_as_idq = pose.unwrap_implicit_dual_quaternion()?;
+                        let joint_axis = self.robot_joint_state_module.ordered_dof_joint_axes().get(*joint_state_idx).unwrap();
+                        let axis = joint_axis.axis();
+
+                        match joint_axis.axis_primitive_type() {
+                            JointAxisPrimitiveType::Rotation => {
+                                match jacobian_mode {
+                                    JacobianMode::Full => {
+                                        let rotated_axis = pose_as_idq.rotation() * &axis;
+                                        let connector_vec = &end_point - pose_as_idq.translation();
+                                        let cross_vec = rotated_axis.cross(&connector_vec);
+
+                                        jacobian[(0, *joint_state_idx)] = cross_vec.x; jacobian[(1, *joint_state_idx)] = cross_vec.y; jacobian[(2, *joint_state_idx)] = cross_vec.z;
+                                        jacobian[(3, *joint_state_idx)] = rotated_axis.x; jacobian[(4, *joint_state_idx)] = rotated_axis.y; jacobian[(5, *joint_state_idx)] = rotated_axis.z;
+                                    }
+                                    JacobianMode::Translational => {
+                                        let rotated_axis = pose_as_idq.rotation() * &axis;
+                                        let connector_vec = &end_point - pose_as_idq.translation();
+                                        let cross_vec = rotated_axis.cross(&connector_vec);
+
+                                        jacobian[(0, *joint_state_idx)] = cross_vec.x; jacobian[(1, *joint_state_idx)] = cross_vec.y; jacobian[(2, *joint_state_idx)] = cross_vec.z;
+                                    }
+                                    JacobianMode::Rotational => {
+                                        let rotated_axis = pose_as_idq.rotation() * &axis;
+
+                                        jacobian[(0, *joint_state_idx)] = rotated_axis.x; jacobian[(1, *joint_state_idx)] = rotated_axis.y; jacobian[(2, *joint_state_idx)] = rotated_axis.z;
+                                    }
+                                }
+                            }
+                            JointAxisPrimitiveType::Translation => {
+                                match jacobian_mode {
+                                    JacobianMode::Full => {
+                                        let rotated_axis = pose_as_idq.rotation() * &axis;
+
+                                        jacobian[(0, *joint_state_idx)] = rotated_axis.x; jacobian[(1, *joint_state_idx)] = rotated_axis.y; jacobian[(2, *joint_state_idx)] = rotated_axis.z;
+                                        jacobian[(3, *joint_state_idx)] = 0.0; jacobian[(4, *joint_state_idx)] = 0.0; jacobian[(5, *joint_state_idx)] = 0.0;
+                                    }
+                                    JacobianMode::Translational => {
+                                        let rotated_axis = pose_as_idq.rotation() * &axis;
+
+                                        jacobian[(0, *joint_state_idx)] = rotated_axis.x; jacobian[(1, *joint_state_idx)] = rotated_axis.y; jacobian[(2, *joint_state_idx)] = rotated_axis.z;
+                                    }
+                                    JacobianMode::Rotational => {
+                                        jacobian[(0, *joint_state_idx)] = 0.0; jacobian[(1, *joint_state_idx)] = 0.0; jacobian[(2, *joint_state_idx)] = 0.0;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        if end_link_idx.is_some() {
-            return Err(OptimaError::new_generic_error_str(&format!("No valid link chain found between link {} and {} in compute_fk_partial_chain", start_link_idx, end_link_idx.unwrap()), file!(), line!()));
-        }
-
-        return Ok(output);
+        return Ok(jacobian)
     }
     pub fn robot_name(&self) -> &str {
         return self.robot_configuration_module.robot_model_module().robot_name()
@@ -258,6 +389,29 @@ impl RobotFKModule {
 
         Ok(())
     }
+    pub fn robot_configuration_module(&self) -> &RobotConfigurationModule {
+        &self.robot_configuration_module
+    }
+    pub fn robot_joint_state_module(&self) -> &RobotJointStateModule {
+        &self.robot_joint_state_module
+    }
+}
+impl SaveAndLoadable for RobotKinematicsModule {
+    type SaveType = RobotConfigurationModule;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.robot_configuration_module.clone()
+    }
+
+    fn load_from_path(path: &OptimaStemCellPath) -> Result<Self, OptimaError> where Self: Sized {
+        let r: Self::SaveType = path.load_object_from_json_file()?;
+        return Ok(RobotKinematicsModule::new(r));
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let r: Self::SaveType = load_object_from_json_string(json_str)?;
+        return Ok(RobotKinematicsModule::new(r));
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -270,9 +424,9 @@ pub struct FloatingLinkInput {
 /// Python implementations.
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
-impl RobotFKModule {
+impl RobotKinematicsModule {
     #[new]
-    pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotFKModule {
+    pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotKinematicsModule {
         return Self::new_from_names(RobotNames::new(robot_name, configuration_name)).expect("error");
     }
     #[args(pose_type = "\"ImplicitDualQuaternion\"")]
@@ -297,15 +451,15 @@ impl RobotFKModule {
 /// WASM implementations.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-impl RobotFKModule {
+impl RobotKinematicsModule {
     #[wasm_bindgen(constructor)]
-    pub fn new_wasm(robot_name: String, configuration_name: Option<String>) -> RobotFKModule {
+    pub fn new_wasm(robot_name: String, configuration_name: Option<String>) -> RobotKinematicsModule {
         return match &configuration_name {
             None => {
-                RobotFKModule::new_from_names(&robot_name, None).expect("error")
+                RobotKinematicsModule::new_from_names(&robot_name, None).expect("error")
             }
             Some(c) => {
-                RobotFKModule::new_from_names(&robot_name, Some(c)).expect("error")
+                RobotKinematicsModule::new_from_names(&robot_name, Some(c)).expect("error")
             }
         }
     }
@@ -340,8 +494,8 @@ pub struct RobotFKResult {
     link_entries: Vec<RobotFKResultLinkEntry>
 }
 impl RobotFKResult {
-    pub fn new_empty(robot_fk_module: &RobotFKModule) -> Self {
-        return robot_fk_module.starter_result.clone();
+    pub fn new_empty(robot_kinematics_module: &RobotKinematicsModule) -> Self {
+        return robot_kinematics_module.starter_result.clone();
     }
     /// Returns a reference to the results link entries.
     pub fn link_entries(&self) -> &Vec<RobotFKResultLinkEntry> {
@@ -375,6 +529,13 @@ impl RobotFKResult {
         let e = &self.link_entries[link_idx];
         return e.pose_py();
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RobotFKDOFPerturbationsResult {
+    perturbation: f64,
+    central_fk_result: RobotFKResult,
+    fk_dof_perturbation_results: Vec<RobotFKResult>
 }
 
 /// A `RobotFKResultLinkEntry` specifies information about one particular link in the forward kinematics
@@ -416,4 +577,17 @@ impl RobotFKResultLinkEntry {
             }
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum JacobianMode {
+    Full, Translational, Rotational
+}
+
+#[derive(Clone, Debug)]
+pub enum JacobianEndPoint {
+    Link,
+    Local(Vector3<f64>),
+    Global(Vector3<f64>),
+    InertialOrigin
 }

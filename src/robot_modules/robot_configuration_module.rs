@@ -9,8 +9,9 @@ use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_console::{ConsoleInputUtils, PrintColor};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath};
+use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
+use crate::utils::utils_traits::SaveAndLoadable;
 
 /// A `RobotConfigurationModule` is a description of a robot model one abstraction layer above the
 /// `RobotModelModule`.  A robot configuration affords extra specificity and functionality over a robot
@@ -37,27 +38,19 @@ impl RobotConfigurationModule {
             Some(configuration_name) => {
                 let mut path = OptimaStemCellPath::new_asset_path()?;
                 path.append_file_location(&OptimaAssetLocation::RobotConfigurations { robot_name: robot_names.robot_name().to_string() });
-                path.append(&(configuration_name.to_string() + ".json"));
+                path.append(&(configuration_name.to_string() + ".JSON"));
 
                 if !path.exists() {
                     return Err(OptimaError::new_generic_error_str(&format!("Robot {} does not have configuration {} at path {:?}.", robot_names.robot_name(), configuration_name, path), file!(), line!()))
                 }
 
-                let base_model_module = RobotModelModule::new(robot_names.robot_name())?;
-                let robot_configuration_info = path.load_object_from_json_file::<RobotConfigurationInfo>()?;
-                Self::new_from_base_model_module_and_info(base_model_module, robot_configuration_info)
+                return Self::load_from_path(&path);
             }
         }
     }
-    fn new_base_model(robot_name: &str) -> Result<Self, OptimaError> {
-        let robot_model_module = RobotModelModule::new(robot_name)?;
-        Ok(Self {
-            robot_configuration_info: Default::default(),
-            robot_model_module: robot_model_module.clone(),
-            base_robot_model_module: robot_model_module
-        })
-    }
-    fn new_from_base_model_module_and_info(base_model_module: RobotModelModule, robot_configuration_info: RobotConfigurationInfo) -> Result<Self, OptimaError> {
+    pub fn new_from_robot_name_and_info(robot_name: &str, robot_configuration_info: RobotConfigurationInfo) -> Result<Self, OptimaError> {
+        let base_model_module = RobotModelModule::new(robot_name)?;
+
         let mut out_self = Self {
             robot_configuration_info,
             robot_model_module: base_model_module.clone(),
@@ -67,6 +60,14 @@ impl RobotConfigurationModule {
         out_self.update()?;
 
         return Ok(out_self);
+    }
+    fn new_base_model(robot_name: &str) -> Result<Self, OptimaError> {
+        let robot_model_module = RobotModelModule::new(robot_name)?;
+        Ok(Self {
+            robot_configuration_info: Default::default(),
+            robot_model_module: robot_model_module.clone(),
+            base_robot_model_module: robot_model_module
+        })
     }
     fn update(&mut self) -> Result<(), OptimaError> {
         let mut robot_model_module = self.base_robot_model_module.clone();
@@ -176,6 +177,18 @@ impl RobotConfigurationModule {
     }
     pub fn robot_name(&self) -> &str {
         return self.robot_model_module.robot_name()
+    }
+}
+impl SaveAndLoadable for RobotConfigurationModule {
+    type SaveType = (String, RobotConfigurationInfo);
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        (self.robot_model_module.robot_name().to_string(), self.robot_configuration_info.clone())
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        return RobotConfigurationModule::new_from_robot_name_and_info(&load.0, load.1);
     }
 }
 

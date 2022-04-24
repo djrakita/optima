@@ -5,13 +5,15 @@ use serde::{Serialize, Deserialize, Serializer, Deserializer};
 use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
 use parry3d_f64::shape::{Cuboid, Shape, Ball, ConvexPolyhedron, TriMesh};
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_files::optima_path::OptimaStemCellPath;
+use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaStemCellPath};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
+use crate::utils::utils_traits::SaveAndLoadable;
 
 /// A `GeometricShapeObject` contains useful functions for computing intersection, distances,
-/// contacts, raycasting, etc between geometric objects in a scene.
+/// contacts, raycasting, etc between geometric objects in a scenes.
 ///
 /// This object has a few  fields:
 /// - shape: The geometric shape object from the parry3d library.
@@ -198,6 +200,18 @@ impl<'de> Deserialize<'de> for GeometricShape {
 impl Debug for GeometricShape {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(&format!("{:?}", self.spawner))
+    }
+}
+impl SaveAndLoadable for GeometricShape {
+    type SaveType = GeometricShapeSpawner;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.spawner.clone()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let spawner: Self::SaveType = load_object_from_json_string(json_str)?;
+        return Ok(spawner.spawn());
     }
 }
 
@@ -696,6 +710,23 @@ impl GeometricShapeQueryGroupOutput {
     }
     pub fn outputs(&self) -> &Vec<GeometricShapeQueryOutput> {
         &self.outputs
+    }
+    pub fn print_summary(&self) {
+        let len = self.outputs.len();
+        for i in 0..len {
+            let o = &self.outputs[len - i - 1];
+            optima_print(&format!("   Raw output: {:?}", o.raw_output), PrintMode::Println, PrintColor::None, false);
+            optima_print(&format!("   Duration: {:?}", o.duration), PrintMode::Println, PrintColor::None, false);
+            optima_print(&format!("   Signatures: {:?}", o.signatures), PrintMode::Println, PrintColor::None, false);
+            optima_print(&format!(" Output {} --- ^", len - i - 1), PrintMode::Println, PrintColor::Cyan, true);
+        }
+        optima_print("Outputs --- ^ ", PrintMode::Println, PrintColor::Blue, false);
+        optima_print("------------", PrintMode::Println, PrintColor::None, false);
+        optima_print(&format!("Duration: {:?}", self.duration), PrintMode::Println, PrintColor::Blue, true);
+        optima_print(&format!("Num Queries: {:?}", self.num_queries), PrintMode::Println, PrintColor::Blue, true);
+        optima_print(&format!("Intersection Found: {:?}", self.intersection_found), PrintMode::Println, PrintColor::Blue, true);
+        optima_print(&format!("Minimum Distance: {:?}", self.minimum_distance), PrintMode::Println, PrintColor::Blue, true);
+
     }
 }
 
