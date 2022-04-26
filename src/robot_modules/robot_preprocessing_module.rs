@@ -13,6 +13,7 @@ use crate::robot_modules::robot_geometric_shape_module::RobotGeometricShapeModul
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, RobotModuleJsonType};
 use crate::utils::utils_robot::robot_module_utils::{RobotNames};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
+use crate::utils::utils_shape_geometry::trimesh_engine::ConvexDecompositionResolution;
 use crate::utils::utils_traits::AssetSaveAndLoadable;
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -228,7 +229,7 @@ impl RobotPreprocessingModule {
                     let optima_path = res[0].clone();
                     let trimesh = optima_path.load_file_to_trimesh_engine()?;
 
-                    let convex_components = trimesh.compute_convex_decomposition();
+                    let convex_components = trimesh.compute_convex_decomposition(ConvexDecompositionResolution::Low);
                     messages.push(format!("{:?} convex subcomponents for link {:?}: {}. ", convex_components.len(), link.link_idx(), link.name()));
                     for (j, c) in convex_components.iter().enumerate() {
                         let mut directory_path_copy = directory_path.clone();

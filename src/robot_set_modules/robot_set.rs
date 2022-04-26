@@ -1,38 +1,64 @@
+use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::robot_set_modules::robot_set_kinematics_module::RobotSetKinematicsModule;
 use crate::robot_set_modules::robot_set_geometric_shape_module::RobotSetGeometricShapeModule;
-use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointStateModule;
+use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateModule};
 use crate::robot_set_modules::robot_set_mesh_file_manager_module::RobotSetMeshFileManagerModule;
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
+use crate::utils::utils_robot::robot_module_utils::RobotNames;
+use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_traits::SaveAndLoadable;
 
+/// An aggregation of many robot set modules.  This is a central, important struct that is
+/// used throughout the the Optima library.
+///
+/// # Example
+/// ```
+/// use optima::robot_set_modules::robot_set::RobotSet;
+/// use optima::robot_set_modules::robot_set_joint_state_module::RobotSetJointStateType;
+/// use optima::utils::utils_robot::robot_module_utils::RobotNames;
+/// use optima::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
+///
+/// // This example shows the initialization of a RobotSet of a ur5 and sawyer robot,
+/// // spawning of a robot_set_joint_state, and printing thet result of a forward kinematics computation
+/// // on the joint state.
+/// let robot_set = RobotSet::new_from_robot_names(vec![RobotNames::new_base("ur5"), RobotNames::new_base("sawyer")]).expect("error");
+/// let robot_set_joint_state = robot_set.robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::DOF);
+/// let fk_res = robot_set.robot_set_kinematics_module().compute_fk(&robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+/// fk_res.print_summary();
+/// ```
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSet {
     robot_set_configuration_module: RobotSetConfigurationModule,
     robot_set_joint_state_module: RobotSetJointStateModule,
     robot_set_mesh_file_manager: RobotSetMeshFileManagerModule,
-    robot_set_kinematics_module: RobotSetKinematicsModule,
-    robot_set_geometric_shape_module: RobotSetGeometricShapeModule
+    robot_set_kinematics_module: RobotSetKinematicsModule
 }
 impl RobotSet {
     pub fn new_from_robot_set_configuration_module(r: RobotSetConfigurationModule) -> Result<Self, OptimaError> {
         let robot_set_joint_state_module = RobotSetJointStateModule::new(&r);
         let robot_set_mesh_file_manager = RobotSetMeshFileManagerModule::new(&r)?;
         let robot_set_kinematics_module = RobotSetKinematicsModule::new(&r);
-        let robot_set_geometric_shape_module = RobotSetGeometricShapeModule::new(&r)?;
 
         Ok(Self {
             robot_set_configuration_module: r,
             robot_set_joint_state_module,
             robot_set_mesh_file_manager,
-            robot_set_kinematics_module,
-            robot_set_geometric_shape_module
+            robot_set_kinematics_module
         })
     }
+    /// Initializes a `RobotSet` using the set name that is found in the optima_assets/optima_robot_sets/
+    /// directory.  `RobotSet` objects can be saved using the `RobotSetConfigurationModule` struct.
     pub fn new_from_set_name(set_name: &str) -> Result<Self, OptimaError> {
         let r = RobotSetConfigurationModule::new_from_set_name(set_name)?;
+        return Self::new_from_robot_set_configuration_module(r);
+    }
+    pub fn new_from_robot_names(robot_names: Vec<RobotNames>) -> Result<Self, OptimaError> {
+        let mut r = RobotSetConfigurationModule::new_empty();
+        for rn in &robot_names { r.add_robot_configuration_from_names(rn.clone())?; }
         return Self::new_from_robot_set_configuration_module(r);
     }
     pub fn robot_set_configuration_module(&self) -> &RobotSetConfigurationModule {
@@ -47,19 +73,30 @@ impl RobotSet {
     pub fn robot_set_kinematics_module(&self) -> &RobotSetKinematicsModule {
         &self.robot_set_kinematics_module
     }
-    pub fn robot_set_geometric_shape_module(&self) -> &RobotSetGeometricShapeModule {
-        &self.robot_set_geometric_shape_module
+    pub fn generate_robot_set_geometric_shape_module(&self) -> Result<RobotSetGeometricShapeModule, OptimaError> {
+        return RobotSetGeometricShapeModule::new(&self.robot_set_configuration_module);
+    }
+    pub fn spawn_robot_set_joint_state(&self, v: DVector<f64>) -> Result<RobotSetJointState, OptimaError> {
+        self.robot_set_joint_state_module.spawn_robot_set_joint_state_try_auto_type(v)
+    }
+    pub fn print_summary(&self) {
+        let num_robots = self.robot_set_configuration_module.robot_configuration_modules().len();
+        optima_print(&format!("{} robots.", num_robots), PrintMode::Println, PrintColor::Blue, true);
+        for (i, robot_configuration) in self.robot_set_configuration_module.robot_configuration_modules().iter().enumerate() {
+            optima_print(&format!(" Robot {} ---> {:?}", i, robot_configuration.robot_name()), PrintMode::Println, PrintColor::Blue, false);
+            optima_print(&format!("   Base Offset: {:?}", robot_configuration.robot_configuration_info().base_offset().get_pose_by_type(&OptimaSE3PoseType::EulerAnglesAndTranslation)), PrintMode::Println, PrintColor::None, false );
+            optima_print(&format!("   Mobile Base Mode: {:?}", robot_configuration.robot_configuration_info().mobile_base_mode()), PrintMode::Println, PrintColor::None, false );
+        }
     }
 }
 impl SaveAndLoadable for RobotSet {
-    type SaveType = (String, String, String, String, String);
+    type SaveType = (String, String, String, String);
 
     fn get_save_serialization_object(&self) -> Self::SaveType {
         (self.robot_set_configuration_module.get_serialization_string(),
          self.robot_set_joint_state_module.get_serialization_string(),
          self.robot_set_mesh_file_manager.get_serialization_string(),
-         self.robot_set_kinematics_module.get_serialization_string(),
-         self.robot_set_geometric_shape_module.get_serialization_string())
+         self.robot_set_kinematics_module.get_serialization_string())
     }
 
     fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
@@ -69,14 +106,12 @@ impl SaveAndLoadable for RobotSet {
         let robot_set_joint_state_module = RobotSetJointStateModule::load_from_json_string(&load.1)?;
         let robot_set_mesh_file_manager = RobotSetMeshFileManagerModule::load_from_json_string(&load.2)?;
         let robot_set_kinematics_module = RobotSetKinematicsModule::load_from_json_string(&load.3)?;
-        let robot_set_geometric_shape_module = RobotSetGeometricShapeModule::load_from_json_string(&load.4)?;
 
         Ok(Self {
             robot_set_configuration_module,
             robot_set_joint_state_module,
             robot_set_mesh_file_manager,
-            robot_set_kinematics_module,
-            robot_set_geometric_shape_module
+            robot_set_kinematics_module
         })
     }
 }

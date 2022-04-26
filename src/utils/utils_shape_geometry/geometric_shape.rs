@@ -1,15 +1,16 @@
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
-use parry3d_f64::shape::{Cuboid, Shape, Ball, ConvexPolyhedron, TriMesh};
+use parry3d_f64::shape::{Ball, ConvexPolyhedron, Cuboid, Shape, TriMesh};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaStemCellPath};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
+use crate::utils::utils_shape_geometry::trimesh_engine::TrimeshEngine;
 use crate::utils::utils_traits::SaveAndLoadable;
 
 /// A `GeometricShapeObject` contains useful functions for computing intersection, distances,
@@ -82,11 +83,19 @@ impl GeometricShape {
     }
     pub fn new_convex_shape(trimesh_engine_path: &OptimaStemCellPath, signature: GeometricShapeSignature) -> Self {
         let trimesh_engine= trimesh_engine_path.load_file_to_trimesh_engine().expect("error");
+        Self::new_convex_shape_from_trimesh_engine(&trimesh_engine, signature)
+    }
+    pub fn new_triangle_mesh(trimesh_engine_path: &OptimaStemCellPath, signature: GeometricShapeSignature) -> Self {
+        let trimesh_engine= trimesh_engine_path.load_file_to_trimesh_engine().expect("error");
+        Self::new_triangle_mesh_from_trimesh_engine(&trimesh_engine, signature)
+    }
+    pub fn new_convex_shape_from_trimesh_engine(trimesh_engine: &TrimeshEngine, signature: GeometricShapeSignature) -> Self {
         let spawner = GeometricShapeSpawner::ConvexShape {
-            path_string_components: trimesh_engine_path.split_path_into_string_components_back_to_assets_dir().expect("error"),
+            path_string_components: trimesh_engine.path_string_components().clone(),
+            trimesh_engine: if trimesh_engine.path_string_components().is_empty() { Some(trimesh_engine.clone()) } else { None },
             signature: signature.clone()
         };
-        
+
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let convex_shape = ConvexPolyhedron::from_convex_hull(&points).expect("error");
 
@@ -97,13 +106,13 @@ impl GeometricShape {
             spawner
         }
     }
-    pub fn new_triangle_mesh(trimesh_engine_path: &OptimaStemCellPath, signature: GeometricShapeSignature) -> Self {
-        let trimesh_engine= trimesh_engine_path.load_file_to_trimesh_engine().expect("error");
+    pub fn new_triangle_mesh_from_trimesh_engine(trimesh_engine: &TrimeshEngine, signature: GeometricShapeSignature) -> Self {
         let spawner = GeometricShapeSpawner::TriangleMesh {
-            path_string_components: trimesh_engine_path.split_path_into_string_components_back_to_assets_dir().expect("error"),
+            path_string_components: trimesh_engine.path_string_components().clone(),
+            trimesh_engine: if trimesh_engine.path_string_components().is_empty() { Some(trimesh_engine.clone()) } else { None },
             signature: signature.clone()
         };
-        
+
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let indices: Vec<[u32; 3]> = trimesh_engine.indices().iter().map(|i| [i[0] as u32, i[1] as u32, i[2] as u32] ).collect();
 
@@ -132,7 +141,6 @@ impl GeometricShape {
         let init_pose_of_shape = OptimaSE3Pose::new_from_euler_angles(0.,0.,0., center[0], center[1], center[2], &OptimaSE3PoseType::ImplicitDualQuaternion);
         return Self::new_sphere(radius, self.signature.clone(), Some(init_pose_of_shape));
     }
-
     pub fn project_point(&self, pose: &OptimaSE3Pose, point: &Vector3<f64>, solid: bool) -> PointProjection {
         let point = Point3::from_slice(point.data.as_slice());
         self.shape.project_point(&self.recover_transformed_pose_wrt_initial_pose(pose).to_nalgebra_isometry(), &point, solid)
@@ -178,6 +186,7 @@ impl GeometricShape {
         &self.spawner
     }
     pub fn set_signature(&mut self, signature: GeometricShapeSignature) {
+        self.spawner.set_signature(signature.clone());
         self.signature = signature;
     }
 }
@@ -222,7 +231,8 @@ impl SaveAndLoadable for GeometricShape {
 pub enum GeometricShapeSignature {
     None,
     RobotLink { link_idx: usize, shape_idx_in_link: usize },
-    RobotSetLink { robot_idx_in_set: usize, link_idx_in_robot: usize, shape_idx_in_link: usize }
+    RobotSetLink { robot_idx_in_set: usize, link_idx_in_robot: usize, shape_idx_in_link: usize },
+    EnvironmentObject { environment_object_idx: usize, shape_idx_in_object: usize }
 }
 
 /// A `GeometricShapeSpawner` is the main object that allows a `GeometricShape` to be serializable
@@ -232,8 +242,8 @@ pub enum GeometricShapeSignature {
 pub enum GeometricShapeSpawner {
     Cube { half_extent_x: f64, half_extent_y: f64, half_extent_z: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
     Sphere { radius: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
-    ConvexShape { path_string_components: Vec<String>, signature: GeometricShapeSignature },
-    TriangleMesh { path_string_components: Vec<String>, signature: GeometricShapeSignature }
+    ConvexShape { path_string_components: Vec<String>, trimesh_engine: Option<TrimeshEngine>, signature: GeometricShapeSignature },
+    TriangleMesh { path_string_components: Vec<String>, trimesh_engine: Option<TrimeshEngine>, signature: GeometricShapeSignature }
 }
 impl GeometricShapeSpawner {
     pub fn spawn(&self) -> GeometricShape {
@@ -244,14 +254,28 @@ impl GeometricShapeSpawner {
             GeometricShapeSpawner::Sphere { radius, signature, initial_pose_of_shape } => {
                 GeometricShape::new_sphere( *radius, signature.clone(), initial_pose_of_shape.clone() )
             }
-            GeometricShapeSpawner::ConvexShape { path_string_components, signature } => {
+            GeometricShapeSpawner::ConvexShape { path_string_components, trimesh_engine, signature } => {
+                if let Some(trimesh_engine) = trimesh_engine {
+                    return GeometricShape::new_convex_shape_from_trimesh_engine(trimesh_engine, signature.clone());
+                }
                 let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
                 GeometricShape::new_convex_shape( &path, signature.clone() )
             }
-            GeometricShapeSpawner::TriangleMesh { path_string_components, signature } => {
+            GeometricShapeSpawner::TriangleMesh { path_string_components, trimesh_engine, signature } => {
+                if let Some(trimesh_engine) = trimesh_engine {
+                    return GeometricShape::new_convex_shape_from_trimesh_engine(trimesh_engine, signature.clone());
+                }
                 let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
                 GeometricShape::new_triangle_mesh( &path, signature.clone() )
             }
+        }
+    }
+    pub fn set_signature(&mut self, input_signature: GeometricShapeSignature) {
+        match self {
+            GeometricShapeSpawner::Cube { half_extent_x: _, half_extent_y: _, half_extent_z: _, signature, initial_pose_of_shape: _ } => { *signature = input_signature.clone() }
+            GeometricShapeSpawner::Sphere { radius: _, signature, initial_pose_of_shape: _ } => { *signature = input_signature.clone() }
+            GeometricShapeSpawner::ConvexShape { path_string_components: _, trimesh_engine: _, signature } => { *signature = input_signature.clone() }
+            GeometricShapeSpawner::TriangleMesh { path_string_components: _, trimesh_engine: _, signature } => { *signature = input_signature.clone() }
         }
     }
 }
@@ -266,7 +290,6 @@ impl GeometricShapeQueries {
         let mut num_queries = 0;
         let mut intersection_found = false;
         let mut minimum_distance = f64::INFINITY;
-
 
         for input in &inputs {
             let output = Self::generic_query(input);
@@ -373,7 +396,7 @@ impl GeometricShapeQueries {
         let pos1 = object1.recover_transformed_pose_wrt_initial_pose(object1_pose).to_nalgebra_isometry();
         let pos2 = object2.recover_transformed_pose_wrt_initial_pose(object2_pose).to_nalgebra_isometry();
 
-        parry3d_f64::query::closest_points(&pos1, &**object1.shape, &pos2, &**object2.shape, max_dis).expect("error")
+        parry3d_f64::query::closest_points(&pos1, &**object1.shape, &pos2, &**object2.shape, max_dis).expect(&format!("ERROR: {:?}, {:?}, {:?}, {:?}", pos1, pos2, object1, object2))
     }
     /// Returns None if the objects are separated by a distance greater than prediction. The result is given in world-space
     pub fn contact(object1: &GeometricShape,

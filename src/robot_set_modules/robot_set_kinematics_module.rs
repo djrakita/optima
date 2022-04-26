@@ -9,6 +9,8 @@ use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 use crate::utils::utils_traits::SaveAndLoadable;
 
+/// RobotSet analogue of the `RobotKinematicsModule`.  The same concepts apply, just on a set of possibly
+/// multiple robots.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetKinematicsModule {
     robot_set_joint_state_module: RobotSetJointStateModule,
@@ -170,6 +172,9 @@ impl SaveAndLoadable for RobotSetKinematicsModule {
     }
 }
 
+/// RobotSet analogue of the `RobotSetFKResult`.  The same concepts apply, just on a set of possibly
+/// multiple robots.  Just contains a vector of individual `RobotFKResult` structs corresponding to
+/// the possibly multiple robots in the set.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetFKResult {
     robot_fk_results: Vec<RobotFKResult>

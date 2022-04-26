@@ -52,31 +52,20 @@ impl ShapeCollection {
         self.skips.append_new_row_and_column(Some(MemoryCell::new(false)));
         self.average_distances.append_new_row_and_column(Some(MemoryCell::new(1.0)));
     }
-    pub fn set_base_skip(&mut self, skip: bool, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
-        let idx1 = self.get_shape_idx_from_signature(signature1)?;
-        let idx2 = self.get_shape_idx_from_signature(signature2)?;
-
-        self.skips.adjust_data(|x| x.replace_base_value(skip), idx1, idx2)?;
-
-        Ok(())
-    }
-    pub fn replace_skip(&mut self, skip: bool, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
-        let idx1 = self.get_shape_idx_from_signature(signature1)?;
-        let idx2 = self.get_shape_idx_from_signature(signature2)?;
-
-        self.replace_skip_from_idxs(skip, idx1, idx2)
+    pub fn set_base_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        if idx1 == idx2 {
+            return self.skips.adjust_data(|x| x.replace_base_value(true), idx1, idx2 )
+        }
+        self.skips.adjust_data(|x| x.replace_base_value(skip), idx1, idx2 )
     }
     pub fn replace_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.skips.adjust_data(|x| x.replace_value(skip, false), idx1, idx2)
     }
-    pub fn set_base_average_distance(&mut self, dis: f64, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
-        let idx1 = self.get_shape_idx_from_signature(signature1)?;
-        let idx2 = self.get_shape_idx_from_signature(signature2)?;
-
-        // self.average_distances.replace_data(dis, idx1, idx2)?;
-        self.average_distances.adjust_data(|x| x.replace_base_value(dis), idx1, idx2 )?;
-
-        Ok(())
+    pub fn reset_skip_to_base_from_idxs(&mut self, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        self.skips.adjust_data(|x| x.reset_to_base_value(false), idx1, idx2 )
+    }
+    pub fn set_base_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        self.average_distances.adjust_data(|x| x.replace_base_value(dis), idx1, idx2 )
     }
     pub fn replace_average_distance(&mut self, dis: f64, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
         let idx1 = self.get_shape_idx_from_signature(signature1)?;
@@ -86,6 +75,9 @@ impl ShapeCollection {
     }
     pub fn replace_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.average_distances.adjust_data(|x| x.replace_value(dis, false), idx1, idx2 )
+    }
+    pub fn reset_average_distance_to_base_from_idxs(&mut self, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+        self.average_distances.adjust_data(|x| x.reset_to_base_value(false), idx1, idx2 )
     }
     pub fn shapes(&self) -> &Vec<GeometricShape> {
         &self.shapes
@@ -289,18 +281,16 @@ impl SaveAndLoadable for ShapeCollection {
 
     fn get_save_serialization_object(&self) -> Self::SaveType {
         (self.shapes.get_serialization_string(),
-         self.skips.convert_to_standard_cells().get_serialization_string(),
-         self.average_distances.convert_to_standard_cells().get_serialization_string(),
+         self.skips.get_serialization_string(),
+         self.average_distances.get_serialization_string(),
          self.sorted_signatures_with_shape_idxs.clone())
     }
 
     fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
         let load: Self::SaveType = load_object_from_json_string(json_str)?;
         let shapes = Vec::load_from_json_string(&load.0)?;
-        let skips_standard: SquareArray2D<bool> = load_object_from_json_string(&load.1)?;
-        let average_distances_standard: SquareArray2D<f64> = load_object_from_json_string(&load.2)?;
-        let skips = skips_standard.convert_to_memory_cells();
-        let average_distances = average_distances_standard.convert_to_memory_cells();
+        let skips = load_object_from_json_string(&load.1)?;
+        let average_distances = load_object_from_json_string(&load.2)?;
         let sorted_signatures_with_shape_idxs = load.3.clone();
 
         Ok(Self {

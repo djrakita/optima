@@ -902,7 +902,12 @@ pub enum OptimaAssetLocation {
     RobotModuleJson { robot_name: String, t: RobotModuleJsonType },
     RobotConvexShapes { robot_name: String },
     RobotConvexSubcomponents { robot_name: String },
-    Environments,
+    Scenes,
+    SceneMeshFiles,
+    SceneMeshFile { name: String },
+    SceneMeshFilePreprocessing { name: String },
+    SceneMeshFileConvexShape { name: String },
+    SceneMeshFileConvexShapeSubcomponents { name: String },
     FileIO
 }
 impl OptimaAssetLocation {
@@ -969,8 +974,33 @@ impl OptimaAssetLocation {
                 v.push("convex_shape_subcomponents".to_string());
                 v
             }
-            OptimaAssetLocation::Environments => {
-                vec!["environments".to_string()]
+            OptimaAssetLocation::Scenes => {
+                vec!["optima_scenes".to_string()]
+            }
+            OptimaAssetLocation::SceneMeshFiles => {
+                let mut v = Self::Scenes.get_path_wrt_asset_folder();
+                v.push("mesh_files".to_string());
+                v
+            }
+            OptimaAssetLocation::SceneMeshFile { name } => {
+                let mut v = Self::SceneMeshFiles.get_path_wrt_asset_folder();
+                v.push(name.clone());
+                v
+            }
+            OptimaAssetLocation::SceneMeshFilePreprocessing { name } => {
+                let mut v = Self::SceneMeshFile { name: name.clone() }.get_path_wrt_asset_folder();
+                v.push("preprocessing".to_string());
+                v
+            }
+            OptimaAssetLocation::SceneMeshFileConvexShape { name } => {
+                let mut v = Self::SceneMeshFilePreprocessing { name: name.clone() }.get_path_wrt_asset_folder();
+                v.push("convex_shape".to_string());
+                v
+            }
+            OptimaAssetLocation::SceneMeshFileConvexShapeSubcomponents { name } => {
+                let mut v = Self::SceneMeshFilePreprocessing { name: name.clone() }.get_path_wrt_asset_folder();
+                v.push("convex_shape_subcomponents".to_string());
+                v
             }
             OptimaAssetLocation::FileIO => {
                 vec!["fileIO".to_string()]

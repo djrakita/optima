@@ -23,3 +23,12 @@ fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule>()?;
     Ok(())
 }
+
+#[macro_export]
+macro_rules! dvector {
+    ($v: expr) => {
+        {
+            DVector::from_vec($v)
+        };
+    }
+}

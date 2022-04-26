@@ -1,21 +1,23 @@
+use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
 use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_kinematics_module::RobotKinematicsModule;
 use crate::robot_modules::robot_geometric_shape_module::RobotGeometricShapeModule;
-use crate::robot_modules::robot_joint_state_module::RobotJointStateModule;
+use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJointStateModule};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_traits::SaveAndLoadable;
 
+/// An aggregation of many robot modules.  In most cases, applications in Optima will use
+/// the more general `RobotSet` struct.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Robot {
     robot_configuration_module: RobotConfigurationModule,
     robot_mesh_file_manager_module: RobotMeshFileManagerModule,
     robot_joint_state_module: RobotJointStateModule,
-    robot_kinematics_module: RobotKinematicsModule,
-    robot_geometric_shape_module: RobotGeometricShapeModule
+    robot_kinematics_module: RobotKinematicsModule
 }
 impl Robot {
     pub fn new_from_names(robot_name: RobotNames) -> Result<Self, OptimaError> {
@@ -23,14 +25,12 @@ impl Robot {
         let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new(robot_configuration_module.robot_model_module())?;
         let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_fk_module = RobotKinematicsModule::new(robot_configuration_module.clone());
-        let robot_geometric_shape_module = RobotGeometricShapeModule::new(robot_configuration_module.clone(), false)?;
 
         Ok(Self {
             robot_configuration_module,
             robot_mesh_file_manager_module,
             robot_joint_state_module,
-            robot_kinematics_module: robot_fk_module,
-            robot_geometric_shape_module
+            robot_kinematics_module: robot_fk_module
         })
     }
     pub fn robot_configuration_module(&self) -> &RobotConfigurationModule {
@@ -45,16 +45,21 @@ impl Robot {
     pub fn robot_kinematics_module(&self) -> &RobotKinematicsModule {
         &self.robot_kinematics_module
     }
+    pub fn generate_robot_geometric_shape_module(&self) -> Result<RobotGeometricShapeModule, OptimaError> {
+        return RobotGeometricShapeModule::new(self.robot_configuration_module.clone(), false);
+    }
+    pub fn spawn_robot_joint_state(&self, v: DVector<f64>) -> Result<RobotJointState, OptimaError> {
+        self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(v)
+    }
 }
 impl SaveAndLoadable for Robot {
-    type SaveType = (String, String, String, String, String);
+    type SaveType = (String, String, String, String);
 
     fn get_save_serialization_object(&self) -> Self::SaveType {
         (self.robot_configuration_module.get_serialization_string(),
          self.robot_mesh_file_manager_module.get_serialization_string(),
          self.robot_joint_state_module.get_serialization_string(),
-         self.robot_kinematics_module.get_serialization_string(),
-         self.robot_geometric_shape_module.get_serialization_string())
+         self.robot_kinematics_module.get_serialization_string())
     }
 
     fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
@@ -63,14 +68,12 @@ impl SaveAndLoadable for Robot {
         let robot_mesh_file_manager_module = RobotMeshFileManagerModule::load_from_json_string(&load.1)?;
         let robot_joint_state_module = RobotJointStateModule::load_from_json_string(&load.2)?;
         let robot_kinematics_module = RobotKinematicsModule::load_from_json_string(&load.3)?;
-        let robot_geometric_shape_module = RobotGeometricShapeModule::load_from_json_string(&load.4)?;
 
         Ok(Self {
             robot_configuration_module,
             robot_mesh_file_manager_module,
             robot_joint_state_module,
-            robot_kinematics_module,
-            robot_geometric_shape_module
+            robot_kinematics_module
         })
     }
 }

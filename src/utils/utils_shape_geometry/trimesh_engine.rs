@@ -17,24 +17,36 @@ use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
 use crate::utils::utils_se3::rotation_and_translation::RotationAndTranslation;
 
+/// Object that stores and operates on triangle mesh data (vertices and indices).  The indices are
+/// groups of three values that index into the vertices list to form triangles in the mesh.
+///
+/// The primary way to load a `TrimeshEngine` is using an `OptimaPath` or `OptimaStemCellPath`.  These
+/// structs contain multiple functions to load `TrimeshEngine` objects from numerous mesh file types.
+///
+/// The path_string_components field is automatically filled with path component information (if present)
+/// to load the trimesh at a later time.  For example, this field is used by the `GeometricShape`
+/// struct in order to save mesh information to a file in an efficient manner without needing to store
+/// all triangle information to the file.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TrimeshEngine {
     vertices: Vec<Vector3<f64>>,
     indices: Vec<[usize; 3]>,
+    path_string_components: Vec<String>
 }
 impl TrimeshEngine {
-    fn new_from_vertices_and_indices(vertices: Vec<Vector3<f64>>, indices: Vec<[usize; 3]>) -> Self {
+    fn new_from_vertices_and_indices(vertices: Vec<Vector3<f64>>, indices: Vec<[usize; 3]>, path_string_components: Vec<String>) -> Self {
         Self {
             vertices,
-            indices
+            indices,
+            path_string_components
         }
     }
-    pub fn compute_convex_decomposition(&self) -> Vec<TrimeshEngine> {
+    pub fn compute_convex_decomposition(&self, resolution: ConvexDecompositionResolution) -> Vec<TrimeshEngine> {
         let points: Vec<Point3<f64>> = self.vertices.iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let indices: Vec<[u32; 3]> = self.indices.iter().map(|i| [i[0] as u32, i[1] as u32, i[2] as u32] ).collect();
 
         let params = VHACDParameters {
-            max_convex_hulls: 2, // this generally creates 1 - (3 * max_convex_hulls) convex hulls per object
+            max_convex_hulls: resolution.get_max_num_convex_shapes(), // this generally creates 1 - (3 * max_convex_hulls) convex hulls per object
             ..Default::default()
         };
         let v = VHACD::decompose(&params, points.as_slice(), indices.as_slice(), true);
@@ -44,7 +56,7 @@ impl TrimeshEngine {
         for res in &res_vec {
             let vertices: Vec<Vector3<f64>> = res.0.iter().map(|p| NalgebraConversions::point3_to_vector3(p) ).collect();
             let indices: Vec<[usize; 3]> = res.1.iter().map(|i| [i[0] as usize, i[1] as usize, i[2] as usize] ).collect();
-            out_vec.push(TrimeshEngine::new_from_vertices_and_indices(vertices, indices));
+            out_vec.push(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, vec![]));
         }
 
         return out_vec;
@@ -57,11 +69,16 @@ impl TrimeshEngine {
         let vertices: Vec<Vector3<f64>> = res.0.iter().map(|p| NalgebraConversions::point3_to_vector3(p) ).collect();
         let indices: Vec<[usize; 3]> = res.1.iter().map(|i| [i[0] as usize, i[1] as usize, i[2] as usize] ).collect();
 
-        return TrimeshEngine::new_from_vertices_and_indices(vertices, indices);
+        return TrimeshEngine::new_from_vertices_and_indices(vertices, indices, vec![]);
     }
     pub fn transform_vertices(&mut self, pose: &OptimaSE3Pose) {
         for v in &mut self.vertices {
             *v = pose.multiply_by_point(v);
+        }
+    }
+    pub fn scale_vertices(&mut self, scale: f64) {
+        for v in &mut self.vertices {
+            *v = scale * *v;
         }
     }
     pub fn vertices(&self) -> &Vec<Vector3<f64>> {
@@ -70,10 +87,35 @@ impl TrimeshEngine {
     pub fn indices(&self) -> &Vec<[usize; 3]> {
         &self.indices
     }
+    pub fn path_string_components(&self) -> &Vec<String> {
+        &self.path_string_components
+    }
+}
+
+/// Used to control the how coarse or fine the `compute_convex_decomposition` function is in
+/// `TrimeshEngine`.  Specifically, this enum is used to define the max_convex_hulls parameter in the
+/// `VHACDParameters` struct.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ConvexDecompositionResolution {
+    VeryLow, Low, Medium, High, VeryHigh
+}
+impl ConvexDecompositionResolution {
+    fn get_max_num_convex_shapes(&self) -> u32 {
+        match self {
+            ConvexDecompositionResolution::VeryLow => { 1 }
+            ConvexDecompositionResolution::Low => { 2 }
+            ConvexDecompositionResolution::Medium => { 3 }
+            ConvexDecompositionResolution::High => { 5 }
+            ConvexDecompositionResolution::VeryHigh => { 100 }
+        }
+    }
 }
 
 /// Implementations for TrimeshEngine.
 impl OptimaStemCellPath {
+    pub fn load_all_possible_files_in_directory_to_trimesh_engines(&self) -> Result<Vec<TrimeshEngine>, OptimaError> {
+        self.try_function_on_all_optima_file_paths(OptimaPath::load_all_possible_files_in_directory_to_trimesh_engines, "load_all_possible_files_in_directory_to_trimesh_engines")
+    }
     pub fn load_file_to_trimesh_engine(&self) -> Result<TrimeshEngine, OptimaError> {
         self.try_function_on_all_optima_file_paths(OptimaPath::load_file_to_trimesh_engine, "load_file_to_trimesh_engine")
     }
@@ -104,6 +146,19 @@ impl OptimaStemCellPath {
 
 /// Implementations for TrimeshEngine.
 impl OptimaPath {
+    pub fn load_all_possible_files_in_directory_to_trimesh_engines(&self) -> Result<Vec<TrimeshEngine>, OptimaError> {
+        let mut out_vec = vec![];
+
+        let files = self.get_all_items_in_directory(false, false);
+        for f in &files {
+            let mut self_copy = self.clone();
+            self_copy.append(f);
+            let res = self_copy.load_file_to_trimesh_engine();
+            if res.is_ok() { out_vec.push(res.unwrap()); }
+        }
+
+        Ok(out_vec)
+    }
     pub fn load_file_to_trimesh_engine(&self) -> Result<TrimeshEngine, OptimaError> {
         let extension_option = self.extension();
         return match &extension_option {
@@ -134,7 +189,7 @@ impl OptimaPath {
             indices.push(f.vertices.clone());
         }
 
-        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices));
+        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, self.split_path_into_string_components_back_to_asset_dir()?));
     }
     pub fn load_dae_to_trimesh_engine(&self) -> Result<TrimeshEngine, OptimaError> {
         let collada_dae = self.load_collada_dae()?;
@@ -282,7 +337,7 @@ impl OptimaPath {
             }
         }
 
-        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices));
+        return Ok(TrimeshEngine::new_from_vertices_and_indices(vertices, indices, self.split_path_into_string_components_back_to_asset_dir()?));
     }
     pub fn load_stl(&self) -> Result<IndexedMesh, OptimaError> {
         self.verify_extension(&vec!["stl", "STL"])?;

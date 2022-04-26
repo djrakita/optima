@@ -7,9 +7,27 @@ use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_traits::SaveAndLoadable;
 
 /// The robot set analogue of the `RobotConfigurationModule`.  Multiple robot configurations
-/// can be added and configured in the set of robots here, then can be saved to disk for loading
+/// can be added and configured in the set of robots here, then can be saved to a file for loading
 /// at a later time.  This is a relatively simple wrapper around multiple `RobotConfigurationModule`
 /// objects that will be used to initialize many other robot set modules.
+///
+/// # Example
+/// ```
+/// use optima::robot_modules::robot_configuration_module::{MobileBaseInfo, RobotConfigurationModule};
+/// use optima::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
+/// use optima::utils::utils_robot::robot_module_utils::RobotNames;
+/// use optima::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
+///
+/// let mut r = RobotSetConfigurationModule::new_empty();
+///
+/// r.add_robot_configuration_from_names(RobotNames::new_base("ur5"))?;
+/// let mut sawyer_configuration = RobotConfigurationModule::new_from_names(RobotNames::new_base("sawyer"))?;
+/// sawyer_configuration.set_mobile_base_mode(MobileBaseInfo::PlanarTranslation {x_bounds: (-2.0, 2.0),y_bounds: (-2.0, 2.0)})?;
+/// sawyer_configuration.set_base_offset(&OptimaSE3Pose::new_from_euler_angles(0.,0.,0.,1.0,0.,0., &OptimaSE3PoseType::ImplicitDualQuaternion))?;
+/// r.add_robot_configuration(sawyer_configuration)?;
+///
+/// r.save_robot_set_configuration_module("test_set")?;
+/// ```
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetConfigurationModule {
     robot_configuration_modules: Vec<RobotConfigurationModule>
@@ -43,6 +61,7 @@ impl RobotSetConfigurationModule {
         OptimaError::new_check_for_idx_out_of_bound_error(idx, self.robot_configuration_modules.len(), file!(), line!())?;
         Ok(&self.robot_configuration_modules[idx])
     }
+    /// Robot set configurations are saved to the optima_assets/optima_robot_sets directory.
     pub fn save_robot_set_configuration_module(&self, set_name: &str) -> Result<(), OptimaError> {
         if self.robot_configuration_modules.len() <= 1 {
             optima_print("WARNING: Cannot save RobotSetConfigurationModule with <= 1 robot.", PrintMode::Println, PrintColor::Yellow, true);

@@ -5,11 +5,13 @@ use pyo3::*;
 use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
+use crate::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_console::{get_default_progress_bar, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
 use crate::utils::utils_robot::link::Link;
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeSignature};
 use crate::utils::utils_traits::SaveAndLoadable;
 
 /// The `RobotMeshFileManagerModule` has numerous utility functions relating to mesh files.
@@ -254,6 +256,83 @@ impl RobotMeshFileManagerModule {
             }
         }
 
+
+        Ok(out_vec)
+    }
+    pub fn get_geometric_shapes(&self, shape_representation: &RobotLinkShapeRepresentation) -> Result<Vec<Option<GeometricShape>>, OptimaError> {
+        let mut out_vec = vec![];
+
+        match shape_representation {
+            RobotLinkShapeRepresentation::Cubes => {
+                let paths = self.get_paths_to_meshes()?;
+                for (link_idx, path) in paths.iter().enumerate() {
+                    match path {
+                        None => { out_vec.push(None); }
+                        Some(path) => {
+                            let base_shape = GeometricShape::new_triangle_mesh(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link: 0 });
+                            let cube_shape = base_shape.to_best_fit_cube();
+                            out_vec.push(Some(cube_shape));
+                        }
+                    }
+                }
+            }
+            RobotLinkShapeRepresentation::ConvexShapes => {
+                let paths = self.get_paths_to_convex_shape_meshes()?;
+                for (link_idx, path) in paths.iter().enumerate() {
+                    match path {
+                        None => { out_vec.push(None); }
+                        Some(path) => {
+                            let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link: 0 });
+                            out_vec.push(Some(base_shape));
+                        }
+                    }
+                }
+            }
+            RobotLinkShapeRepresentation::SphereSubcomponents => {
+                let paths = self.get_paths_to_convex_shape_subcomponent_meshes()?;
+                for (link_idx, v) in paths.iter().enumerate() {
+                    if v.len() == 0 { out_vec.push(None); }
+                    for (shape_idx_in_link, path) in v.iter().enumerate() {
+                        let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link });
+                        let sphere_shape = base_shape.to_best_fit_sphere();
+                        out_vec.push(Some(sphere_shape));
+                    }
+                }
+            }
+            RobotLinkShapeRepresentation::CubeSubcomponents => {
+                let paths = self.get_paths_to_convex_shape_subcomponent_meshes()?;
+                for (link_idx, v) in paths.iter().enumerate() {
+                    if v.len() == 0 { out_vec.push(None); }
+                    for (shape_idx_in_link, path) in v.iter().enumerate() {
+                        let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link });
+                        let cube_shape = base_shape.to_best_fit_cube();
+                        out_vec.push(Some(cube_shape));
+                    }
+                }
+            }
+            RobotLinkShapeRepresentation::ConvexShapeSubcomponents => {
+                let paths = self.get_paths_to_convex_shape_subcomponent_meshes()?;
+                for (link_idx, v) in paths.iter().enumerate() {
+                    if v.len() == 0 { out_vec.push(None); }
+                    for (shape_idx_in_link, path) in v.iter().enumerate() {
+                        let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link });
+                        out_vec.push(Some(base_shape));
+                    }
+                }
+            }
+            RobotLinkShapeRepresentation::TriangleMeshes => {
+                let paths = self.get_paths_to_convex_shape_meshes()?;
+                for (link_idx, path) in paths.iter().enumerate() {
+                    match path {
+                        None => { out_vec.push(None); }
+                        Some(path) => {
+                            let base_shape = GeometricShape::new_triangle_mesh(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link: 0 });
+                            out_vec.push(Some(base_shape));
+                        }
+                    }
+                }
+            }
+        }
 
         Ok(out_vec)
     }

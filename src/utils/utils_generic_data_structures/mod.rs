@@ -309,7 +309,8 @@ impl <T> MemoryCell<T> where T: Clone + Debug + Serialize + DeserializeOwned + D
         }
     }
     pub fn replace_base_value(&mut self, data: T) {
-        self.base_value = data;
+        self.base_value = data.clone();
+        self.history = vec![data]
     }
     pub fn adjust_value<F: Fn(&mut T)>(&mut self, f: F, add_to_history: bool) {
         if add_to_history {

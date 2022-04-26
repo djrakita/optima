@@ -1,9 +1,9 @@
 use nalgebra::Vector3;
 use parry3d_f64::query::Ray;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use crate::robot_modules::robot_geometric_shape_module::{RobotGeometricShapeModule, RobotLinkShapeRepresentation};
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
-use crate::robot_set_modules::robot_set_kinematics_module::{RobotSetKinematicsModule, RobotSetFKResult};
+use crate::robot_set_modules::robot_set_kinematics_module::{RobotSetFKResult, RobotSetKinematicsModule};
 use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
@@ -46,7 +46,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::ProjectPoint { robot_joint_state, point, solid } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::ProjectPoint {
                     poses: &poses,
                     point,
@@ -56,7 +56,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::ContainsPoint { robot_joint_state, point } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::ContainsPoint {
                     poses: &poses,
                     point
@@ -65,7 +65,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::DistanceToPoint { robot_joint_state, point, solid } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::DistanceToPoint {
                     poses: &poses,
                     point,
@@ -75,7 +75,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::IntersectsRay { robot_joint_state, ray, max_toi } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectsRay {
                     poses: &poses,
                     ray,
@@ -85,7 +85,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::CastRay { robot_joint_state, ray, max_toi, solid } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRay {
                     poses: &poses,
                     ray,
@@ -96,7 +96,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::CastRayAndGetNormal { robot_joint_state, ray, max_toi, solid } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRayAndGetNormal {
                     poses: &poses,
                     ray,
@@ -107,7 +107,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::IntersectionTest { robot_joint_state } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectionTest {
                     poses: &poses,
                 }, stop_condition, log_condition, sort_outputs)
@@ -115,7 +115,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::Distance { robot_joint_state } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::Distance {
                     poses: &poses,
                 }, stop_condition, log_condition, sort_outputs)
@@ -123,7 +123,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::ClosestPoints { robot_joint_state, max_dis } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::ClosestPoints {
                     poses: &poses,
                     max_dis: *max_dis
@@ -132,7 +132,7 @@ impl RobotSetGeometricShapeModule {
             RobotSetShapeCollectionQuery::Contact { robot_joint_state, prediction } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::Contact {
                     poses: &poses,
                     prediction: *prediction
@@ -143,8 +143,8 @@ impl RobotSetGeometricShapeModule {
                 let res_t2 = self.robot_set_kinematics_module.compute_fk(robot_joint_state_t2, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
 
                 let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
-                let poses_t1 = res_t1.to_geometric_shape_collection_input_poses(&collection)?;
-                let poses_t2 = res_t2.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses_t1 = collection.recover_poses(&res_t1)?;
+                let poses_t2 = collection.recover_poses(&res_t2)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::CCD {
                     poses_t1: &poses_t1,
                     poses_t2: &poses_t2
@@ -288,6 +288,25 @@ impl RobotSetShapeCollection {
 
         return Ok(&self.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set][link_idx_in_robot]);
     }
+    pub fn recover_poses(&self, robot_set_fk_result: &RobotSetFKResult) -> Result<ShapeCollectionInputPoses, OptimaError> {
+        let mut out = ShapeCollectionInputPoses::new(&self.shape_collection);
+        let mapping = &self.robot_and_link_idx_to_shape_idxs_mapping;
+
+        let robot_fk_results = robot_set_fk_result.robot_fk_results();
+        for (robot_idx_in_set, fk) in robot_fk_results.iter().enumerate() {
+            let link_entries = fk.link_entries();
+            for (link_idx, link_entry) in link_entries.iter().enumerate() {
+                if let Some(pose) = link_entry.pose() {
+                    let shape_idxs = mapping.get(robot_idx_in_set).unwrap().get(link_idx).unwrap();
+                    for shape_idx in shape_idxs {
+                        out.insert_or_replace_pose_by_idx(*shape_idx, pose.clone())?;
+                    }
+                }
+            }
+        }
+
+        Ok(out)
+    }
 }
 impl SaveAndLoadable for RobotSetShapeCollection {
     type SaveType = (RobotLinkShapeRepresentation, String, Vec<Vec<Vec<usize>>>);
@@ -339,27 +358,5 @@ impl <'a> RobotSetShapeCollectionQuery<'a> {
             RobotSetShapeCollectionQuery::Contact { robot_joint_state, .. } => { Ok(vec![robot_joint_state]) }
             RobotSetShapeCollectionQuery::CCD { robot_joint_state_t1, robot_joint_state_t2 } => { Ok(vec![robot_joint_state_t1, robot_joint_state_t2]) }
         }
-    }
-}
-
-/// private implementation that is just accessible by `RobotShapeGeometryModule`.
-impl RobotSetFKResult {
-    fn to_geometric_shape_collection_input_poses(&self, robot_set_geometric_shape_collection: &RobotSetShapeCollection) -> Result<ShapeCollectionInputPoses, OptimaError> {
-        let mut out = ShapeCollectionInputPoses::new(&robot_set_geometric_shape_collection.shape_collection);
-        let mapping = &robot_set_geometric_shape_collection.robot_and_link_idx_to_shape_idxs_mapping;
-
-        for (robot_idx_in_set, fk) in self.robot_fk_results().iter().enumerate() {
-            let link_entries = fk.link_entries();
-            for (link_idx, link_entry) in link_entries.iter().enumerate() {
-                if let Some(pose) = link_entry.pose() {
-                    let shape_idxs = mapping.get(robot_idx_in_set).unwrap().get(link_idx).unwrap();
-                    for shape_idx in shape_idxs {
-                        out.insert_or_replace_pose_by_idx(*shape_idx, pose.clone())?;
-                    }
-                }
-            }
-        }
-
-        Ok(out)
     }
 }

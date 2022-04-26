@@ -5,6 +5,8 @@ use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_traits::SaveAndLoadable;
 
+/// RobotSet analogue of the `RobotSetMeshFileManagerModule`.  The same concepts apply, just on a set of possibly
+/// multiple robots.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetMeshFileManagerModule {
     robot_mesh_file_manager_modules: Vec<RobotMeshFileManagerModule>

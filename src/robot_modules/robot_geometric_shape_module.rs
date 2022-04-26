@@ -1,19 +1,19 @@
 use std::time::{Duration, Instant};
-use nalgebra::{Vector3};
+use nalgebra::Vector3;
 use parry3d_f64::query::Ray;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
 use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
-use crate::robot_modules::robot_kinematics_module::{RobotKinematicsModule, RobotFKResult};
+use crate::robot_modules::robot_kinematics_module::{RobotFKResult, RobotKinematicsModule};
 use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJointStateModule, RobotJointStateType};
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_console::{get_default_progress_bar, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, RobotModuleJsonType};
 use crate::utils::utils_generic_data_structures::{AveragingFloat, SquareArray2D};
-use crate::utils::utils_robot::robot_module_utils::{RobotNames};
+use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 use crate::utils::utils_shape_geometry::shape_collection::{ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery};
 use crate::utils::utils_traits::{AssetSaveAndLoadable, SaveAndLoadable};
 
@@ -84,7 +84,7 @@ impl RobotGeometricShapeModule {
 
         // Initialize GeometricShapeCollision.
         let mut shape_collection = ShapeCollection::new_empty();
-        let geometric_shapes = robot_link_shape_representation.get_geometric_shapes(&self.robot_mesh_file_manager_module)?;
+        let geometric_shapes = self.robot_mesh_file_manager_module.get_geometric_shapes(&robot_link_shape_representation)?;
         for geometric_shape in geometric_shapes {
             if let Some(geometric_shape) = geometric_shape {
                 shape_collection.add_geometric_shape(geometric_shape.clone());
@@ -114,7 +114,7 @@ impl RobotGeometricShapeModule {
             count += 1.0;
             let sample = base_robot_joint_state_module.sample_joint_state(&RobotJointStateType::Full);
             let fk_res = base_robot_kinematics_module.compute_fk(&sample, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
-            let poses = fk_res.to_geometric_shape_collection_input_poses(&robot_shape_collection)?;
+            let poses = robot_shape_collection.recover_poses(&fk_res)?;
             let input = ShapeCollectionQuery::Distance { poses: &poses };
 
             let res = robot_shape_collection.shape_collection.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false)?;
@@ -134,14 +134,14 @@ impl RobotGeometricShapeModule {
             }
 
             let duration = start.elapsed();
-            let duration_ratio = duration.as_secs_f64() / robot_link_shape_representation.stop_at_min_sample_duration().as_secs_f64();
+            let duration_ratio = duration.as_secs_f64() / self.stop_at_min_sample_duration(robot_link_shape_representation).as_secs_f64();
             let max_sample_ratio = i as f64 / max_samples as f64;
             let min_sample_ratio = i as f64 / min_samples as f64;
             let ratio = duration_ratio.max(max_sample_ratio).min(min_sample_ratio);
             pb.set((ratio * 1000.0) as u64);
             pb.message(&format!("sample {} ", i));
 
-            if duration > robot_link_shape_representation.stop_at_min_sample_duration() && i >= min_samples { break; }
+            if duration > self.stop_at_min_sample_duration(robot_link_shape_representation) && i >= min_samples { break; }
         }
 
         // Determines average distances and decides if links should be skipped based on previous
@@ -229,7 +229,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::ProjectPoint { robot_joint_state, point, solid } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::ProjectPoint {
                     poses: &poses,
                     point,
@@ -239,7 +239,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::ContainsPoint { robot_joint_state, point } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::ContainsPoint {
                     poses: &poses,
                     point
@@ -248,7 +248,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::DistanceToPoint { robot_joint_state, point, solid } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::DistanceToPoint {
                     poses: &poses,
                     point,
@@ -258,7 +258,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::IntersectsRay { robot_joint_state, ray, max_toi } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectsRay {
                     poses: &poses,
                     ray,
@@ -268,7 +268,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::CastRay { robot_joint_state, ray, max_toi, solid } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRay {
                     poses: &poses,
                     ray,
@@ -279,7 +279,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::CastRayAndGetNormal { robot_joint_state, ray, max_toi, solid } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRayAndGetNormal {
                     poses: &poses,
                     ray,
@@ -290,7 +290,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::IntersectionTest { robot_joint_state } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectionTest {
                     poses: &poses,
                 }, stop_condition, log_condition, sort_outputs)
@@ -298,7 +298,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::Distance { robot_joint_state } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::Distance {
                     poses: &poses,
                 }, stop_condition, log_condition, sort_outputs)
@@ -306,7 +306,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::ClosestPoints { robot_joint_state, max_dis } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::ClosestPoints {
                     poses: &poses,
                     max_dis: *max_dis
@@ -315,7 +315,7 @@ impl RobotGeometricShapeModule {
             RobotShapeCollectionQuery::Contact { robot_joint_state, prediction } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses = res.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses = collection.recover_poses(&res)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::Contact {
                     poses: &poses,
                     prediction: *prediction
@@ -326,8 +326,8 @@ impl RobotGeometricShapeModule {
                 let res_t2 = self.robot_kinematics_module.compute_fk(robot_joint_state_t2, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
 
                 let collection = self.robot_shape_collection(&robot_link_shape_representation)?;
-                let poses_t1 = res_t1.to_geometric_shape_collection_input_poses(&collection)?;
-                let poses_t2 = res_t2.to_geometric_shape_collection_input_poses(&collection)?;
+                let poses_t1 = collection.recover_poses(&res_t1)?;
+                let poses_t2 = collection.recover_poses(&res_t2)?;
                 collection.shape_collection.shape_collection_query(&ShapeCollectionQuery::CCD {
                     poses_t1: &poses_t1,
                     poses_t2: &poses_t2
@@ -362,7 +362,9 @@ impl RobotGeometricShapeModule {
                     if contact.dist <= 0.0 && contact.dist > -0.12 {
                         let signature1 = &signatures[0];
                         let signature2 = &signatures[1];
-                        collection.shape_collection.replace_skip(true, &signature1, &signature2)?;
+                        let idx1 = collection.shape_collection.get_shape_idx_from_signature(signature1)?;
+                        let idx2 = collection.shape_collection.get_shape_idx_from_signature(signature2)?;
+                        collection.shape_collection.replace_skip_from_idxs(true, idx1, idx2)?;
                     }
                 }
             }
@@ -389,6 +391,16 @@ impl RobotGeometricShapeModule {
             self.reset_robot_geometric_shape_collection(r.clone())?;
         }
         Ok(())
+    }
+    fn stop_at_min_sample_duration(&self, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Duration {
+        match robot_link_shape_representation {
+            RobotLinkShapeRepresentation::Cubes => { Duration::from_secs(20) }
+            RobotLinkShapeRepresentation::ConvexShapes => { Duration::from_secs(30) }
+            RobotLinkShapeRepresentation::SphereSubcomponents => { Duration::from_secs(30) }
+            RobotLinkShapeRepresentation::CubeSubcomponents => { Duration::from_secs(30) }
+            RobotLinkShapeRepresentation::ConvexShapeSubcomponents => { Duration::from_secs(60) }
+            RobotLinkShapeRepresentation::TriangleMeshes => { Duration::from_secs(120) }
+        }
     }
 }
 /*
@@ -464,10 +476,6 @@ impl RobotShapeCollection {
             link_idx_to_shape_idxs_mapping: robot_link_idx_to_shape_idxs_mapping
         })
     }
-    pub fn get_shape_idxs_from_link_idx(&self, link_idx: usize) -> Result<&Vec<usize>, OptimaError> {
-        OptimaError::new_check_for_idx_out_of_bound_error(link_idx, self.link_idx_to_shape_idxs_mapping.len(), file!(), line!())?;
-        return Ok(&self.link_idx_to_shape_idxs_mapping[link_idx]);
-    }
     pub fn robot_link_shape_representation(&self) -> &RobotLinkShapeRepresentation {
         &self.robot_link_shape_representation
     }
@@ -476,6 +484,25 @@ impl RobotShapeCollection {
     }
     pub fn link_idx_to_shape_idxs_mapping(&self) -> &Vec<Vec<usize>> {
         &self.link_idx_to_shape_idxs_mapping
+    }
+    pub fn get_shape_idxs_from_link_idx(&self, link_idx: usize) -> Result<&Vec<usize>, OptimaError> {
+        OptimaError::new_check_for_idx_out_of_bound_error(link_idx, self.link_idx_to_shape_idxs_mapping.len(), file!(), line!())?;
+        return Ok(&self.link_idx_to_shape_idxs_mapping[link_idx]);
+    }
+    pub fn recover_poses(&self, robot_fk_result: &RobotFKResult) -> Result<ShapeCollectionInputPoses, OptimaError> {
+        let mut geometric_shape_collection_input_poses = ShapeCollectionInputPoses::new(&self.shape_collection);
+        let link_entries = robot_fk_result.link_entries();
+        for (link_idx, link_entry) in link_entries.iter().enumerate() {
+            let pose = link_entry.pose();
+            if let Some(pose) = pose {
+                let shape_idxs = self.get_shape_idxs_from_link_idx(link_idx)?;
+                for shape_idx in shape_idxs {
+                    geometric_shape_collection_input_poses.insert_or_replace_pose_by_idx(*shape_idx, pose.clone())?;
+                }
+            }
+        }
+
+        Ok(geometric_shape_collection_input_poses)
     }
 }
 impl SaveAndLoadable for RobotShapeCollection {
@@ -545,115 +572,4 @@ pub enum RobotLinkShapeRepresentation {
     CubeSubcomponents,
     ConvexShapeSubcomponents,
     TriangleMeshes
-}
-impl RobotLinkShapeRepresentation {
-    pub fn get_link_idx_to_shape_idxs(&self) {
-        // TODO
-    }
-    pub fn get_geometric_shapes(&self, robot_mesh_file_manager_module: &RobotMeshFileManagerModule) -> Result<Vec<Option<GeometricShape>>, OptimaError> {
-        let mut out_vec = vec![];
-
-        match self {
-            RobotLinkShapeRepresentation::Cubes => {
-                let paths = robot_mesh_file_manager_module.get_paths_to_meshes()?;
-                for (link_idx, path) in paths.iter().enumerate() {
-                    match path {
-                        None => { out_vec.push(None); }
-                        Some(path) => {
-                            let base_shape = GeometricShape::new_triangle_mesh(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link: 0 });
-                            let cube_shape = base_shape.to_best_fit_cube();
-                            out_vec.push(Some(cube_shape));
-                        }
-                    }
-                }
-            }
-            RobotLinkShapeRepresentation::ConvexShapes => {
-                let paths = robot_mesh_file_manager_module.get_paths_to_convex_shape_meshes()?;
-                for (link_idx, path) in paths.iter().enumerate() {
-                    match path {
-                        None => { out_vec.push(None); }
-                        Some(path) => {
-                            let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link: 0 });
-                            out_vec.push(Some(base_shape));
-                        }
-                    }
-                }
-            }
-            RobotLinkShapeRepresentation::SphereSubcomponents => {
-                let paths = robot_mesh_file_manager_module.get_paths_to_convex_shape_subcomponent_meshes()?;
-                for (link_idx, v) in paths.iter().enumerate() {
-                    if v.len() == 0 { out_vec.push(None); }
-                    for (shape_idx_in_link, path) in v.iter().enumerate() {
-                        let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link });
-                        let sphere_shape = base_shape.to_best_fit_sphere();
-                        out_vec.push(Some(sphere_shape));
-                    }
-                }
-            }
-            RobotLinkShapeRepresentation::CubeSubcomponents => {
-                let paths = robot_mesh_file_manager_module.get_paths_to_convex_shape_subcomponent_meshes()?;
-                for (link_idx, v) in paths.iter().enumerate() {
-                    if v.len() == 0 { out_vec.push(None); }
-                    for (shape_idx_in_link, path) in v.iter().enumerate() {
-                        let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link });
-                        let cube_shape = base_shape.to_best_fit_cube();
-                        out_vec.push(Some(cube_shape));
-                    }
-                }
-            }
-            RobotLinkShapeRepresentation::ConvexShapeSubcomponents => {
-                let paths = robot_mesh_file_manager_module.get_paths_to_convex_shape_subcomponent_meshes()?;
-                for (link_idx, v) in paths.iter().enumerate() {
-                    if v.len() == 0 { out_vec.push(None); }
-                    for (shape_idx_in_link, path) in v.iter().enumerate() {
-                        let base_shape = GeometricShape::new_convex_shape(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link });
-                        out_vec.push(Some(base_shape));
-                    }
-                }
-            }
-            RobotLinkShapeRepresentation::TriangleMeshes => {
-                let paths = robot_mesh_file_manager_module.get_paths_to_convex_shape_meshes()?;
-                for (link_idx, path) in paths.iter().enumerate() {
-                    match path {
-                        None => { out_vec.push(None); }
-                        Some(path) => {
-                            let base_shape = GeometricShape::new_triangle_mesh(path, GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link: 0 });
-                            out_vec.push(Some(base_shape));
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(out_vec)
-    }
-    fn stop_at_min_sample_duration(&self) -> Duration {
-        match self {
-            RobotLinkShapeRepresentation::Cubes => { Duration::from_secs(20) }
-            RobotLinkShapeRepresentation::ConvexShapes => { Duration::from_secs(30) }
-            RobotLinkShapeRepresentation::SphereSubcomponents => { Duration::from_secs(30) }
-            RobotLinkShapeRepresentation::CubeSubcomponents => { Duration::from_secs(30) }
-            RobotLinkShapeRepresentation::ConvexShapeSubcomponents => { Duration::from_secs(60) }
-            RobotLinkShapeRepresentation::TriangleMeshes => { Duration::from_secs(120) }
-        }
-    }
-}
-
-/// private implementation that is just accessible by `RobotShapeGeometryModule`.
-impl RobotFKResult {
-    fn to_geometric_shape_collection_input_poses(&self, robot_geometric_shape_collection: &RobotShapeCollection) -> Result<ShapeCollectionInputPoses, OptimaError> {
-        let mut geometric_shape_collection_input_poses = ShapeCollectionInputPoses::new(&robot_geometric_shape_collection.shape_collection);
-        let link_entries = self.link_entries();
-        for (link_idx, link_entry) in link_entries.iter().enumerate() {
-            let pose = link_entry.pose();
-            if let Some(pose) = pose {
-                let shape_idxs = robot_geometric_shape_collection.get_shape_idxs_from_link_idx(link_idx)?;
-                for shape_idx in shape_idxs {
-                    geometric_shape_collection_input_poses.insert_or_replace_pose_by_idx(*shape_idx, pose.clone())?;
-                }
-            }
-        }
-
-        Ok(geometric_shape_collection_input_poses)
-    }
 }
