@@ -1,5 +1,11 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 use std::time::{Duration, Instant};
-use nalgebra::Vector3;
+use nalgebra::{DVector, Vector3};
 use parry3d_f64::query::Ray;
 use serde::{Deserialize, Serialize};
 use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
@@ -7,7 +13,9 @@ use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerMo
 use crate::robot_modules::robot_kinematics_module::{RobotFKResult, RobotKinematicsModule};
 use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJointStateModule, RobotJointStateType};
 use crate::robot_modules::robot_model_module::RobotModelModule;
-use crate::utils::utils_console::{get_default_progress_bar, optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::utils_console::get_default_progress_bar;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, RobotModuleJsonType};
 use crate::utils::utils_generic_data_structures::{AveragingFloat, SquareArray2D};
@@ -24,18 +32,23 @@ use crate::utils::utils_traits::{AssetSaveAndLoadable, SaveAndLoadable};
 /// The most important function here is `RobotGeometricShapeModule.shape_collection_query`.  This
 /// function takes in a `RobotShapeCollectionQuery` as input and outputs a
 /// corresponding `GeometricShapeQueryGroupOutput`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotGeometricShapeModule {
+    robot_joint_state_module: RobotJointStateModule,
     robot_kinematics_module: RobotKinematicsModule,
     robot_mesh_file_manager_module: RobotMeshFileManagerModule,
     robot_shape_collections: Vec<RobotShapeCollection>
 }
 impl RobotGeometricShapeModule {
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(robot_configuration_module: RobotConfigurationModule, force_preprocessing: bool) -> Result<Self, OptimaError> {
+        let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_kinematics_module = RobotKinematicsModule::new(robot_configuration_module.clone());
         let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_configuration_module.robot_name())?;
         return if force_preprocessing {
             let mut out_self = Self {
+                robot_joint_state_module,
                 robot_kinematics_module,
                 robot_mesh_file_manager_module,
                 robot_shape_collections: vec![]
@@ -51,10 +64,31 @@ impl RobotGeometricShapeModule {
             }
         }
     }
+    #[cfg(target_arch = "wasm32")]
+    pub fn new(robot_configuration_module: RobotConfigurationModule, force_preprocessing: bool) -> Result<Self, OptimaError> {
+        let robot_kinematics_module = RobotKinematicsModule::new(robot_configuration_module.clone());
+        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_configuration_module.robot_name())?;
+        return if force_preprocessing {
+            let mut out_self = Self {
+                robot_kinematics_module,
+                robot_mesh_file_manager_module,
+                robot_shape_collections: vec![]
+            };
+            Err(OptimaError::new_generic_error_str("Cannot preprocess geometric shape module from WASM.", file!(), line!()))
+        } else {
+            let robot_name = robot_kinematics_module.robot_name().to_string();
+            let res = Self::load_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name, t: RobotModuleJsonType::ShapeGeometryModule });
+            match res {
+                Ok(res) => { Ok(res) }
+                Err(_) => { Self::new(robot_configuration_module, true) }
+            }
+        }
+    }
     pub fn new_from_names(robot_names: RobotNames, force_preprocessing: bool) -> Result<Self, OptimaError> {
         let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_names)?;
         Self::new(robot_configuration_module, force_preprocessing)
     }
+    #[cfg(not(target_arch = "wasm32"))]
     fn preprocessing(&mut self) -> Result<(), OptimaError> {
         let robot_link_shape_representations = vec![
             RobotLinkShapeRepresentation::Cubes,
@@ -71,6 +105,7 @@ impl RobotGeometricShapeModule {
 
         Ok(())
     }
+    #[cfg(not(target_arch = "wasm32"))]
     fn preprocessing_robot_geometric_shape_collection(&mut self,
                                                       robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Result<(), OptimaError> {
         optima_print(&format!("Setup on {:?}...", robot_link_shape_representation), PrintMode::Println, PrintColor::Blue, true);
@@ -403,24 +438,6 @@ impl RobotGeometricShapeModule {
         }
     }
 }
-/*
-impl RobotModuleSaveAndLoad for RobotGeometricShapeModule {
-    fn get_robot_name(&self) -> &str { &self.robot_kinematics_module.robot_name() }
-    fn save_to_json_file(&self, robot_module_json_type: RobotModuleJsonType) -> Result<(), OptimaError> where Self: Sized {
-        RobotModuleUtils::save_to_json_file_generic(&self.robot_shape_collections, self.get_robot_name(), robot_module_json_type)
-    }
-    fn load_from_json_file(robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<Self, OptimaError> {
-        let robot_geometric_shape_collections: Vec<RobotShapeCollection> = RobotModuleUtils::load_from_json_file_generic(robot_name, robot_module_json_type)?;
-        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_name)?;
-        let robot_kinematics_module = RobotKinematicsModule::new_from_names(RobotNames::new_base(robot_name))?;
-        Ok(Self {
-            robot_kinematics_module,
-            robot_mesh_file_manager_module,
-            robot_shape_collections: robot_geometric_shape_collections
-        })
-    }
-}
-*/
 impl SaveAndLoadable for RobotGeometricShapeModule {
     type SaveType = (String, String, String);
 
@@ -431,16 +448,48 @@ impl SaveAndLoadable for RobotGeometricShapeModule {
     fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
         let load: Self::SaveType = load_object_from_json_string(json_str)?;
         let robot_configuration_module = RobotConfigurationModule::load_from_json_string(&load.0)?;
+        let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_kinematics_module = RobotKinematicsModule::new(robot_configuration_module);
         let robot_mesh_file_manager_module = RobotMeshFileManagerModule::load_from_json_string(&load.1)?;
         // let robot_shape_collections: Vec<RobotShapeCollection> = SaveAndLoadableVec::load_from_json_string(&load.2)?;
         let robot_shape_collections: Vec<RobotShapeCollection> = Vec::load_from_json_string(&load.2)?;
 
         Ok(Self {
+            robot_joint_state_module,
             robot_kinematics_module,
             robot_mesh_file_manager_module,
             robot_shape_collections
         })
+    }
+}
+
+/// Python implementations.
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotGeometricShapeModule {
+    #[new]
+    pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotGeometricShapeModule {
+        return Self::new_from_names(RobotNames::new(robot_name, configuration_name), false).expect("error");
+    }
+    pub fn intersection_test(&self, joint_state: Vec<f64>) -> String {
+        let joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state)).expect("error");
+        let input = RobotShapeCollectionQuery::IntersectionTest {
+            robot_joint_state: &joint_state
+        };
+        let res = self.shape_collection_query(&input, RobotLinkShapeRepresentation::ConvexShapes, StopCondition::None, LogCondition::LogAll, true).expect("error");
+        serde_json::to_string(&res).expect("error")
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl RobotGeometricShapeModule {
+    #[wasm_bindgen(constructor)]
+    pub fn new_wasm(robot_name: String, configuration_name: Option<String>) -> RobotGeometricShapeModule {
+        return match configuration_name {
+            None => { Self::new_from_names(RobotNames::new(&robot_name, None), false).expect("error") }
+            Some(c) => { Self::new_from_names(RobotNames::new(&robot_name, Some(&c)), false).expect("error") }
+        }
     }
 }
 

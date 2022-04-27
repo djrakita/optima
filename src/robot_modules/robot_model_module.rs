@@ -537,13 +537,6 @@ impl RobotModelModule {
         print!("\n");
     }
 }
-/*
-impl RobotModuleSaveAndLoad for RobotModelModule {
-    fn get_robot_name(&self) -> &str {
-        self.robot_name()
-    }
-}
-*/
 impl SaveAndLoadable for RobotModelModule {
     type SaveType = Self;
 

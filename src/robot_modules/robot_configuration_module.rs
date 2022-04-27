@@ -7,7 +7,7 @@ use wasm_bindgen::prelude::*;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_console::{ConsoleInputUtils, PrintColor};
-use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll};
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PosePy};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
@@ -271,6 +271,39 @@ impl RobotConfigurationModulePy {
     }
     */
 
+    pub fn set_static_mobile_base_mode_py(&mut self, py: Python) {
+        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::Static).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+    pub fn set_floating_mobile_base_mode_py(&mut self, x_bounds: (f64, f64), y_bounds: (f64, f64), z_bounds: (f64, f64), xr_bounds: (f64, f64), yr_bounds: (f64, f64), zr_bounds: (f64, f64), py: Python) {
+        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::Floating {
+            x_bounds,
+            y_bounds,
+            z_bounds,
+            xr_bounds,
+            yr_bounds,
+            zr_bounds
+        }).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+    pub fn set_planar_translation_mobile_base_mode_py(&mut self, x_bounds: (f64, f64), y_bounds: (f64, f64), py: Python) {
+        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::PlanarTranslation { x_bounds, y_bounds }).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+    pub fn set_planar_rotation_mobile_base_mode_py(&mut self, zr_bounds: (f64, f64), py: Python) {
+        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::PlanarRotation { zr_bounds }).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+    pub fn set_planar_translation_and_rotation_mobile_base_mode_py(&mut self, x_bounds: (f64, f64), y_bounds: (f64, f64), zr_bounds: (f64, f64), py: Python) {
+        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds }).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
+    pub fn set_base_offset_py(&mut self, pose: &OptimaSE3PosePy, py: Python) {
+        self.robot_configuration_module.set_base_offset(pose.pose()).expect("error");
+        self.copy_robot_model_module_to_py(py);
+    }
+
     /// sets the base offset of the robot configuration.
     pub fn set_base_offset_euler_angles(&mut self, rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64, py: Python) {
         self.robot_configuration_module.set_base_offset(&OptimaSE3Pose::new_unit_quaternion_and_translation_from_euler_angles(rx, ry, rz, x, y, z)).expect("error");
@@ -283,21 +316,7 @@ impl RobotConfigurationModulePy {
     pub fn save(&mut self, configuration_name: &str) {
         self.robot_configuration_module.save(configuration_name).expect("error");
     }
-
 }
-/*
-#[cfg(not(target_arch = "wasm32"))]
-impl RobotConfigurationModulePy {
-    #[cfg(not(target_arch = "wasm32"))]
-    fn new_from_configuration_module(robot_configuration_module: RobotConfigurationModule, py: Python) -> Self {
-        let robot_model_module_py = Py::new(py, robot_configuration_module.robot_model_module().clone()).expect("error");
-        Self {
-            robot_configuration_module,
-            robot_model_module_py
-        }
-    }
-}
-*/
 
 /// Methods supported by WASM.
 #[cfg(target_arch = "wasm32")]

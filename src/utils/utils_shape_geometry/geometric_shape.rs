@@ -224,62 +224,6 @@ impl SaveAndLoadable for GeometricShape {
     }
 }
 
-/// A `GeometricShapeSignature` is used to identify a particular `GeometricShape`.  Importantly,
-/// a signature is serializable, can be equal or non-equal via PartialEq and Eq, and able to be
-/// sorted via PartialOrd and Ord.
-#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
-pub enum GeometricShapeSignature {
-    None,
-    RobotLink { link_idx: usize, shape_idx_in_link: usize },
-    RobotSetLink { robot_idx_in_set: usize, link_idx_in_robot: usize, shape_idx_in_link: usize },
-    EnvironmentObject { environment_object_idx: usize, shape_idx_in_object: usize }
-}
-
-/// A `GeometricShapeSpawner` is the main object that allows a `GeometricShape` to be serializable
-/// and deserializable.  This spawner object contains all necessary information in order to construct
-/// a `GeometricShape` from scratch.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum GeometricShapeSpawner {
-    Cube { half_extent_x: f64, half_extent_y: f64, half_extent_z: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
-    Sphere { radius: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
-    ConvexShape { path_string_components: Vec<String>, trimesh_engine: Option<TrimeshEngine>, signature: GeometricShapeSignature },
-    TriangleMesh { path_string_components: Vec<String>, trimesh_engine: Option<TrimeshEngine>, signature: GeometricShapeSignature }
-}
-impl GeometricShapeSpawner {
-    pub fn spawn(&self) -> GeometricShape {
-        match self {
-            GeometricShapeSpawner::Cube { half_extent_x, half_extent_y, half_extent_z, signature, initial_pose_of_shape } => {
-                GeometricShape::new_cube(*half_extent_x, *half_extent_y, *half_extent_z, signature.clone(), initial_pose_of_shape.clone())
-            }
-            GeometricShapeSpawner::Sphere { radius, signature, initial_pose_of_shape } => {
-                GeometricShape::new_sphere( *radius, signature.clone(), initial_pose_of_shape.clone() )
-            }
-            GeometricShapeSpawner::ConvexShape { path_string_components, trimesh_engine, signature } => {
-                if let Some(trimesh_engine) = trimesh_engine {
-                    return GeometricShape::new_convex_shape_from_trimesh_engine(trimesh_engine, signature.clone());
-                }
-                let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
-                GeometricShape::new_convex_shape( &path, signature.clone() )
-            }
-            GeometricShapeSpawner::TriangleMesh { path_string_components, trimesh_engine, signature } => {
-                if let Some(trimesh_engine) = trimesh_engine {
-                    return GeometricShape::new_convex_shape_from_trimesh_engine(trimesh_engine, signature.clone());
-                }
-                let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
-                GeometricShape::new_triangle_mesh( &path, signature.clone() )
-            }
-        }
-    }
-    pub fn set_signature(&mut self, input_signature: GeometricShapeSignature) {
-        match self {
-            GeometricShapeSpawner::Cube { half_extent_x: _, half_extent_y: _, half_extent_z: _, signature, initial_pose_of_shape: _ } => { *signature = input_signature.clone() }
-            GeometricShapeSpawner::Sphere { radius: _, signature, initial_pose_of_shape: _ } => { *signature = input_signature.clone() }
-            GeometricShapeSpawner::ConvexShape { path_string_components: _, trimesh_engine: _, signature } => { *signature = input_signature.clone() }
-            GeometricShapeSpawner::TriangleMesh { path_string_components: _, trimesh_engine: _, signature } => { *signature = input_signature.clone() }
-        }
-    }
-}
-
 /// Utility class that holds important geometric shape query functions.
 pub struct GeometricShapeQueries;
 impl GeometricShapeQueries {
@@ -327,7 +271,7 @@ impl GeometricShapeQueries {
         let start = Instant::now();
         let raw_output = match input {
             GeometricShapeQuery::ProjectPoint { object, pose, point, solid } => {
-                GeometricShapeQueryRawOutput::ProjectPoint(object.project_point(pose, point, *solid))
+                GeometricShapeQueryRawOutput::ProjectPoint(PointProjectionWrapper::new(&object.project_point(pose, point, *solid)))
             }
             GeometricShapeQuery::ContainsPoint { object, pose, point } => {
                 GeometricShapeQueryRawOutput::ContainsPoint(object.contains_point(pose, point))
@@ -342,7 +286,12 @@ impl GeometricShapeQueries {
                 GeometricShapeQueryRawOutput::CastRay(object.cast_ray(pose, ray, *max_toi, *solid))
             }
             GeometricShapeQuery::CastRayAndGetNormal { object, pose, ray, max_toi, solid } => {
-                GeometricShapeQueryRawOutput::CastRayAndGetNormal(object.cast_ray_and_get_normal(pose, ray, *max_toi, *solid))
+                let res = &object.cast_ray_and_get_normal(pose, ray, *max_toi, *solid);
+                let out = match res {
+                    None => { None }
+                    Some(res) => { Some(RayIntersectionWrapper::new(res)) }
+                };
+                GeometricShapeQueryRawOutput::CastRayAndGetNormal(out)
             }
             GeometricShapeQuery::IntersectionTest { object1, object1_pose, object2, object2_pose } => {
                 GeometricShapeQueryRawOutput::IntersectionTest(Self::intersection_test(object1, object1_pose, object2, object2_pose))
@@ -351,10 +300,15 @@ impl GeometricShapeQueries {
                 GeometricShapeQueryRawOutput::Distance(Self::distance(object1, object1_pose, object2, object2_pose))
             }
             GeometricShapeQuery::ClosestPoints { object1, object1_pose, object2, object2_pose, max_dis } => {
-                GeometricShapeQueryRawOutput::ClosestPoints(Self::closest_points(object1, object1_pose, object2, object2_pose, *max_dis))
+                GeometricShapeQueryRawOutput::ClosestPoints(ClosestPointsWrapper::new(&Self::closest_points(object1, object1_pose, object2, object2_pose, *max_dis)))
             }
             GeometricShapeQuery::Contact { object1, object1_pose, object2, object2_pose, prediction } => {
-                GeometricShapeQueryRawOutput::Contact(Self::contact(object1, object1_pose, object2, object2_pose, *prediction))
+                let res = Self::contact(object1, object1_pose, object2, object2_pose, *prediction);
+                let out = match &res {
+                    None => { None }
+                    Some(res) => { Some(ContactWrapper::new(res)) }
+                };
+                GeometricShapeQueryRawOutput::Contact(out)
             }
             GeometricShapeQuery::CCD { object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2 } => {
                 GeometricShapeQueryRawOutput::CCD(Self::ccd(object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2))
@@ -459,27 +413,59 @@ impl GeometricShapeQueries {
     }
 }
 
-/// Holds a result from a continuous collision detection (CCD) computation.
-/// Here, `toi` refers to time of impact, `collision_point` is the point in global space that the
-/// shapes collide at, and `normal1` and `normal2` vectors are the direction that shapes should
-/// instantaneously move to alleviate the collision.
-#[derive(Clone, Debug)]
-pub struct CCDResult {
-    toi: f64,
-    collision_point: Vector3<f64>,
-    normal1: Unit<Vector3<f64>>,
-    normal2: Unit<Vector3<f64>>
+/// A `GeometricShapeSignature` is used to identify a particular `GeometricShape`.  Importantly,
+/// a signature is serializable, can be equal or non-equal via PartialEq and Eq, and able to be
+/// sorted via PartialOrd and Ord.
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
+pub enum GeometricShapeSignature {
+    None,
+    RobotLink { link_idx: usize, shape_idx_in_link: usize },
+    RobotSetLink { robot_idx_in_set: usize, link_idx_in_robot: usize, shape_idx_in_link: usize },
+    EnvironmentObject { environment_object_idx: usize, shape_idx_in_object: usize }
 }
-impl CCDResult {
-    pub fn toi(&self) -> f64 { self.toi }
-    pub fn collision_point(&self) -> Vector3<f64> {
-        self.collision_point
+
+/// A `GeometricShapeSpawner` is the main object that allows a `GeometricShape` to be serializable
+/// and deserializable.  This spawner object contains all necessary information in order to construct
+/// a `GeometricShape` from scratch.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum GeometricShapeSpawner {
+    Cube { half_extent_x: f64, half_extent_y: f64, half_extent_z: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
+    Sphere { radius: f64, signature: GeometricShapeSignature, initial_pose_of_shape: Option<OptimaSE3Pose> },
+    ConvexShape { path_string_components: Vec<String>, trimesh_engine: Option<TrimeshEngine>, signature: GeometricShapeSignature },
+    TriangleMesh { path_string_components: Vec<String>, trimesh_engine: Option<TrimeshEngine>, signature: GeometricShapeSignature }
+}
+impl GeometricShapeSpawner {
+    pub fn spawn(&self) -> GeometricShape {
+        match self {
+            GeometricShapeSpawner::Cube { half_extent_x, half_extent_y, half_extent_z, signature, initial_pose_of_shape } => {
+                GeometricShape::new_cube(*half_extent_x, *half_extent_y, *half_extent_z, signature.clone(), initial_pose_of_shape.clone())
+            }
+            GeometricShapeSpawner::Sphere { radius, signature, initial_pose_of_shape } => {
+                GeometricShape::new_sphere( *radius, signature.clone(), initial_pose_of_shape.clone() )
+            }
+            GeometricShapeSpawner::ConvexShape { path_string_components, trimesh_engine, signature } => {
+                if let Some(trimesh_engine) = trimesh_engine {
+                    return GeometricShape::new_convex_shape_from_trimesh_engine(trimesh_engine, signature.clone());
+                }
+                let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
+                GeometricShape::new_convex_shape( &path, signature.clone() )
+            }
+            GeometricShapeSpawner::TriangleMesh { path_string_components, trimesh_engine, signature } => {
+                if let Some(trimesh_engine) = trimesh_engine {
+                    return GeometricShape::new_convex_shape_from_trimesh_engine(trimesh_engine, signature.clone());
+                }
+                let path = OptimaStemCellPath::new_asset_path_from_string_components(path_string_components).expect("error");
+                GeometricShape::new_triangle_mesh( &path, signature.clone() )
+            }
+        }
     }
-    pub fn normal1(&self) -> Unit<Vector3<f64>> {
-        self.normal1
-    }
-    pub fn normal2(&self) -> Unit<Vector3<f64>> {
-        self.normal2
+    pub fn set_signature(&mut self, input_signature: GeometricShapeSignature) {
+        match self {
+            GeometricShapeSpawner::Cube { half_extent_x: _, half_extent_y: _, half_extent_z: _, signature, initial_pose_of_shape: _ } => { *signature = input_signature.clone() }
+            GeometricShapeSpawner::Sphere { radius: _, signature, initial_pose_of_shape: _ } => { *signature = input_signature.clone() }
+            GeometricShapeSpawner::ConvexShape { path_string_components: _, trimesh_engine: _, signature } => { *signature = input_signature.clone() }
+            GeometricShapeSpawner::TriangleMesh { path_string_components: _, trimesh_engine: _, signature } => { *signature = input_signature.clone() }
+        }
     }
 }
 
@@ -534,24 +520,24 @@ impl <'a> GeometricShapeQuery<'a> {
 }
 
 /// A raw output from a single `GeometricShapeQuery`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum GeometricShapeQueryRawOutput {
-    ProjectPoint(PointProjection),
+    ProjectPoint(PointProjectionWrapper),
     ContainsPoint(bool),
     DistanceToPoint(f64),
     IntersectsRay(bool),
     CastRay(Option<f64>),
-    CastRayAndGetNormal(Option<RayIntersection>),
+    CastRayAndGetNormal(Option<RayIntersectionWrapper>),
     IntersectionTest(bool),
     Distance(f64),
-    ClosestPoints(ClosestPoints),
-    Contact(Option<Contact>),
+    ClosestPoints(ClosestPointsWrapper),
+    Contact(Option<ContactWrapper>),
     CCD(Option<CCDResult>)
 }
 impl GeometricShapeQueryRawOutput {
-    pub fn unwrap_project_point(&self) -> Result<PointProjection, OptimaError> {
+    pub fn unwrap_project_point(&self) -> Result<PointProjectionWrapper, OptimaError> {
         return match self {
-            GeometricShapeQueryRawOutput::ProjectPoint(p) => { Ok(*p) }
+            GeometricShapeQueryRawOutput::ProjectPoint(p) => { Ok(p.clone()) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
@@ -579,9 +565,9 @@ impl GeometricShapeQueryRawOutput {
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
-    pub fn unwrap_cast_ray_and_get_normal(&self) -> Result<Option<RayIntersection>, OptimaError> {
+    pub fn unwrap_cast_ray_and_get_normal(&self) -> Result<Option<RayIntersectionWrapper>, OptimaError> {
         return match self {
-            GeometricShapeQueryRawOutput::CastRayAndGetNormal(b) => { Ok(*b) }
+            GeometricShapeQueryRawOutput::CastRayAndGetNormal(b) => { Ok(b.clone()) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
@@ -597,15 +583,15 @@ impl GeometricShapeQueryRawOutput {
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
-    pub fn unwrap_closest_points(&self) -> Result<&ClosestPoints, OptimaError> {
+    pub fn unwrap_closest_points(&self) -> Result<&ClosestPointsWrapper, OptimaError> {
         return match self {
             GeometricShapeQueryRawOutput::ClosestPoints(c) => { Ok(c) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
-    pub fn unwrap_contact(&self) -> Result<Option<Contact>, OptimaError> {
+    pub fn unwrap_contact(&self) -> Result<Option<ContactWrapper>, OptimaError> {
         return match self {
-            GeometricShapeQueryRawOutput::Contact(c) => { Ok(*c) }
+            GeometricShapeQueryRawOutput::Contact(c) => { Ok(c.clone()) }
             _ => { return Err(OptimaError::new_generic_error_str("Incompatible type.", file!(), line!())) }
         }
     }
@@ -657,12 +643,12 @@ impl GeometricShapeQueryRawOutput {
             }
             GeometricShapeQueryRawOutput::ClosestPoints(r) => {
                 match r {
-                    ClosestPoints::Intersecting => { -f64::INFINITY }
-                    ClosestPoints::WithinMargin(p1, p2) => {
+                    ClosestPointsWrapper::Intersecting => { -f64::INFINITY }
+                    ClosestPointsWrapper::WithinMargin(p1, p2) => {
                         let dis = (p1 - p2).norm();
                         dis
                     }
-                    ClosestPoints::Disjoint => { f64::INFINITY }
+                    ClosestPointsWrapper::Disjoint => { f64::INFINITY }
                 }
             }
             GeometricShapeQueryRawOutput::Contact(r) => {
@@ -678,6 +664,106 @@ impl GeometricShapeQueryRawOutput {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PointProjectionWrapper {
+    pub point: Vector3<f64>,
+    pub is_inside: bool
+}
+impl PointProjectionWrapper {
+    pub fn new(point_projection: &PointProjection) -> Self {
+        let p = &point_projection.point;
+        let point = Vector3::new(p[0], p[1], p[2]);
+        Self {
+            point,
+            is_inside: point_projection.is_inside
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ClosestPointsWrapper {
+    Intersecting,
+    WithinMargin(Vector3<f64>, Vector3<f64>),
+    Disjoint
+}
+impl ClosestPointsWrapper {
+    pub fn new(closest_points: &ClosestPoints) -> Self {
+        return match closest_points {
+            ClosestPoints::Intersecting => { Self::Intersecting }
+            ClosestPoints::WithinMargin(a, b) => { Self::WithinMargin( Vector3::new(a[0], a[1], a[2]), Vector3::new(b[0], b[1], b[2]) ) }
+            ClosestPoints::Disjoint => { Self::Disjoint }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RayIntersectionWrapper {
+    pub toi: f64,
+    pub normal: Vector3<f64>,
+    pub edge_idx: u32,
+    pub face_idx: u32,
+    pub vertex_idx: u32
+}
+impl RayIntersectionWrapper {
+    pub fn new(r: &RayIntersection) -> Self {
+        Self {
+            toi: r.toi,
+            normal: Vector3::new(r.normal[0], r.normal[1], r.normal[2]),
+            edge_idx: r.feature.unwrap_edge(),
+            face_idx: r.feature.unwrap_face(),
+            vertex_idx: r.feature.unwrap_vertex()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ContactWrapper {
+    pub dist: f64,
+    pub normal1: Vector3<f64>,
+    pub normal2: Vector3<f64>,
+    pub point1: Vector3<f64>,
+    pub point2: Vector3<f64>
+}
+impl ContactWrapper {
+    pub fn new(contact: &Contact) -> Self {
+        let n1 = &contact.normal1;
+        let n2 = &contact.normal1;
+        let p1 = &contact.point1;
+        let p2 = &contact.point2;
+        Self {
+            dist: contact.dist,
+            normal1: Vector3::new(n1[0], n1[1], n1[2]),
+            normal2: Vector3::new(n2[0], n2[1], n2[2]),
+            point1: Vector3::new(p1[0], p1[1], p1[2]),
+            point2: Vector3::new(p2[0], p2[1], p2[2])
+        }
+    }
+}
+
+/// Holds a result from a continuous collision detection (CCD) computation.
+/// Here, `toi` refers to time of impact, `collision_point` is the point in global space that the
+/// shapes collide at, and `normal1` and `normal2` vectors are the direction that shapes should
+/// instantaneously move to alleviate the collision.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CCDResult {
+    toi: f64,
+    collision_point: Vector3<f64>,
+    normal1: Unit<Vector3<f64>>,
+    normal2: Unit<Vector3<f64>>
+}
+impl CCDResult {
+    pub fn toi(&self) -> f64 { self.toi }
+    pub fn collision_point(&self) -> Vector3<f64> {
+        self.collision_point
+    }
+    pub fn normal1(&self) -> Unit<Vector3<f64>> {
+        self.normal1
+    }
+    pub fn normal2(&self) -> Unit<Vector3<f64>> {
+        self.normal2
+    }
+}
+
 /// Output from the `GeometricShapeQueries::generic_query` function. Contains a `GeometricShapeQueryRawOutput`,
 /// the signatures of the shape (or shapes) involved in the query, and the amount of time it took
 /// to complete the query.
@@ -685,7 +771,7 @@ impl GeometricShapeQueryRawOutput {
 /// The `signatures` field is a vector that will hold either one or two `GeometricShapeSignature`
 /// objects depending on how many shapes are involved in the computation. For example, `ProjectPoint`
 /// only needs one object while `IntersectionTest` needs two objects.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeometricShapeQueryOutput {
     duration: Duration,
     signatures: Vec<GeometricShapeSignature>,
@@ -710,7 +796,7 @@ impl GeometricShapeQueryOutput {
 ///
 /// For reference on what a "distance" means for a particular output type, look at what
 /// is returned by the `GeometricShapeQueryRawOutput proxy_dis` function.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeometricShapeQueryGroupOutput {
     duration: Duration,
     num_queries: usize,
@@ -755,7 +841,7 @@ impl GeometricShapeQueryGroupOutput {
 
 /// Allows for control over when the `GeometricShapeQueries::generic_group_query` function should
 /// be early terminated.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum StopCondition {
     None,
     Intersection,
@@ -764,7 +850,7 @@ pub enum StopCondition {
 
 /// Allows for control over when the `GeometricShapeQueries::generic_group_query` function should
 /// log a `GeometricShapeQueryOutput` into the outputs field in `GeometricShapeQueryGroupOutput`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LogCondition {
     LogAll,
     /// Only logs the output when it is an intersection.

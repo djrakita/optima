@@ -448,6 +448,7 @@ impl RobotKinematicsModule {
     }
 }
 
+/*
 /// WASM implementations.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -484,6 +485,7 @@ impl RobotKinematicsModule {
         }
     }
 }
+*/
 
 /// The output of a forward kinematics computation.
 /// The primary field in this object is `link_entries`.  This is a list of `RobotFKResultLinkEntry`

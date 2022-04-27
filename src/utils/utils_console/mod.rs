@@ -1,5 +1,6 @@
 use std::io;
 use std::io::{BufRead, Stdout};
+#[cfg(not(target_arch = "wasm32"))]
 use pbr::ProgressBar;
 #[cfg(not(target_arch = "wasm32"))]
 use termion::{style, color::Rgb, color};
@@ -103,12 +104,14 @@ impl ConsoleInputUtils {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn get_default_progress_bar(max_total_of_bar: usize) -> ProgressBar<Stdout> {
     let mut out_self = ProgressBar::new(max_total_of_bar as u64);
     out_self.show_counter = false;
     out_self.format(&get_progress_bar_format_string());
     out_self
 }
+#[cfg(not(target_arch = "wasm32"))]
 fn get_progress_bar_format_string() -> String {
     // return "".to_string();
     // return "╢▌▌░╟".to_string();

@@ -320,21 +320,17 @@ impl RobotJointStateModule {
     pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotJointStateModule {
         return Self::new_from_names(RobotNames::new(robot_name, configuration_name)).expect("error");
     }
-
     pub fn convert_joint_state_to_full_state_py(&self, joint_state: Vec<f64>) -> Vec<f64> {
         let robot_state = self.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
         let res = self.convert_joint_state_to_full_state(&robot_state).expect("error");
         return NalgebraConversions::dvector_to_vec(&res.joint_state);
     }
-
     pub fn convert_joint_state_to_dof_state_py(&self, joint_state: Vec<f64>) -> Vec<f64> {
         let robot_state = self.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
         let res = self.convert_joint_state_to_dof_state(&robot_state).expect("error");
         return NalgebraConversions::dvector_to_vec(&res.joint_state);
     }
-
     pub fn num_dofs_py(&self) -> usize { self.num_dofs() }
-
     pub fn num_axes_py(&self) -> usize {
         self.num_axes()
     }
@@ -347,25 +343,21 @@ impl RobotJointStateModule {
     #[wasm_bindgen(constructor)]
     pub fn new_wasm(robot_name: String, configuration_name: Option<String>) -> RobotJointStateModule {
         return match configuration_name {
-            None => { Self::new_from_names(&robot_name, None).expect("error") }
-            Some(c) => { Self::new_from_names(&robot_name, Some(&c)).expect("error") }
+            None => { Self::new_from_names(RobotNames::new(&robot_name, None)).expect("error") }
+            Some(c) => { Self::new_from_names(RobotNames::new(&robot_name, Some(&c))).expect("error") }
         }
     }
-
     pub fn convert_joint_state_to_full_state_wasm(&self, joint_state: Vec<f64>) -> Vec<f64> {
         let robot_state = self.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
         let res = self.convert_joint_state_to_full_state(&robot_state).expect("error");
         return NalgebraConversions::dvector_to_vec(&res.joint_state);
     }
-
     pub fn convert_joint_state_to_dof_state_wasm(&self, joint_state: Vec<f64>) -> Vec<f64> {
         let robot_state = self.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
         let res = self.convert_joint_state_to_dof_state(&robot_state).expect("error");
         return NalgebraConversions::dvector_to_vec(&res.joint_state);
     }
-
     pub fn num_dofs_wasm(&self) -> usize { self.num_dofs() }
-
     pub fn num_axes_wasm(&self) -> usize {
         self.num_axes()
     }

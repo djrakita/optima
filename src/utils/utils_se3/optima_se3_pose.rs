@@ -1,10 +1,20 @@
-use nalgebra::{Isometry3, Rotation3, Unit, UnitQuaternion, Vector3};
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+use nalgebra::{Isometry3, Matrix3, Matrix4, Quaternion, Rotation3, Unit, UnitQuaternion, Vector3};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
 use crate::utils::utils_se3::implicit_dual_quaternion::ImplicitDualQuaternion;
 use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
 use crate::utils::utils_se3::rotation_and_translation::RotationAndTranslation;
+#[cfg(target_arch = "wasm32")]
+use crate::utils::utils_wasm::JsMatrix;
+#[cfg(target_arch = "wasm32")]
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 
 /// An enum used to represent a rotation or orientation.  The enum affords easy conversion between
 /// rotation types and functions over singular or pairs of rotations.
@@ -539,7 +549,7 @@ impl Default for OptimaSE3Pose {
 }
 
 /// An Enum that encodes a pose type.
-#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OptimaSE3PoseType {
     ImplicitDualQuaternion,
     HomogeneousMatrix,
@@ -583,4 +593,174 @@ impl OptimaSE3PoseAll {
             OptimaSE3PoseType::EulerAnglesAndTranslation => { &self.euler_angles_and_translation }
         }
     }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+pub struct OptimaSE3PosePy {
+    pose: OptimaSE3Pose
+}
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl OptimaSE3PosePy {
+    #[staticmethod]
+    pub fn new_implicit_dual_quaternion_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_implicit_dual_quaternion_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    #[staticmethod]
+    pub fn new_homogeneous_matrix_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_homogeneous_matrix_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    #[staticmethod]
+    pub fn new_unit_quaternion_and_translation_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_unit_quaternion_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    #[staticmethod]
+    pub fn new_rotation_matrix_and_translation_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_rotation_matrix_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    #[staticmethod]
+    pub fn new_euler_angles_and_translation_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_euler_angles_and_translation(ImplicitDualQuaternion::new_from_euler_angles(rx, ry, rz, x, y, z))
+        }
+    }
+    #[staticmethod]
+    pub fn new_implicit_dual_quaternion_py(q: [f64; 4], t: [f64; 3]) -> Self {
+        let rotation = UnitQuaternion::from_quaternion(Quaternion::new(q[3], q[0], q[1], q[2]));
+        let translation = Vector3::new(t[0], t[1], t[2]);
+        return Self {
+            pose: OptimaSE3Pose::new_implicit_dual_quaternion(ImplicitDualQuaternion::new(rotation, translation))
+        }
+    }
+    #[staticmethod]
+    pub fn new_homogeneous_matrix_py(m: [[f64; 4]; 4]) -> Self {
+        let mat = Matrix4::new(
+            m[0][0], m[0][1], m[0][2], m[0][3],
+            m[1][0], m[1][1], m[1][2], m[1][3],
+            m[2][0], m[2][1], m[2][2], m[2][3],
+            m[3][0], m[3][1], m[3][2], m[3][3]);
+
+        let h = HomogeneousMatrix::new(mat);
+        return Self {
+            pose: OptimaSE3Pose::new_homogeneous_matrix(h)
+        }
+    }
+    #[staticmethod]
+    pub fn new_unit_quaternion_and_translation_py(q: [f64; 4], t: [f64; 3]) -> Self {
+        let rotation = UnitQuaternion::from_quaternion(Quaternion::new(q[3], q[0], q[1], q[2]));
+        let translation = Vector3::new(t[0], t[1], t[2]);
+        return Self {
+            pose: OptimaSE3Pose::new_unit_quaternion_and_translation(rotation, translation)
+        }
+    }
+    #[staticmethod]
+    pub fn new_rotation_matrix_and_translation_py(r: [[f64; 3]; 3], t: [f64; 3]) -> Self {
+        let rotation = Rotation3::from_matrix(&Matrix3::new(
+            r[0][0], r[0][1], r[0][2],
+            r[1][0], r[1][1], r[1][2],
+            r[2][0], r[2][1], r[2][2]));
+        let translation = Vector3::new(t[0], t[1], t[2]);
+        return Self {
+            pose: OptimaSE3Pose::new_rotation_matrix_and_translation(rotation, translation)
+        }
+    }
+    
+    pub fn print_summary_py(&self) {
+        println!("{:?}", self);
+    }
+}
+impl OptimaSE3PosePy {
+    pub fn pose(&self) -> &OptimaSE3Pose { &self.pose }
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
+pub struct OptimaSE3PoseWASM {
+    pose: OptimaSE3Pose
+}
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl OptimaSE3PoseWASM {
+    pub fn new_implicit_dual_quaternion_from_euler_angles_wasm(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_implicit_dual_quaternion_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    pub fn new_homogeneous_matrix_from_euler_angles_wasm(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_homogeneous_matrix_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    pub fn new_unit_quaternion_and_translation_from_euler_angles_wasm(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_unit_quaternion_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    pub fn new_rotation_matrix_and_translation_from_euler_angles_wasm(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_rotation_matrix_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+        }
+    }
+    pub fn new_euler_angles_and_translation_wasm(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            pose: OptimaSE3Pose::new_euler_angles_and_translation(ImplicitDualQuaternion::new_from_euler_angles(rx, ry, rz, x, y, z))
+        }
+    }
+    pub fn new_implicit_dual_quaternion_wasm(q: Vec<f64>, t: Vec<f64>) -> Self {
+        let rotation = UnitQuaternion::from_quaternion(Quaternion::new(q[3], q[0], q[1], q[2]));
+        let translation = Vector3::new(t[0], t[1], t[2]);
+        return Self {
+            pose: OptimaSE3Pose::new_implicit_dual_quaternion(ImplicitDualQuaternion::new(rotation, translation))
+        }
+    }
+    pub fn new_unit_quaternion_and_translation_wasm(q: Vec<f64>, t: Vec<f64>) -> Self {
+        let rotation = UnitQuaternion::from_quaternion(Quaternion::new(q[3], q[0], q[1], q[2]));
+        let translation = Vector3::new(t[0], t[1], t[2]);
+        return Self {
+            pose: OptimaSE3Pose::new_unit_quaternion_and_translation(rotation, translation)
+        }
+    }
+    pub fn new_homogeneous_matrix_wasm(input_mat: JsValue) -> Self {
+        let mat: JsMatrix = input_mat.into_serde().unwrap();
+        let m = mat.matrix();
+        let mat = Matrix4::new(
+            m[0][0], m[0][1], m[0][2], m[0][3],
+            m[1][0], m[1][1], m[1][2], m[1][3],
+            m[2][0], m[2][1], m[2][2], m[2][3],
+            m[3][0], m[3][1], m[3][2], m[3][3]);
+
+        let h = HomogeneousMatrix::new(mat);
+        return Self {
+            pose: OptimaSE3Pose::new_homogeneous_matrix(h)
+        }
+    }
+    pub fn new_rotation_matrix_and_translation_wasm(r: JsValue, t: Vec<f64>) -> Self {
+        let mat: JsMatrix = r.into_serde().unwrap();
+        let m = mat.matrix();
+        let rotation = Rotation3::from_matrix(&Matrix3::new(
+            m[0][0], m[0][1], m[0][2],
+            m[1][0], m[1][1], m[1][2],
+            m[2][0], m[2][1], m[2][2]));
+        let translation = Vector3::new(t[0], t[1], t[2]);
+        return Self {
+            pose: OptimaSE3Pose::new_rotation_matrix_and_translation(rotation, translation)
+        }
+    }
+
+    pub fn serialized_pose(&self) -> JsValue {
+        JsValue::from_serde(&self).unwrap()
+    }
+    pub fn print_summary_wasm(&self) {
+        optima_print(&format!("{:?}", self), PrintMode::Println, PrintColor::None, true);
+    }
+}
+impl OptimaSE3PoseWASM {
+    pub fn pose(&self) -> &OptimaSE3Pose { &self.pose }
 }

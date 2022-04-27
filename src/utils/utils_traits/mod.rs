@@ -1,5 +1,5 @@
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Serialize};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
 
@@ -57,3 +57,16 @@ pub trait AssetSaveAndLoadable: SaveAndLoadable {
     }
 }
 impl <T> AssetSaveAndLoadable for T where T: SaveAndLoadable { }
+
+pub trait ToAndFromRonString: Serialize + DeserializeOwned {
+    fn convert_to_ron_string(&self) -> String {
+        ron::to_string(self).expect("error")
+    }
+    fn load_from_ron_string(ron_string: &String) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Result<Self, _> = ron::from_str(ron_string);
+        return if let Ok(load) = load { Ok(load) } else {
+            Err(OptimaError::new_generic_error_str(&format!("Could not load ron string {:?} into correct type.", ron_string), file!(), line!()))
+        }
+    }
+}
+impl <T> ToAndFromRonString for T where T: Serialize + DeserializeOwned {  }

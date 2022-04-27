@@ -1,13 +1,12 @@
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
 use crate::robot_modules::robot_model_module::RobotModelModule;
-use crate::utils::utils_console::{get_default_progress_bar, optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::utils_console::get_default_progress_bar;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaPath, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath};
 use crate::utils::utils_robot::link::Link;
@@ -16,6 +15,7 @@ use crate::utils::utils_traits::SaveAndLoadable;
 
 /// The `RobotMeshFileManagerModule` has numerous utility functions relating to mesh files.
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotMeshFileManagerModule {
     robot_name: String,
     links: Vec<Link>
@@ -131,6 +131,7 @@ impl RobotMeshFileManagerModule {
     /// a major directory like the desktop.  If the files are found, they are copied to the local
     /// optima_assets directory.  If the files cannot be found, this function will return an error.
     #[allow(unused_must_use)]
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn find_and_copy_visual_meshes_to_assets(&self) -> Result<(), OptimaError> {
         optima_print(&format!("Finding and copying visual meshes to assets folder..."), PrintMode::Println, PrintColor::Blue, true);
         let destination = OptimaPath::new_asset_physical_path_from_json_file()?;
