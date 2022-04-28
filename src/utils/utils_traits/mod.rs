@@ -59,14 +59,40 @@ pub trait AssetSaveAndLoadable: SaveAndLoadable {
 impl <T> AssetSaveAndLoadable for T where T: SaveAndLoadable { }
 
 pub trait ToAndFromRonString: Serialize + DeserializeOwned {
-    fn convert_to_ron_string(&self) -> String {
+    fn to_ron_string(&self) -> String {
         ron::to_string(self).expect("error")
     }
-    fn load_from_ron_string(ron_string: &String) -> Result<Self, OptimaError> where Self: Sized {
-        let load: Result<Self, _> = ron::from_str(ron_string);
+    fn from_ron_string(ron_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Result<Self, _> = ron::from_str(ron_str);
         return if let Ok(load) = load { Ok(load) } else {
-            Err(OptimaError::new_generic_error_str(&format!("Could not load ron string {:?} into correct type.", ron_string), file!(), line!()))
+            Err(OptimaError::new_generic_error_str(&format!("Could not load ron string {:?} into correct type.", ron_str), file!(), line!()))
         }
     }
 }
 impl <T> ToAndFromRonString for T where T: Serialize + DeserializeOwned {  }
+
+pub trait ToAndFromJsonString: Serialize + DeserializeOwned {
+    fn to_json_string(&self) -> String {
+        serde_json::to_string(self).expect("error")
+    }
+    fn from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Result<Self, _> = serde_json::from_str(json_str);
+        return if let Ok(load) = load { Ok(load) } else {
+            Err(OptimaError::new_generic_error_str(&format!("Could not load json string {:?} into correct type.", json_str), file!(), line!()))
+        }
+    }
+}
+impl <T> ToAndFromJsonString for T where T: Serialize + DeserializeOwned {  }
+
+pub trait ToAndFromTomlString: Serialize + DeserializeOwned {
+    fn to_toml_string(&self) -> String {
+        toml::to_string(self).expect("error")
+    }
+    fn from_toml_string(toml_string: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Result<Self, _> = toml::from_str(toml_string);
+        return if let Ok(load) = load { Ok(load) } else {
+            Err(OptimaError::new_generic_error_str(&format!("Could not load toml string {:?} into correct type.", toml_string), file!(), line!()))
+        }
+    }
+}
+impl <T> ToAndFromTomlString for T where T: Serialize + DeserializeOwned {  }

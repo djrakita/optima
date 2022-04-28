@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use nalgebra::{DVector, Point3, Scalar, Vector3};
+use nalgebra::{DMatrix, DVector, Point3, Scalar, Vector3};
 
 pub struct NalgebraConversions;
 impl NalgebraConversions {
@@ -25,5 +25,18 @@ impl NalgebraConversions {
             d[i] = *vv;
         }
         return d;
+    }
+
+    pub fn dmatrix_to_vecs(d: &DMatrix<f64>) -> Vec<Vec<f64>> {
+        let mut out_vec = vec![];
+        let num_rows = d.nrows();
+        let num_cols = d.ncols();
+        for i in 0..num_rows {
+            out_vec.push(vec![]);
+            for j in 0..num_cols {
+                out_vec[i].push(d[(i,j)])
+            }
+        }
+        out_vec
     }
 }

@@ -1,5 +1,8 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
+use crate::robot_modules::robot_configuration_module::{RobotConfigurationModule, RobotConfigurationModulePy};
 use crate::utils::utils_console::{ConsoleInputUtils, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath};
@@ -28,7 +31,8 @@ use crate::utils::utils_traits::SaveAndLoadable;
 ///
 /// r.save_robot_set_configuration_module("test_set")?;
 /// ```
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotSetConfigurationModule {
     robot_configuration_modules: Vec<RobotConfigurationModule>
 }
@@ -102,3 +106,26 @@ impl SaveAndLoadable for RobotSetConfigurationModule {
         })
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotSetConfigurationModule {
+    #[staticmethod]
+    pub fn new_empty_py() -> Self {
+        Self::new_empty()
+    }
+    #[staticmethod]
+    pub fn new_from_set_name_py(set_name: &str) -> Self { Self::new_from_set_name(set_name).expect("error") }
+    pub fn add_robot_configuration_from_names_py(&mut self, robot_name: &str, configuration_name: Option<&str>) {
+        let robot_names = RobotNames::new(robot_name, configuration_name);
+        self.add_robot_configuration_from_names(robot_names).expect("error");
+    }
+    pub fn add_robot_configuration_py(&mut self, robot_configuration: RobotConfigurationModulePy) {
+        self.robot_configuration_modules.push(robot_configuration.robot_configuration_module);
+    }
+    pub fn save_robot_set_configuration_module_py(&self, set_name: &str) {
+        self.save_robot_set_configuration_module(set_name).expect("error");
+    }
+}
+
+

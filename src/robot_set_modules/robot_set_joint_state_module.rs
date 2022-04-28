@@ -1,3 +1,9 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 use std::ops::{Add, Index, IndexMut, Mul};
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
@@ -9,7 +15,8 @@ use crate::utils::utils_traits::SaveAndLoadable;
 
 /// RobotSet analogue of the `RobotJointStateModule`.  The same concepts apply, just on a set of possibly
 /// multiple robots.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotSetJointStateModule {
     num_dofs: usize,
     num_axes: usize,
@@ -231,6 +238,52 @@ impl SaveAndLoadable for RobotSetJointStateModule {
             num_axes: load.1,
             robot_joint_state_modules
         })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotSetJointStateModule {
+    #[new]
+    pub fn new_from_set_name_py(set_name: &str) -> Self {
+        Self::new_from_set_name(set_name).expect("error")
+    }
+    #[staticmethod]
+    pub fn new_py(robot_set_configuration_module: &RobotSetConfigurationModule) -> Self {
+        Self::new(robot_set_configuration_module)
+    }
+    pub fn convert_state_to_full_state_py(&self, robot_set_joint_state: Vec<f64>) -> Vec<f64> {
+        let out = self.spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let out = self.convert_state_to_full_state(&out).expect("error");
+        let out: &Vec<f64> =  out.concatenated_state.data.as_vec();
+        return out.clone();
+    }
+    pub fn convert_state_to_dof_state_py(&self, robot_set_joint_state: Vec<f64>) -> Vec<f64> {
+        let out = self.spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let out = self.convert_state_to_dof_state(&out).expect("error");
+        let out: &Vec<f64> =  out.concatenated_state.data.as_vec();
+        return out.clone();
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl RobotSetJointStateModule {
+    #[wasm_bindgen(constructor)]
+    pub fn new_from_set_name_wasm(set_name: &str) -> Self {
+        Self::new_from_set_name(set_name).expect("error")
+    }
+    pub fn convert_state_to_full_state_wasm(&self, robot_set_joint_state: Vec<f64>) -> Vec<f64> {
+        let out = self.spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let out = self.convert_state_to_full_state(&out).expect("error");
+        let out: &Vec<f64> =  out.concatenated_state.data.as_vec();
+        return out.clone();
+    }
+    pub fn convert_state_to_dof_state_wasm(&self, robot_set_joint_state: Vec<f64>) -> Vec<f64> {
+        let out = self.spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let out = self.convert_state_to_dof_state(&out).expect("error");
+        let out: &Vec<f64> =  out.concatenated_state.data.as_vec();
+        return out.clone();
     }
 }
 

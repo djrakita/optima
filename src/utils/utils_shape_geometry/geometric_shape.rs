@@ -1,6 +1,9 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
@@ -11,7 +14,7 @@ use crate::utils::utils_files::optima_path::{load_object_from_json_string, Optim
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
 use crate::utils::utils_shape_geometry::trimesh_engine::TrimeshEngine;
-use crate::utils::utils_traits::SaveAndLoadable;
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString};
 
 /// A `GeometricShapeObject` contains useful functions for computing intersection, distances,
 /// contacts, raycasting, etc between geometric objects in a scenes.
@@ -228,7 +231,7 @@ impl SaveAndLoadable for GeometricShape {
 pub struct GeometricShapeQueries;
 impl GeometricShapeQueries {
     pub fn generic_group_query(inputs: Vec<GeometricShapeQuery>, stop_condition: StopCondition, log_condition: LogCondition, sort_outputs: bool) -> GeometricShapeQueryGroupOutput {
-        let start = Instant::now();
+        let start = instant::Instant::now();
         let mut outputs = vec![];
         let mut output_distances: Vec<f64> = vec![];
         let mut num_queries = 0;
@@ -268,7 +271,7 @@ impl GeometricShapeQueries {
         }
     }
     pub fn generic_query(input: &GeometricShapeQuery) -> GeometricShapeQueryOutput {
-        let start = Instant::now();
+        let start = instant::Instant::now();
         let raw_output = match input {
             GeometricShapeQuery::ProjectPoint { object, pose, point, solid } => {
                 GeometricShapeQueryRawOutput::ProjectPoint(PointProjectionWrapper::new(&object.project_point(pose, point, *solid)))
@@ -837,6 +840,36 @@ impl GeometricShapeQueryGroupOutput {
         optima_print(&format!("Minimum Distance: {:?}", self.minimum_distance), PrintMode::Println, PrintColor::Blue, true);
 
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn convert_to_py_output(&self, include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+        let full_output_json_string = match include_full_output_json_string {
+            true => { self.to_json_string() }
+            false => { "".to_string() }
+        };
+
+        GeometricShapeQueryGroupOutputPy {
+            duration: self.duration.as_secs_f64(),
+            num_queries: self.num_queries,
+            intersection_found: self.intersection_found,
+            minimum_distance: self.minimum_distance,
+            full_output_json_string
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+pub struct GeometricShapeQueryGroupOutputPy {
+    #[pyo3(get)]
+    duration: f64,
+    #[pyo3(get)]
+    num_queries: usize,
+    #[pyo3(get)]
+    intersection_found: bool,
+    #[pyo3(get)]
+    minimum_distance: f64,
+    #[pyo3(get)]
+    full_output_json_string: String
 }
 
 /// Allows for control over when the `GeometricShapeQueries::generic_group_query` function should

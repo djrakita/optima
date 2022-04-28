@@ -15,7 +15,7 @@ use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxis;
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_sampling::SimpleSamplers;
-use crate::utils::utils_traits::SaveAndLoadable;
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 /// The `RobotJointStateModule` organizes and operates over robot states.  "Robot joint states" are vectors
 /// that contain scalar joint values for each joint axis in the robot model.
@@ -333,6 +333,16 @@ impl RobotJointStateModule {
     pub fn num_dofs_py(&self) -> usize { self.num_dofs() }
     pub fn num_axes_py(&self) -> usize {
         self.num_axes()
+    }
+    #[args(robot_joint_state_type = "\"DOF\"")]
+    pub fn get_joint_state_bounds_py(&self, robot_joint_state_type: &str) -> Vec<(f64, f64)> {
+        self.get_joint_state_bounds(&RobotJointStateType::from_ron_string(robot_joint_state_type).expect("error"))
+    }
+    #[args(robot_joint_state_type = "\"DOF\"")]
+    pub fn sample_joint_state_py(&self, robot_joint_state_type: &str) -> Vec<f64> {
+        let s = self.sample_joint_state(&RobotJointStateType::from_ron_string(robot_joint_state_type).expect("error"));
+        let vec: &Vec<f64> = s.joint_state.data.as_vec();
+        return vec.clone();
     }
 }
 

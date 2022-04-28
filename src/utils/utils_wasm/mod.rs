@@ -9,6 +9,11 @@ pub struct JsMatrix {
     matrix: Vec<Vec<f64>>
 }
 impl JsMatrix {
+    pub fn new(matrix: Vec<Vec<f64>>) -> Self {
+        Self {
+            matrix
+        }
+    }
     pub fn matrix(&self) -> &Vec<Vec<f64>> {
         &self.matrix
     }

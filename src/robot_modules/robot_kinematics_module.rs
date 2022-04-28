@@ -1,4 +1,3 @@
-use nalgebra::{DMatrix, Vector3};
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -6,6 +5,7 @@ use pyo3::*;
 use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
+use nalgebra::{DMatrix, Vector3};
 use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
 use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJointStateModule, RobotJointStateType};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
@@ -15,7 +15,13 @@ use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::JointAxisPrimitiveType;
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
-use crate::utils::utils_traits::SaveAndLoadable;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PosePy};
+#[cfg(target_arch = "wasm32")]
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseWASM};
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
+#[cfg(target_arch = "wasm32")]
+use crate::utils::utils_wasm::JsMatrix;
 
 /// The `RobotKinematicsModule` performs operations related to a robot's kinematics.
 /// For instance, one of the main subroutines afforded by this module is forward kinematics which
@@ -120,9 +126,13 @@ impl RobotKinematicsModule {
 
         let link_tree_traversal_layers = self.robot_configuration_module.robot_model_module().link_tree_traversal_layers();
 
+        let links = self.robot_configuration_module.robot_model_module().links();
+
         for link_tree_traversal_layer in link_tree_traversal_layers {
             for link_idx in link_tree_traversal_layer {
-                self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                if links[*link_idx].present() {
+                    self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                }
             }
         }
 
@@ -183,11 +193,13 @@ impl RobotKinematicsModule {
                 let link_tree_traversal_layers = self.robot_configuration_module.robot_model_module().link_tree_traversal_layers();
                 for link_tree_traversal_layer in link_tree_traversal_layers {
                     for link_idx in link_tree_traversal_layer {
-                        let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
-                        if predecessor_link_idx_option.is_none() { continue; }
-                        let predecessor_link_idx = predecessor_link_idx_option.unwrap();
-                        if output.link_entries[predecessor_link_idx].pose.is_some() {
-                            self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                        if links[*link_idx].present() {
+                            let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
+                            if predecessor_link_idx_option.is_none() { continue; }
+                            let predecessor_link_idx = predecessor_link_idx_option.unwrap();
+                            if output.link_entries[predecessor_link_idx].pose.is_some() {
+                                self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                            }
                         }
                     }
                 }
@@ -199,12 +211,14 @@ impl RobotKinematicsModule {
                 }
                 let chain = chain.unwrap();
                 for link_idx in chain {
-                    if output.link_entries[*link_idx].pose.is_some() { continue; }
-                    let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
-                    if predecessor_link_idx_option.is_none() { continue; }
-                    let predecessor_link_idx = predecessor_link_idx_option.unwrap();
-                    if output.link_entries[predecessor_link_idx].pose.is_some() {
-                        self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                    if links[*link_idx].present() {
+                        if output.link_entries[*link_idx].pose.is_some() { continue; }
+                        let predecessor_link_idx_option = links[*link_idx].preceding_link_idx();
+                        if predecessor_link_idx_option.is_none() { continue; }
+                        let predecessor_link_idx = predecessor_link_idx_option.unwrap();
+                        if output.link_entries[predecessor_link_idx].pose.is_some() {
+                            self.compute_fk_on_single_link(&joint_state, *link_idx, t, &mut output)?;
+                        }
                     }
                 }
             }
@@ -432,60 +446,90 @@ impl RobotKinematicsModule {
     #[args(pose_type = "\"ImplicitDualQuaternion\"")]
     pub fn compute_fk_py(&self, joint_state: Vec<f64>, pose_type: &str) -> RobotFKResult {
         let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
-        if pose_type == "ImplicitDualQuaternion" {
-            return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
-        } else if pose_type == "UnitQuaternionAndTranslation" {
-            return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::UnitQuaternionAndTranslation).expect("error");
-        } else if pose_type == "RotationMatrixAndTranslation" {
-            return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::RotationMatrixAndTranslation).expect("error");
-        } else if pose_type == "HomogeneousMatrix" {
-            return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::HomogeneousMatrix).expect("error");
-        } else if pose_type == "EulerAnglesAndTranslation" {
-            return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::EulerAnglesAndTranslation).expect("error");
-        } else {
-            panic!("{} is not a valid pose_type in compute_fk_py()", pose_type)
-        }
+        return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::from_ron_string(pose_type).expect("error")).expect("error");
+    }
+    #[args(pose_type = "\"ImplicitDualQuaternion\"")]
+    pub fn compute_fk_floating_chain_py(&self, joint_state: Vec<f64>, pose_type: &str, start_link_idx: Option<usize>, end_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3PosePy>) -> RobotFKResult {
+        let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let floating_link_input = FloatingLinkInput {
+            start_link_idx,
+            end_link_idx,
+            start_link_pose: match start_link_pose {
+                None => { None }
+                Some(start_link_pose) => { Some(start_link_pose.pose().clone()) }
+            }
+        };
+
+        return self.compute_fk_floating_chain(&robot_joint_state, &OptimaSE3PoseType::from_ron_string(pose_type).expect("error"), &floating_link_input).expect("error");
+    }
+    #[args(robot_jacobian_end_point = "\"Link\"", jacobian_mode = "\"Full\"")]
+    pub fn compute_jacobian_py(&self, joint_state: Vec<f64>, end_link_idx: usize, start_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3PosePy>, robot_jacobian_end_point: &str, jacobian_mode: &str) -> Vec<Vec<f64>> {
+        let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let start_link_pose = match start_link_pose {
+            None => { None }
+            Some(p) => { Some(p.pose().clone()) }
+        };
+        let jac = self.compute_jacobian(&robot_joint_state,
+                                        start_link_idx,
+                                        end_link_idx,
+                                        &JacobianEndPoint::from_ron_string(robot_jacobian_end_point).expect("error"),
+                                        start_link_pose,
+                                        JacobianMode::from_ron_string(jacobian_mode).expect("error")).expect("error");
+
+        let jac_vecs = NalgebraConversions::dmatrix_to_vecs(&jac);
+        return jac_vecs;
     }
 }
 
-/*
 /// WASM implementations.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl RobotKinematicsModule {
     #[wasm_bindgen(constructor)]
     pub fn new_wasm(robot_name: String, configuration_name: Option<String>) -> RobotKinematicsModule {
-        return match &configuration_name {
-            None => {
-                RobotKinematicsModule::new_from_names(&robot_name, None).expect("error")
-            }
-            Some(c) => {
-                RobotKinematicsModule::new_from_names(&robot_name, Some(c)).expect("error")
-            }
-        }
-    }
-    pub fn compute_fk_wasm(&self, joint_state: Vec<f64>, pose_type: Option<String>) -> JsValue {
-        let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
-        let pose_type_ = match pose_type {
-            None => { "ImplicitDualQuaternion".to_string() }
-            Some(p) => { p }
+        let robot_names = match &configuration_name {
+            None => { RobotNames::new_base(&robot_name) }
+            Some(configuration_name) => { RobotNames::new(&robot_name, Some(configuration_name)) }
         };
-        if pose_type_ == "ImplicitDualQuaternion" {
-            return JsValue::from_serde(&self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error")).unwrap()
-        } else if pose_type_ == "UnitQuaternionAndTranslation" {
-            return JsValue::from_serde(&self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::UnitQuaternionAndTranslation).expect("error")).unwrap()
-        } else if pose_type_ == "RotationMatrixAndTranslation" {
-            return JsValue::from_serde(&self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::RotationMatrixAndTranslation).expect("error")).unwrap()
-        } else if pose_type_ == "HomogeneousMatrix" {
-            return JsValue::from_serde(&self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::HomogeneousMatrix).expect("error")).unwrap()
-        } else if pose_type_ == "EulerAnglesAndTranslation" {
-            return JsValue::from_serde(&self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::EulerAnglesAndTranslation).expect("error")).unwrap()
-        } else {
-            panic!("{} is not a valid pose_type in compute_fk_py()", pose_type_)
-        }
+        return RobotKinematicsModule::new_from_names(robot_names).expect("error");
+    }
+    pub fn compute_fk_wasm(&self, joint_state: Vec<f64>, pose_type: &str) -> JsValue {
+        let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let res = self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::from_ron_string(pose_type).expect("error")).expect("error");
+       return  JsValue::from_serde(&res).unwrap();
+    }
+    pub fn compute_fk_floating_chain_py(&self, joint_state: Vec<f64>, pose_type: &str, start_link_idx: Option<usize>, end_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3PoseWASM>) -> JsValue {
+        let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let floating_link_input = FloatingLinkInput {
+            start_link_idx,
+            end_link_idx,
+            start_link_pose: match start_link_pose {
+                None => { None }
+                Some(start_link_pose) => { Some(start_link_pose.pose().clone()) }
+            }
+        };
+
+        let res = self.compute_fk_floating_chain(&robot_joint_state, &OptimaSE3PoseType::from_ron_string(pose_type).expect("error"), &floating_link_input).expect("error");
+        return JsValue::from_serde(&res).unwrap();
+    }
+    pub fn compute_jacobian_wasm(&self, joint_state: Vec<f64>, end_link_idx: usize, start_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3PoseWASM>, robot_jacobian_end_point: &str, jacobian_mode: &str) -> JsValue {
+        let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let start_link_pose = match start_link_pose {
+            None => { None }
+            Some(p) => { Some(p.pose().clone()) }
+        };
+        let jac = self.compute_jacobian(&robot_joint_state,
+                                        start_link_idx,
+                                        end_link_idx,
+                                        &JacobianEndPoint::from_ron_string(robot_jacobian_end_point).expect("error"),
+                                        start_link_pose,
+                                        JacobianMode::from_ron_string(jacobian_mode).expect("error")).expect("error");
+
+        let jac_vecs = NalgebraConversions::dmatrix_to_vecs(&jac);
+        let jac_vecs_js = JsMatrix::new(jac_vecs);
+        return JsValue::from_serde(&jac_vecs_js).unwrap();
     }
 }
-*/
 
 /// The output of a forward kinematics computation.
 /// The primary field in this object is `link_entries`.  This is a list of `RobotFKResultLinkEntry`
@@ -581,12 +625,12 @@ impl RobotFKResultLinkEntry {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum JacobianMode {
     Full, Translational, Rotational
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum JacobianEndPoint {
     Link,
     Local(Vector3<f64>),

@@ -22,6 +22,7 @@ fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<robot_modules::robot_kinematics_module::RobotKinematicsModule>()?;
     m.add_class::<robot_modules::robot_geometric_shape_module::RobotGeometricShapeModule>()?;
     m.add_class::<robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule>()?;
+    m.add_class::<robot_modules::robot::RobotPy>()?;
 
     m.add_class::<utils::utils_se3::optima_se3_pose::OptimaSE3PosePy>()?;
     Ok(())

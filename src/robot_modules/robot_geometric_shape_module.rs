@@ -15,15 +15,17 @@ use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJoint
 use crate::robot_modules::robot_model_module::RobotModelModule;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::utils::utils_console::get_default_progress_bar;
+use crate::utils::utils_console::{get_default_progress_bar, ConsoleInputUtils};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, RobotModuleJsonType};
 use crate::utils::utils_generic_data_structures::{AveragingFloat, SquareArray2D};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::utils_shape_geometry::geometric_shape::GeometricShapeQueryGroupOutputPy;
 use crate::utils::utils_shape_geometry::shape_collection::{ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery};
-use crate::utils::utils_traits::{AssetSaveAndLoadable, SaveAndLoadable};
+use crate::utils::utils_traits::{AssetSaveAndLoadable, SaveAndLoadable, ToAndFromRonString};
 
 /// Robot module that provides useful functions over geometric shapes.  For example, the module is
 /// able to compute if a robot is in collision given a particular robot joint state.  For all geometry
@@ -66,10 +68,12 @@ impl RobotGeometricShapeModule {
     }
     #[cfg(target_arch = "wasm32")]
     pub fn new(robot_configuration_module: RobotConfigurationModule, force_preprocessing: bool) -> Result<Self, OptimaError> {
+        let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_kinematics_module = RobotKinematicsModule::new(robot_configuration_module.clone());
         let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_configuration_module.robot_name())?;
         return if force_preprocessing {
             let mut out_self = Self {
+                robot_joint_state_module,
                 robot_kinematics_module,
                 robot_mesh_file_manager_module,
                 robot_shape_collections: vec![]
@@ -409,21 +413,29 @@ impl RobotGeometricShapeModule {
 
         Ok(())
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn reset_robot_geometric_shape_collection(&mut self, robot_link_shape_representation: RobotLinkShapeRepresentation) -> Result<(), OptimaError> {
-        let permanent = Self::load_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModulePermanent })?;
-        for (i, r) in self.robot_shape_collections.iter_mut().enumerate() {
+        let response = ConsoleInputUtils::get_console_input_string("About to reset robot geometric shape collections.  Confirm? (y or n).", PrintColor::Blue)?;
+        if response == "y" {
+            let permanent = Self::load_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModulePermanent })?;
+            for (i, r) in self.robot_shape_collections.iter_mut().enumerate() {
             if &r.robot_link_shape_representation == &robot_link_shape_representation {
                 *r = permanent.robot_shape_collections[i].clone();
                 self.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModule })?;
                 return Ok(());
             }
         }
+        }
         Ok(())
     }
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn reset_all_robot_geometric_shape_collections(&mut self) -> Result<(), OptimaError> {
-        let all = Self::get_all_robot_link_shape_representations();
-        for r in &all {
-            self.reset_robot_geometric_shape_collection(r.clone())?;
+        let response = ConsoleInputUtils::get_console_input_string("About to reset all robot geometric shape collections.  Confirm? (y or n).", PrintColor::Blue)?;
+        if response == "y" {
+            let all = Self::get_all_robot_link_shape_representations();
+            for r in &all {
+                self.reset_robot_geometric_shape_collection(r.clone())?;
+            }
         }
         Ok(())
     }
@@ -471,13 +483,101 @@ impl RobotGeometricShapeModule {
     pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotGeometricShapeModule {
         return Self::new_from_names(RobotNames::new(robot_name, configuration_name), false).expect("error");
     }
-    pub fn intersection_test(&self, joint_state: Vec<f64>) -> String {
+    #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
+    pub fn intersection_test_query_py(&self,
+                                      joint_state: Vec<f64>,
+                                      robot_link_shape_representation: &str,
+                                      stop_condition: &str,
+                                      log_condition: &str,
+                                      sort_outputs: bool,
+                                      include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
         let joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state)).expect("error");
         let input = RobotShapeCollectionQuery::IntersectionTest {
             robot_joint_state: &joint_state
         };
-        let res = self.shape_collection_query(&input, RobotLinkShapeRepresentation::ConvexShapes, StopCondition::None, LogCondition::LogAll, true).expect("error");
-        serde_json::to_string(&res).expect("error")
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
+        py_output
+    }
+    #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
+    pub fn distance_query_py(&self,
+                             joint_state: Vec<f64>,
+                             robot_link_shape_representation: &str,
+                             stop_condition: &str,
+                             log_condition: &str,
+                             sort_outputs: bool,
+                             include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+        let joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state)).expect("error");
+        let input = RobotShapeCollectionQuery::Distance {
+            robot_joint_state: &joint_state
+        };
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
+        py_output
+    }
+    #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
+    pub fn contact_query_py(&self,
+                            joint_state: Vec<f64>,
+                            prediction: f64,
+                            robot_link_shape_representation: &str,
+                            stop_condition: &str,
+                            log_condition: &str,
+                            sort_outputs: bool,
+                            include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+        let joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state)).expect("error");
+        let input = RobotShapeCollectionQuery::Contact {
+            robot_joint_state: &joint_state,
+            prediction
+        };
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
+        py_output
+    }
+    #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
+    pub fn ccd_query_py(&self,
+                        joint_state_t1: Vec<f64>,
+                        joint_state_t2: Vec<f64>,
+                        robot_link_shape_representation: &str,
+                        stop_condition: &str,
+                        log_condition: &str,
+                        sort_outputs: bool,
+                        include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+        let joint_state_t1 = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state_t1)).expect("error");
+        let joint_state_t2 = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state_t2)).expect("error");
+
+        let input = RobotShapeCollectionQuery::CCD {
+            robot_joint_state_t1: &joint_state_t1,
+            robot_joint_state_t2: &joint_state_t2
+        };
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
+        py_output
+    }
+    pub fn set_robot_joint_state_as_non_collision_py(&mut self, robot_joint_state: Vec<f64>) {
+        let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(robot_joint_state)).expect("error");
+        self.set_robot_joint_state_as_non_collision(&robot_joint_state).expect("error");
+    }
+    pub fn reset_robot_geometric_shape_collection_py(&mut self, robot_link_shape_representation: &str) {
+        self.reset_robot_geometric_shape_collection(RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error")).expect("error");
+    }
+    pub fn reset_all_robot_geometric_shape_collections_py(&mut self) {
+        self.reset_all_robot_geometric_shape_collections().expect("error");
     }
 }
 
@@ -490,6 +590,62 @@ impl RobotGeometricShapeModule {
             None => { Self::new_from_names(RobotNames::new(&robot_name, None), false).expect("error") }
             Some(c) => { Self::new_from_names(RobotNames::new(&robot_name, Some(&c)), false).expect("error") }
         }
+    }
+    pub fn intersection_test_query_wasm(&self, joint_state: Vec<f64>, robot_link_shape_representation: &str, stop_condition: &str, log_condition: &str, sort_outputs: bool) -> JsValue {
+        let joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state)).expect("error");
+        let input = RobotShapeCollectionQuery::IntersectionTest {
+            robot_joint_state: &joint_state
+        };
+
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        JsValue::from_serde(&res).unwrap()
+    }
+    pub fn distance_query_wasm(&self, joint_state: Vec<f64>, robot_link_shape_representation: &str, stop_condition: &str, log_condition: &str, sort_outputs: bool) -> JsValue {
+        let joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state)).expect("error");
+        let input = RobotShapeCollectionQuery::Distance {
+            robot_joint_state: &joint_state
+        };
+
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        JsValue::from_serde(&res).unwrap()
+    }
+    pub fn contact_query_wasm(&self, joint_state: Vec<f64>, prediction: f64, robot_link_shape_representation: &str, stop_condition: &str, log_condition: &str, sort_outputs: bool) -> JsValue {
+        let joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state)).expect("error");
+        let input = RobotShapeCollectionQuery::Contact {
+            robot_joint_state: &joint_state,
+            prediction
+        };
+
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        JsValue::from_serde(&res).unwrap()
+    }
+    pub fn ccd_query_wasm(&self, joint_state_t1: Vec<f64>, joint_state_t2: Vec<f64>, robot_link_shape_representation: &str, stop_condition: &str, log_condition: &str, sort_outputs: bool) -> JsValue {
+        let joint_state_t1 = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state_t1)).expect("error");
+        let joint_state_t2 = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(joint_state_t2)).expect("error");
+
+        let input = RobotShapeCollectionQuery::CCD {
+            robot_joint_state_t1: &joint_state_t1,
+            robot_joint_state_t2: &joint_state_t2
+        };
+
+        let res = self.shape_collection_query(&input,
+                                              RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"),
+                                              StopCondition::from_ron_string(stop_condition).expect("error"),
+                                              LogCondition::from_ron_string(log_condition).expect("error"),
+                                              sort_outputs).expect("error");
+        JsValue::from_serde(&res).unwrap()
     }
 }
 

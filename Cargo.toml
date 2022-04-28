@@ -32,6 +32,8 @@ serde_with = "1.12.1"
 rayon = "1.5.2"
 getrandom = { version="0.2.6", features=["js"] }
 ron = "0.7"
+toml = "0.5.9"
+instant = { version = "0.1", features = [ "wasm-bindgen" ] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }

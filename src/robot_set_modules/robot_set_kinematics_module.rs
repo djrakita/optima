@@ -1,3 +1,9 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 use nalgebra::DMatrix;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_kinematics_module::{RobotKinematicsModule, RobotFKResult, FloatingLinkInput, JacobianEndPoint, JacobianMode};
@@ -6,12 +12,14 @@ use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState,
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
+use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
-use crate::utils::utils_traits::SaveAndLoadable;
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 /// RobotSet analogue of the `RobotKinematicsModule`.  The same concepts apply, just on a set of possibly
 /// multiple robots.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotSetKinematicsModule {
     robot_set_joint_state_module: RobotSetJointStateModule,
     robot_kinematics_modules: Vec<RobotKinematicsModule>
@@ -172,10 +180,30 @@ impl SaveAndLoadable for RobotSetKinematicsModule {
     }
 }
 
+/// Python implementations.
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotSetKinematicsModule {
+    #[new]
+    pub fn new_from_set_name_py(set_name: &str) -> Self {
+        Self::new_from_set_name(set_name).expect("error")
+    }
+    #[staticmethod]
+    pub fn new_py(robot_set_configuration_module: &RobotSetConfigurationModule) -> Self {
+        Self::new(robot_set_configuration_module)
+    }
+    #[args(pose_type = "\"ImplicitDualQuaternion\"")]
+    pub fn compute_fk_py(&self, joint_state: Vec<f64>, pose_type: &str) -> RobotSetFKResult {
+        let robot_joint_state = self.robot_set_joint_state_module.spawn_robot_set_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::from_ron_string(pose_type).expect("error")).expect("error");
+    }
+}
+
 /// RobotSet analogue of the `RobotSetFKResult`.  The same concepts apply, just on a set of possibly
 /// multiple robots.  Just contains a vector of individual `RobotFKResult` structs corresponding to
 /// the possibly multiple robots in the set.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotSetFKResult {
     robot_fk_results: Vec<RobotFKResult>
 }
@@ -193,6 +221,16 @@ impl RobotSetFKResult {
             optima_print(&format!("Robot {} ---> ", i), PrintMode::Println, PrintColor::Cyan, true);
             robot_fk_result.print_summary();
         }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl RobotSetFKResult {
+    pub fn get_fk_result(&self, idx: usize) -> RobotFKResult {
+        self.robot_fk_results.get(idx).unwrap().clone()
+    }
+    pub fn num_fk_results(&self) -> usize {
+        self.robot_fk_results.len()
     }
 }
 
