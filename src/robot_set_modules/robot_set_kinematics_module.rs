@@ -14,7 +14,13 @@ use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PosePy};
+#[cfg(target_arch = "wasm32")]
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseWASM};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
+#[cfg(target_arch = "wasm32")]
+use crate::utils::utils_wasm::JsMatrix;
 
 /// RobotSet analogue of the `RobotKinematicsModule`.  The same concepts apply, just on a set of possibly
 /// multiple robots.
@@ -196,6 +202,55 @@ impl RobotSetKinematicsModule {
     pub fn compute_fk_py(&self, joint_state: Vec<f64>, pose_type: &str) -> RobotSetFKResult {
         let robot_joint_state = self.robot_set_joint_state_module.spawn_robot_set_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
         return self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::from_ron_string(pose_type).expect("error")).expect("error");
+    }
+    #[args(robot_jacobian_end_point = "\"Link\"", jacobian_mode = "\"Full\"")]
+    pub fn compute_jacobian_py(&self, joint_state: Vec<f64>, robot_idx_in_set: usize, end_link_idx: usize, start_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3PosePy>, robot_jacobian_end_point: &str, jacobian_mode: &str) -> Vec<Vec<f64>> {
+        let robot_joint_state = self.robot_set_joint_state_module.spawn_robot_set_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let start_link_pose = match start_link_pose {
+            None => { None }
+            Some(p) => { Some(p.pose().clone()) }
+        };
+        let jac = self.compute_jacobian(&robot_joint_state,
+                                        robot_idx_in_set,
+                                        start_link_idx,
+                                        end_link_idx,
+                                        &JacobianEndPoint::from_ron_string(robot_jacobian_end_point).expect("error"),
+                                        start_link_pose,
+                                        JacobianMode::from_ron_string(jacobian_mode).expect("error")).expect("error");
+
+        let jac_vecs = NalgebraConversions::dmatrix_to_vecs(&jac);
+        return jac_vecs;
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl RobotSetKinematicsModule {
+    pub fn new_from_set_name_wasm(set_name: &str) -> Self {
+        Self::new_from_set_name(set_name).expect("error")
+    }
+    pub fn compute_fk_wasm(&self, joint_state: Vec<f64>, pose_type: &str) -> JsValue {
+        let robot_joint_state = self.robot_set_joint_state_module.spawn_robot_set_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let res = self.compute_fk(&robot_joint_state, &OptimaSE3PoseType::from_ron_string(pose_type).expect("error")).expect("error");
+        return JsValue::from_serde(&res).unwrap();
+    }
+    pub fn compute_jacobian_wasm(&self, joint_state: Vec<f64>, robot_idx_in_set: usize, end_link_idx: usize, start_link_idx: Option<usize>, start_link_pose: Option<OptimaSE3PoseWASM>, robot_jacobian_end_point: &str, jacobian_mode: &str) -> JsValue {
+        let robot_joint_state = self.robot_set_joint_state_module.spawn_robot_set_joint_state_try_auto_type(NalgebraConversions::vec_to_dvector(&joint_state)).expect("error");
+        let start_link_pose = match start_link_pose {
+            None => { None }
+            Some(p) => { Some(p.pose().clone()) }
+        };
+        let jac = self.compute_jacobian(&robot_joint_state,
+                                        robot_idx_in_set,
+                                        start_link_idx,
+                                        end_link_idx,
+                                        &JacobianEndPoint::from_ron_string(robot_jacobian_end_point).expect("error"),
+                                        start_link_pose,
+                                        JacobianMode::from_ron_string(jacobian_mode).expect("error")).expect("error");
+
+        let jac_vecs = NalgebraConversions::dmatrix_to_vecs(&jac);
+        let jac_vecs_js = JsMatrix::new(jac_vecs);
+        return JsValue::from_serde(&jac_vecs_js).unwrap();
     }
 }
 

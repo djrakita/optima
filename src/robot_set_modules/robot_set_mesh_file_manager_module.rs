@@ -1,3 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
@@ -7,7 +10,8 @@ use crate::utils::utils_traits::SaveAndLoadable;
 
 /// RobotSet analogue of the `RobotSetMeshFileManagerModule`.  The same concepts apply, just on a set of possibly
 /// multiple robots.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotSetMeshFileManagerModule {
     robot_mesh_file_manager_modules: Vec<RobotMeshFileManagerModule>
 }
@@ -45,5 +49,24 @@ impl SaveAndLoadable for RobotSetMeshFileManagerModule {
         Ok(Self {
             robot_mesh_file_manager_modules
         })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotSetMeshFileManagerModule {
+    #[new]
+    pub fn new_from_set_name_py(set_name: &str) -> Self {
+        Self::new_from_set_name(set_name).expect("error")
+    }
+    #[staticmethod]
+    pub fn new_py(robot_set_configuration_module: &RobotSetConfigurationModule) -> Self {
+        Self::new(robot_set_configuration_module).expect("error")
+    }
+    pub fn num_mesh_file_manager_modules(&self) -> usize {
+        self.robot_mesh_file_manager_modules.len()
+    }
+    pub fn get_mesh_file_manager_module(&self, idx: usize) -> RobotMeshFileManagerModule {
+        return self.robot_mesh_file_manager_modules[idx].clone()
     }
 }
