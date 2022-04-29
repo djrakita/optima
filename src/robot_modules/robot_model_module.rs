@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_configuration_module::MobileBaseInfo;
+use crate::robot_modules::robot_configuration_module::ContiguousChainMobilityMode;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_robot::joint::{Joint};
 use crate::utils::utils_robot::link::Link;
@@ -33,7 +33,11 @@ pub struct RobotModelModule {
     robot_name: String,
     links: Vec<Link>,
     joints: Vec<Joint>,
+    /// As specified by the URDF.
     world_link_idx: usize,
+    /// As specified by the Optima robot model and configuration.  Most of the time, this will be
+    /// equal to the world_link_idx.  However, if the robot has a mobile base, the robot_base_link_idx
+    /// will be different than the world_link_idx.
     robot_base_link_idx: usize,
     link_tree_traversal_layers: Vec<Vec<usize>>,
     link_tree_max_depth: usize,
@@ -126,8 +130,6 @@ impl RobotModelModule {
                 if self.links[i].name() == self.joints[j].urdf_joint().parent_link() {
                     let link_idx = self.get_link_idx_from_name( &self.joints[j].urdf_joint().child_link().to_string() );
                     if link_idx.is_some() { self.links[i].add_child_link_idx(link_idx.unwrap()); }
-                    let joint_idx = self.get_joint_idx_from_name( &self.joints[j].name().to_string());
-                    if joint_idx.is_some() { self.links[i].add_child_joint_idx(joint_idx.unwrap()); }
                 }
             }
         }
@@ -144,6 +146,8 @@ impl RobotModelModule {
     }
     fn assign_all_link_chains(&mut self) {
         let num_links = self.links.len();
+        self.link_chains = SquareArray2D::new(num_links, false, None);
+
         for i in 0..num_links {
             for j in 0..num_links {
                 self.assign_link_chain(i, j);
@@ -304,7 +308,7 @@ impl RobotModelModule {
     /// Function used during setup.  It is public since other modules may need to access it,
     /// but this should not need to be used by end users.
     pub fn set_link_tree_traversal_info(&mut self) {
-        self.link_tree_traversal_layers = Vec::new();
+        self.link_tree_traversal_layers = vec![];
         self.link_tree_traversal_layers.push( vec![ self.world_link_idx ] );
 
         let num_links = self.links.len();
@@ -314,7 +318,7 @@ impl RobotModelModule {
             for i in 0..num_links {
                 if self.links[i].preceding_link_idx().is_some() && self.links[i].present() {
                     if self.link_tree_traversal_layers[curr_layer - 1].contains(&self.links[i].preceding_link_idx().unwrap()) {
-                        if self.link_tree_traversal_layers.len() == curr_layer { self.link_tree_traversal_layers.push( Vec::new() ); }
+                        if self.link_tree_traversal_layers.len() == curr_layer { self.link_tree_traversal_layers.push( vec![] ); }
 
                         self.link_tree_traversal_layers[curr_layer].push( i );
                         change_on_this_loop = true;
@@ -365,15 +369,15 @@ impl RobotModelModule {
     /// Adds mobile base funtionality to the robot model.  This will likely be set automatically
     /// by RobotConfigurationModule, so there will very rarely be a need for the end user to
     /// call this function.
-    pub fn add_mobile_base_link_and_joint(&mut self, mobile_base_mode: &MobileBaseInfo) {
-        match mobile_base_mode {
-            MobileBaseInfo::Static => { /* Do nothing */ }
+    pub fn add_contiguous_chain_link_and_joint(&mut self, base_of_chain_mobility_mode: &ContiguousChainMobilityMode, child_link_idx: usize) {
+        match base_of_chain_mobility_mode {
+            ContiguousChainMobilityMode::Static => { /* Do nothing */ }
             _ => {
                 let new_link_idx = self.links().len();
                 let new_joint_idx = self.joints().len();
 
-                let new_link = Link::new_mobile_base_link(new_link_idx, self.world_link_idx, new_joint_idx);
-                let new_joint = Joint::new_mobile_base_connector_joint(mobile_base_mode, new_joint_idx, new_link_idx, self.world_link_idx);
+                let new_link = Link::new_base_of_chain_link(new_link_idx, child_link_idx, new_joint_idx, self.world_link_idx);
+                let new_joint = Joint::new_base_of_chain_connector_joint(base_of_chain_mobility_mode, new_joint_idx, new_link_idx, child_link_idx);
 
                 self.link_name_to_idx_hashmap.insert(new_link.name().to_string(), new_link_idx);
                 self.joint_name_to_idx_hashmap.insert(new_joint.name().to_string(), new_joint_idx);
@@ -381,9 +385,12 @@ impl RobotModelModule {
                 self.links.push(new_link);
                 self.joints.push(new_joint);
 
-                self.robot_base_link_idx = new_link_idx;
+                if child_link_idx == self.world_link_idx { self.robot_base_link_idx = new_link_idx; }
+
+                self.links[child_link_idx].set_preceding_link_idx(Some(new_link_idx));
 
                 self.set_link_tree_traversal_info();
+                self.assign_all_link_chains();
             }
         }
     }
@@ -433,6 +440,9 @@ impl RobotModelModule {
             return Err(OptimaError::new_idx_out_of_bound_error(link_idx, self.links().len(), file!(), line!()));
         }
 
+        // The world link idx should never be inactive.
+        if self.world_link_idx == link_idx { return Ok(()) }
+
         self.links[link_idx].set_present(false);
 
         let l = self.joints.len();
@@ -453,6 +463,34 @@ impl RobotModelModule {
         }
 
         self.joints[joint_idx].set_present(false);
+
+        Ok(())
+    }
+    pub fn set_link_as_present(&mut self, link_idx: usize) -> Result<(), OptimaError> {
+        if link_idx >= self.links().len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(link_idx, self.links().len(), file!(), line!()));
+        }
+
+        self.links[link_idx].set_present(true);
+
+        let l = self.joints.len();
+        for i in 0..l {
+            let prec_option = self.joints[i].preceding_link_idx();
+            if let Some(prec) = prec_option {
+                if prec == link_idx {
+                    self.set_joint_as_present(i)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+    pub fn set_joint_as_present(&mut self, joint_idx: usize) -> Result<(), OptimaError> {
+        if joint_idx >= self.joints().len() {
+            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joints().len(), file!(), line!()));
+        }
+
+        self.joints[joint_idx].set_present(true);
 
         Ok(())
     }

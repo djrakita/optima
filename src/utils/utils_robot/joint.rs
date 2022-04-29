@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use nalgebra::{Vector3, Unit};
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_configuration_module::MobileBaseInfo;
+use crate::robot_modules::robot_configuration_module::ContiguousChainMobilityMode;
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_robot::urdf_joint::{JointTypeWrapper, URDFJoint};
@@ -59,39 +59,41 @@ impl Joint {
     /// Returns a joint that can serve as a connector between a mobile base and the rest of the robot's
     /// kinematic chain.  This will be automatically used by the RobotConfigurationModule, so it will
     /// almost never need to be called by the end user.
-    pub fn new_mobile_base_connector_joint(mobile_base_mode: &MobileBaseInfo, joint_idx: usize, newly_created_link_idx: usize, world_link_idx: usize) -> Self {
+    pub fn new_base_of_chain_connector_joint(mobile_base_mode: &ContiguousChainMobilityMode, joint_idx: usize, newly_created_link_idx: usize, child_link_idx: usize) -> Self {
         let mut joint_axes = vec![];
 
         match mobile_base_mode {
-            MobileBaseInfo::Static => {}
-            MobileBaseInfo::Floating { x_bounds, y_bounds, z_bounds, xr_bounds, yr_bounds, zr_bounds } => {
-                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, *xr_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, *yr_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation, *z_bounds));
+            ContiguousChainMobilityMode::Static => {}
+            ContiguousChainMobilityMode::Floating { x_bounds, y_bounds, z_bounds, xr_bounds, yr_bounds, zr_bounds } => {
+                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
+                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
+                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation, *z_bounds));
+                joint_axes.push(JointAxis::new(joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, *xr_bounds));
+                joint_axes.push(JointAxis::new(joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, *yr_bounds));
+                joint_axes.push(JointAxis::new(joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
             }
-            MobileBaseInfo::PlanarTranslation { x_bounds, y_bounds } => {
+            ContiguousChainMobilityMode::PlanarTranslation { x_bounds, y_bounds } => {
                 joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
                 joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
             }
-            MobileBaseInfo::PlanarRotation { zr_bounds } => {
+            ContiguousChainMobilityMode::PlanarRotation { zr_bounds } => {
                 joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
             }
-            MobileBaseInfo::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds } => {
-                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
+            ContiguousChainMobilityMode::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds } => {
+                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
+                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
+                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
             }
         }
 
+        let name = format!("base_of_chain_connector_joint_with_child_link_{}", newly_created_link_idx);
+
         Self {
-            name: "mobile_base_joint".to_string(),
+            name,
             present: true,
             joint_idx,
             preceding_link_idx: Some(newly_created_link_idx),
-            child_link_idx: Some(world_link_idx),
+            child_link_idx: Some(child_link_idx),
             origin_offset_pose: OptimaSE3PoseAll::new_identity(),
             has_origin_offset: false,
             joint_axes,
@@ -153,7 +155,7 @@ impl Joint {
         optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false);
         optima_print(&format!("  Num dofs: "), PrintMode::Print, PrintColor::Blue, true);
         optima_print(&format!(" {} ", self.num_dofs()), PrintMode::Print, PrintColor::None, false);
-        optima_print(&format!("  Active: "), PrintMode::Print, PrintColor::Blue, true);
+        optima_print(&format!("  Present: "), PrintMode::Print, PrintColor::Blue, true);
         let c = if self.present { PrintColor::Green } else { PrintColor::Red };
         optima_print(&format!(" {} ", self.present), PrintMode::Print, c, false);
         if self.num_axes() > 0 {

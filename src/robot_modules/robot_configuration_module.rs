@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_model_module::RobotModelModule;
-use crate::utils::utils_console::{ConsoleInputUtils, PrintColor};
+use crate::utils::utils_console::{ConsoleInputUtils, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PosePy};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
@@ -73,7 +73,54 @@ impl RobotConfigurationModule {
         let mut robot_model_module = self.base_robot_model_module.clone();
         let robot_configuration_info = &self.robot_configuration_info;
 
-        robot_model_module.add_mobile_base_link_and_joint(&robot_configuration_info.mobile_base_mode);
+        let contiguous_chain_infos = &robot_configuration_info.contiguous_chain_infos;
+        if contiguous_chain_infos.len() > 0 {
+            // Set all links as not present.
+            let num_links = robot_model_module.links().len();
+            for link_idx in 0..num_links {
+                robot_model_module.set_link_as_not_present(link_idx)?;
+            }
+        }
+
+        let mut names_to_remove = vec![];
+
+        let mut link_idxs_that_are_already_a_part_of_chains = vec![];
+        for contiguous_chain_info in contiguous_chain_infos {
+            let link_idxs_to_possibly_add = match contiguous_chain_info.end_link_idx {
+                None => {
+                    self.robot_model_module.get_all_downstream_links(contiguous_chain_info.start_link_idx)?
+                }
+                Some(end_link_idx) => {
+                    let chain = self.robot_model_module.get_link_chain(contiguous_chain_info.start_link_idx, end_link_idx)?;
+                    if chain.is_none() { return Err(OptimaError::new_generic_error_str(&format!("Link chain does not exist between link {} and {}.", contiguous_chain_info.start_link_idx, end_link_idx), file!(), line!())) }
+                    let chain = chain.unwrap().clone();
+                    chain
+                }
+            };
+            println!("{:?}", link_idxs_to_possibly_add);
+
+            let mut clash = false;
+            for link_idx_to_possibly_add in &link_idxs_to_possibly_add {
+                for link_idx_that_is_already_a_part_of_chains in &link_idxs_that_are_already_a_part_of_chains {
+                    if link_idx_to_possibly_add == link_idx_that_is_already_a_part_of_chains {
+                        clash = true;
+                        break;
+                    }
+                }
+            }
+
+            if !clash {
+                for link_idx in &link_idxs_to_possibly_add {
+                    link_idxs_that_are_already_a_part_of_chains.push(*link_idx);
+                    robot_model_module.set_link_as_present(*link_idx)?;
+                }
+                robot_model_module.add_contiguous_chain_link_and_joint(&contiguous_chain_info.mobility_mode, contiguous_chain_info.start_link_idx);
+            } else {
+                let print_string = format!("WARNING: Could not add contiguous chain {:?} because it conflicts with an already added chain.", contiguous_chain_info);
+                optima_print(&print_string, PrintMode::Println, PrintColor::Yellow, true);
+                names_to_remove.push(contiguous_chain_info.chain_name.clone());
+            }
+        }
 
         let dead_end_link_idxs = &robot_configuration_info.dead_end_link_idxs;
         for d in dead_end_link_idxs {
@@ -88,7 +135,9 @@ impl RobotConfigurationModule {
             robot_model_module.set_fixed_joint_sub_dof(f.joint_idx, f.joint_sub_idx, Some(f.fixed_joint_value))?;
         }
 
+        for name_to_remove in &names_to_remove { self.remove_contiguous_chain(name_to_remove); }
         self.robot_model_module = robot_model_module;
+
         Ok(())
     }
     /// Returns a reference to the `RobotConfigurationInfo` that was used to change the configuration's
@@ -99,6 +148,33 @@ impl RobotConfigurationModule {
     /// Returns a reference to the robot model module that reflects the configuration's `RobotConfigurationInfo`.
     pub fn robot_model_module(&self) -> &RobotModelModule {
         &self.robot_model_module
+    }
+    pub fn set_contiguous_chain(&mut self, chain_name: &str, start_link_idx: usize, end_link_idx: Option<usize>, mobility_mode: ContiguousChainMobilityMode) -> Result<(), OptimaError> {
+        for c in &self.robot_configuration_info.contiguous_chain_infos {
+            if &c.chain_name == chain_name {
+                let print_string = format!("WARNING: Could not add contiguous chain {:?} because its name conflicts with an already added chain.", chain_name);
+                optima_print(&print_string, PrintMode::Println, PrintColor::Yellow, true);
+                return Ok(());
+            }
+        }
+
+        self.robot_configuration_info.contiguous_chain_infos.push(ContiguousChainInfo {
+            chain_name: chain_name.to_string(),
+            start_link_idx,
+            end_link_idx,
+            mobility_mode
+        });
+
+        return self.update();
+    }
+    pub fn remove_contiguous_chain(&mut self, chain_name: &str) {
+        let l = self.robot_configuration_info.contiguous_chain_infos.len();
+        for i in 0..l {
+            if &self.robot_configuration_info.contiguous_chain_infos[i].chain_name == chain_name {
+                self.robot_configuration_info.contiguous_chain_infos.remove(i);
+                return;
+            }
+        }
     }
     /// Sets the given link as a "dead end" link.  A dead end link is a link such that it and all
     /// links that occur as successors in the kinematic chain will be inactive (essentially, removed)
@@ -132,15 +208,15 @@ impl RobotConfigurationModule {
 
         return self.update();
     }
-    /// Sets the mobile base mode of the robot configuration.
-    pub fn set_mobile_base_mode(&mut self, mobile_base_mode: MobileBaseInfo) -> Result<(), OptimaError> {
-        self.robot_configuration_info.mobile_base_mode = mobile_base_mode;
-        return self.update();
-    }
     /// sets the base offset of the robot configuration.
     pub fn set_base_offset(&mut self, p: &OptimaSE3Pose) -> Result<(), OptimaError> {
         self.robot_configuration_info.base_offset = OptimaSE3PoseAll::new(p);
         return self.update();
+    }
+    pub fn print_contiguous_chains(&self) {
+        for c in &self.robot_configuration_info.contiguous_chain_infos {
+            println!("{:?}", c);
+        }
     }
     /*
     /// Saves the `RobotConfigurationModule` to its robot's `RobotConfigurationGeneratorModule`.
@@ -271,12 +347,13 @@ impl RobotConfigurationModulePy {
     }
     */
 
+    /*
     pub fn set_static_mobile_base_mode_py(&mut self, py: Python) {
-        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::Static).expect("error");
+        self.robot_configuration_module.set_mobile_base_mode(BaseOfChainMobilityMode::Static).expect("error");
         self.copy_robot_model_module_to_py(py);
     }
     pub fn set_floating_mobile_base_mode_py(&mut self, x_bounds: (f64, f64), y_bounds: (f64, f64), z_bounds: (f64, f64), xr_bounds: (f64, f64), yr_bounds: (f64, f64), zr_bounds: (f64, f64), py: Python) {
-        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::Floating {
+        self.robot_configuration_module.set_mobile_base_mode(BaseOfChainMobilityMode::Floating {
             x_bounds,
             y_bounds,
             z_bounds,
@@ -287,17 +364,18 @@ impl RobotConfigurationModulePy {
         self.copy_robot_model_module_to_py(py);
     }
     pub fn set_planar_translation_mobile_base_mode_py(&mut self, x_bounds: (f64, f64), y_bounds: (f64, f64), py: Python) {
-        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::PlanarTranslation { x_bounds, y_bounds }).expect("error");
+        self.robot_configuration_module.set_mobile_base_mode(BaseOfChainMobilityMode::PlanarTranslation { x_bounds, y_bounds }).expect("error");
         self.copy_robot_model_module_to_py(py);
     }
     pub fn set_planar_rotation_mobile_base_mode_py(&mut self, zr_bounds: (f64, f64), py: Python) {
-        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::PlanarRotation { zr_bounds }).expect("error");
+        self.robot_configuration_module.set_mobile_base_mode(BaseOfChainMobilityMode::PlanarRotation { zr_bounds }).expect("error");
         self.copy_robot_model_module_to_py(py);
     }
     pub fn set_planar_translation_and_rotation_mobile_base_mode_py(&mut self, x_bounds: (f64, f64), y_bounds: (f64, f64), zr_bounds: (f64, f64), py: Python) {
-        self.robot_configuration_module.set_mobile_base_mode(MobileBaseInfo::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds }).expect("error");
+        self.robot_configuration_module.set_mobile_base_mode(BaseOfChainMobilityMode::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds }).expect("error");
         self.copy_robot_model_module_to_py(py);
     }
+    */
 
     pub fn set_base_offset_py(&mut self, pose: &OptimaSE3PosePy, py: Python) {
         self.robot_configuration_module.set_base_offset(pose.pose()).expect("error");
@@ -331,19 +409,19 @@ impl RobotConfigurationModule {
 /// underlying `RobotModelModule`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotConfigurationInfo {
+    contiguous_chain_infos: Vec<ContiguousChainInfo>,
     dead_end_link_idxs: Vec<usize>,
     fixed_joint_infos: Vec<FixedJointInfo>,
-    base_offset: OptimaSE3PoseAll,
-    mobile_base_mode: MobileBaseInfo
+    base_offset: OptimaSE3PoseAll
 }
 impl Default for RobotConfigurationInfo {
     /// By default, we will just have the robot's given base model directly from the robot's URDF.
     fn default() -> Self {
         Self {
+            contiguous_chain_infos: vec![],
             dead_end_link_idxs: vec![],
             fixed_joint_infos: vec![],
-            base_offset: OptimaSE3PoseAll::new_identity(),
-            mobile_base_mode: MobileBaseInfo::Static
+            base_offset: OptimaSE3PoseAll::new_identity()
         }
     }
 }
@@ -357,16 +435,9 @@ impl RobotConfigurationInfo {
     pub fn base_offset(&self) -> &OptimaSE3PoseAll {
         &self.base_offset
     }
-    pub fn mobile_base_mode(&self) -> &MobileBaseInfo {
-        &self.mobile_base_mode
+    pub fn contiguous_chain_infos(&self) -> &Vec<ContiguousChainInfo> {
+        &self.contiguous_chain_infos
     }
-}
-
-/// An Enum used to identify a given configuration.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum RobotConfigurationIdentifier {
-    BaseModel,
-    NamedConfiguration(String)
 }
 
 /// An object that describes a fixed joint.  The joint_sub_idx refers to the index of a joint's
@@ -379,12 +450,34 @@ pub struct FixedJointInfo {
     pub fixed_joint_value: f64
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ContiguousChainInfo {
+    chain_name: String,
+    start_link_idx: usize,
+    end_link_idx: Option<usize>,
+    mobility_mode: ContiguousChainMobilityMode
+}
+impl ContiguousChainInfo {
+    pub fn chain_name(&self) -> &str {
+        &self.chain_name
+    }
+    pub fn start_link_idx(&self) -> usize {
+        self.start_link_idx
+    }
+    pub fn end_link_idx(&self) -> Option<usize> {
+        self.end_link_idx
+    }
+    pub fn mobility_mode(&self) -> &ContiguousChainMobilityMode {
+        &self.mobility_mode
+    }
+}
+
 /// Enum that characterizes the mobility of a robot's base.  Enum variants take as inputs boundary values
 /// along any relevant dimensions.
 /// Note that this enum does not implicitly handle something like differential drive constraints,
 /// this would have to be handled separately.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MobileBaseInfo {
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum ContiguousChainMobilityMode {
     /// The robot's base is immobile.
     Static,
     /// The robot's base is floating and can move along any spatial dimension (including rotation).
@@ -398,16 +491,16 @@ pub enum MobileBaseInfo {
     /// The robot's base can translate in space along the x and y axis and rotate along the z axis.
     PlanarTranslationAndRotation { x_bounds: (f64, f64), y_bounds: (f64, f64), zr_bounds: (f64, f64) }
 }
-impl MobileBaseInfo {
-    pub fn new_default(t: &MobileBaseType) -> Self {
+impl ContiguousChainMobilityMode {
+    pub fn new_default(t: &BaseOfChainMobilityModeType) -> Self {
         let default_translation = 5.0;
         let default_rotation = 2.0*std::f64::consts::PI;
         return match t {
-            MobileBaseType::Static => {
-                MobileBaseInfo::Static
+            BaseOfChainMobilityModeType::Static => {
+                ContiguousChainMobilityMode::Static
             }
-            MobileBaseType::Floating => {
-                MobileBaseInfo::Floating {
+            BaseOfChainMobilityModeType::Floating => {
+                ContiguousChainMobilityMode::Floating {
                     x_bounds: (-default_translation, default_translation),
                     y_bounds: (-default_translation, default_translation),
                     z_bounds: (-default_translation, default_translation),
@@ -416,19 +509,19 @@ impl MobileBaseInfo {
                     zr_bounds: (-default_rotation, default_rotation)
                 }
             }
-            MobileBaseType::PlanarTranslation => {
-                MobileBaseInfo::PlanarTranslation {
+            BaseOfChainMobilityModeType::PlanarTranslation => {
+                ContiguousChainMobilityMode::PlanarTranslation {
                     x_bounds: (-default_translation, default_translation),
                     y_bounds: (-default_translation, default_translation)
                 }
             }
-            MobileBaseType::PlanarRotation => {
-                MobileBaseInfo::PlanarRotation {
+            BaseOfChainMobilityModeType::PlanarRotation => {
+                ContiguousChainMobilityMode::PlanarRotation {
                     zr_bounds: (-default_rotation, default_rotation)
                 }
             }
-            MobileBaseType::PlanarTranslationAndRotation => {
-                MobileBaseInfo::PlanarTranslationAndRotation {
+            BaseOfChainMobilityModeType::PlanarTranslationAndRotation => {
+                ContiguousChainMobilityMode::PlanarTranslationAndRotation {
                     x_bounds: (-default_translation, default_translation),
                     y_bounds: (-default_translation, default_translation),
                     zr_bounds: (-default_rotation, default_rotation)
@@ -438,19 +531,19 @@ impl MobileBaseInfo {
     }
     pub fn get_bounds(&self) -> Vec<(f64, f64)> {
         match self {
-            MobileBaseInfo::Static => {
+            ContiguousChainMobilityMode::Static => {
                 vec![]
             }
-            MobileBaseInfo::Floating { x_bounds, y_bounds, z_bounds, xr_bounds, yr_bounds, zr_bounds } => {
+            ContiguousChainMobilityMode::Floating { x_bounds, y_bounds, z_bounds, xr_bounds, yr_bounds, zr_bounds } => {
                 vec![x_bounds.clone(), y_bounds.clone(), z_bounds.clone(), xr_bounds.clone(), yr_bounds.clone(), zr_bounds.clone()]
             }
-            MobileBaseInfo::PlanarTranslation { x_bounds, y_bounds } => {
+            ContiguousChainMobilityMode::PlanarTranslation { x_bounds, y_bounds } => {
                 vec![ x_bounds.clone(), y_bounds.clone() ]
             }
-            MobileBaseInfo::PlanarRotation { zr_bounds } => {
+            ContiguousChainMobilityMode::PlanarRotation { zr_bounds } => {
                 vec![ zr_bounds.clone() ]
             }
-            MobileBaseInfo::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds } => {
+            ContiguousChainMobilityMode::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds } => {
                 vec![ x_bounds.clone(), y_bounds.clone(), zr_bounds.clone() ]
             }
         }
@@ -459,7 +552,7 @@ impl MobileBaseInfo {
 
 /// An Enum that describes the robot base mode without any of the underlying data (e.g., bounds).
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum MobileBaseType {
+pub enum BaseOfChainMobilityModeType {
     Static,
     Floating,
     PlanarTranslation,

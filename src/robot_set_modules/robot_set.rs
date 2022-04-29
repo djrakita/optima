@@ -85,7 +85,7 @@ impl RobotSet {
         for (i, robot_configuration) in self.robot_set_configuration_module.robot_configuration_modules().iter().enumerate() {
             optima_print(&format!(" Robot {} ---> {:?}", i, robot_configuration.robot_name()), PrintMode::Println, PrintColor::Blue, false);
             optima_print(&format!("   Base Offset: {:?}", robot_configuration.robot_configuration_info().base_offset().get_pose_by_type(&OptimaSE3PoseType::EulerAnglesAndTranslation)), PrintMode::Println, PrintColor::None, false );
-            optima_print(&format!("   Mobile Base Mode: {:?}", robot_configuration.robot_configuration_info().mobile_base_mode()), PrintMode::Println, PrintColor::None, false );
+            // optima_print(&format!("   Mobile Base Mode: {:?}", robot_configuration.robot_configuration_info().mobile_base_mode()), PrintMode::Println, PrintColor::None, false );
         }
     }
 }

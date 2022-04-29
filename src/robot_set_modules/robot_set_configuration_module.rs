@@ -16,7 +16,7 @@ use crate::utils::utils_traits::SaveAndLoadable;
 ///
 /// # Example
 /// ```
-/// use optima::robot_modules::robot_configuration_module::{MobileBaseInfo, RobotConfigurationModule};
+/// use optima::robot_modules::robot_configuration_module::{ContiguousChainMobilityMode, RobotConfigurationModule};
 /// use optima::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 /// use optima::utils::utils_robot::robot_module_utils::RobotNames;
 /// use optima::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
@@ -25,7 +25,7 @@ use crate::utils::utils_traits::SaveAndLoadable;
 ///
 /// r.add_robot_configuration_from_names(RobotNames::new_base("ur5"))?;
 /// let mut sawyer_configuration = RobotConfigurationModule::new_from_names(RobotNames::new_base("sawyer"))?;
-/// sawyer_configuration.set_mobile_base_mode(MobileBaseInfo::PlanarTranslation {x_bounds: (-2.0, 2.0),y_bounds: (-2.0, 2.0)})?;
+/// sawyer_configuration.set_mobile_base_mode(ContiguousChainMobilityMode::PlanarTranslation {x_bounds: (-2.0, 2.0),y_bounds: (-2.0, 2.0)})?;
 /// sawyer_configuration.set_base_offset(&OptimaSE3Pose::new_from_euler_angles(0.,0.,0.,1.0,0.,0., &OptimaSE3PoseType::ImplicitDualQuaternion))?;
 /// r.add_robot_configuration(sawyer_configuration)?;
 ///

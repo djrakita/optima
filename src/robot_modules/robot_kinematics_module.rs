@@ -275,6 +275,8 @@ impl RobotKinematicsModule {
         let fk_res = self.compute_fk_floating_chain(joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion, &floating_link_input)?;
         let link_entries = &fk_res.link_entries;
 
+        fk_res.print_summary();
+
         let end_pose = link_entries.get(end_link_idx).unwrap().pose.as_ref().unwrap().unwrap_implicit_dual_quaternion()?;
 
         let end_point = match robot_jacobian_end_point {
@@ -355,6 +357,8 @@ impl RobotKinematicsModule {
     }
     fn compute_fk_on_single_link(&self, joint_state: &RobotJointState, link_idx: usize, t: &OptimaSE3PoseType, output: &mut RobotFKResult) -> Result<(), OptimaError> {
         let link = self.robot_configuration_module.robot_model_module().get_link_by_idx(link_idx)?;
+        let is_chain_base_link = link.is_chain_base_link();
+
         let preceding_link_option = link.preceding_link_idx();
         if preceding_link_option.is_none() {
             output.link_entries[link_idx].pose = Some(self.robot_configuration_module.robot_configuration_info().base_offset().get_pose_by_type(t).clone());
@@ -374,29 +378,63 @@ impl RobotKinematicsModule {
 
         let full_state_idxs = self.robot_joint_state_module.map_joint_idx_to_joint_state_idxs(preceding_joint_idx, &RobotJointStateType::Full)?;
 
-        let mut out_pose = output.link_entries[preceding_link_idx].pose.clone().expect("error");
+        let out_pose = output.link_entries[preceding_link_idx].pose.clone();
+        if out_pose.is_none() { return Ok(()); }
+        let mut out_pose = out_pose.unwrap();
 
         let offset_pose_all = preceding_joint.origin_offset_pose();
         out_pose = out_pose.multiply(offset_pose_all.get_pose_by_type(t), false)?;
 
         let joint_axes = preceding_joint.joint_axes();
 
-        for (i, full_state_idx) in full_state_idxs.iter().enumerate() {
-            let joint_axis = &joint_axes[i];
-            let joint_value = joint_state[*full_state_idx];
+        // On a chain base link, we can just use Euler angles.  On other links, we cannot guarantee
+        // that the axis will be [1,0,0], [0,1,0], or [0,0,1], so we must do a sequence of multiplications
+        // on axis angle representations.
+        if is_chain_base_link {
+            if full_state_idxs.len() > 0 {
+                let mut tt = vec![0., 0., 0.];
+                let mut rr = vec![0., 0., 0.];
 
-            let axis_pose = match joint_axis.axis_primitive_type() {
-                JointAxisPrimitiveType::Rotation => {
-                    let axis = &joint_axis.axis_as_unit();
-                    OptimaSE3Pose::new_from_axis_angle(axis, joint_value, 0.,0.,0., t)
-                }
-                JointAxisPrimitiveType::Translation => {
-                    let axis = joint_value * &joint_axis.axis();
-                    OptimaSE3Pose::new_from_euler_angles(0.,0.,0., axis[0], axis[1], axis[2], t)
-                }
-            };
+                for (i, full_state_idx) in full_state_idxs.iter().enumerate() {
+                    let joint_axis = &joint_axes[i];
+                    let joint_value = joint_state[*full_state_idx];
 
-            out_pose = out_pose.multiply(&axis_pose, false)?;
+                    let axis = joint_axis.axis();
+                    match joint_axis.axis_primitive_type() {
+                        JointAxisPrimitiveType::Rotation => {
+                            if axis[0] == 1.0 { rr[0] = joint_value }
+                            else if axis[1] == 1.0 { rr[1] = joint_value }
+                            else if axis[2] == 1.0 { rr[2] = joint_value }
+                        }
+                        JointAxisPrimitiveType::Translation => {
+                            if axis[0] == 1.0 { tt[0] = joint_value }
+                            else if axis[1] == 1.0 { tt[1] = joint_value }
+                            else if axis[2] == 1.0 { tt[2] = joint_value }
+                        }
+                    }
+                }
+
+                let euler_pose = OptimaSE3Pose::new_from_euler_angles(rr[0], rr[1], rr[2], tt[0], tt[1], tt[2], t);
+                out_pose = out_pose.multiply(&euler_pose, false)?;
+            }
+        } else {
+            for (i, full_state_idx) in full_state_idxs.iter().enumerate() {
+                let joint_axis = &joint_axes[i];
+                let joint_value = joint_state[*full_state_idx];
+
+                let axis_pose = match joint_axis.axis_primitive_type() {
+                    JointAxisPrimitiveType::Rotation => {
+                        let axis = &joint_axis.axis_as_unit();
+                        OptimaSE3Pose::new_from_axis_angle(axis, joint_value, 0.,0.,0., t)
+                    }
+                    JointAxisPrimitiveType::Translation => {
+                        let axis = joint_value * &joint_axis.axis();
+                        OptimaSE3Pose::new_from_euler_angles(0.,0.,0., axis[0], axis[1], axis[2], t)
+                    }
+                };
+
+                out_pose = out_pose.multiply(&axis_pose, false)?;
+            }
         }
 
         output.link_entries[link_idx].pose = Some(out_pose);

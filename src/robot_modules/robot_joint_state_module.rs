@@ -12,9 +12,10 @@ use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
-use crate::utils::utils_robot::joint::JointAxis;
+use crate::utils::utils_robot::joint::{JointAxis, JointAxisPrimitiveType};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_sampling::SimpleSamplers;
+use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 /// The `RobotJointStateModule` organizes and operates over robot states.  "Robot joint states" are vectors
@@ -184,8 +185,8 @@ impl RobotJointStateModule {
         match joint_state_type {
             RobotJointStateType::DOF => {
                 if joint_idx >= self.joint_idx_to_dof_state_idxs_mapping.len() {
-            return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joint_idx_to_dof_state_idxs_mapping.len(), file!(), line!()));
-        }
+                    return Err(OptimaError::new_idx_out_of_bound_error(joint_idx, self.joint_idx_to_dof_state_idxs_mapping.len(), file!(), line!()));
+                }
 
                 return Ok(&self.joint_idx_to_dof_state_idxs_mapping[joint_idx]);
             }
@@ -237,6 +238,45 @@ impl RobotJointStateModule {
         robot_joint_state.joint_state[idx] = joint_value;
 
         return Ok(());
+    }
+    pub fn inject_pose_of_contiguous_chain(&self, robot_joint_state: &mut RobotJointState, chain_name: &str, pose: &OptimaSE3Pose) -> Result<(), OptimaError> {
+        for contiguous_chain in self.robot_configuration_module.robot_configuration_info().contiguous_chain_infos() {
+            if contiguous_chain.chain_name() == chain_name {
+                let euler_angles_and_translation = pose.to_euler_angles_and_translation();
+                let r = &euler_angles_and_translation.0;
+                let t = &euler_angles_and_translation.1;
+
+                let start_link_idx = contiguous_chain.start_link_idx();
+                let preceding_link_idx = self.robot_configuration_module.robot_model_module().links()[start_link_idx].preceding_link_idx().unwrap();
+                let joint_idx = self.robot_configuration_module.robot_model_module().links()[preceding_link_idx].preceding_joint_idx().unwrap();
+                let joint_state_idxs = self.map_joint_idx_to_joint_state_idxs(joint_idx, &robot_joint_state.robot_joint_state_type)?;
+
+                let axes = match robot_joint_state.robot_joint_state_type {
+                    RobotJointStateType::DOF => { &self.ordered_dof_joint_axes }
+                    RobotJointStateType::Full => { &self.ordered_dof_joint_axes }
+                };
+
+                for joint_state_idx in joint_state_idxs {
+                    let joint_axis = &axes[*joint_state_idx];
+                    let axis = joint_axis.axis();
+                    match joint_axis.axis_primitive_type() {
+                        JointAxisPrimitiveType::Rotation => {
+                            if axis[0] == 1.0 { robot_joint_state[*joint_state_idx] = r[0]; }
+                            else if axis[1] == 1.0 { robot_joint_state[*joint_state_idx] = r[1]; }
+                            else if axis[2] == 1.0 { robot_joint_state[*joint_state_idx] = r[2]; }
+                        }
+                        JointAxisPrimitiveType::Translation => {
+                            if axis[0] == 1.0 { robot_joint_state[*joint_state_idx] = t[0]; }
+                            else if axis[1] == 1.0 { robot_joint_state[*joint_state_idx] = t[1]; }
+                            else if axis[2] == 1.0 { robot_joint_state[*joint_state_idx] = t[2]; }
+                        }
+                    }
+                }
+
+                return Ok(())
+            }
+        }
+        Ok(())
     }
     pub fn get_joint_state_bounds(&self, t: &RobotJointStateType) -> Vec<(f64, f64)> {
         let axes = match t {
@@ -290,6 +330,7 @@ impl RobotJointStateModule {
             optima_print(&format!("   > joint name: {}", self.robot_configuration_module.robot_model_module().joints()[joint_axis.joint_idx()].name()), PrintMode::Println, PrintColor::None, false);
             optima_print(&format!("   > joint index: {}", joint_axis.joint_idx()), PrintMode::Println, PrintColor::None, false);
             optima_print(&format!("   > joint sub dof index: {}", joint_axis.joint_sub_dof_idx()), PrintMode::Println, PrintColor::None, false);
+            optima_print(&format!("   > joint sub dof axis type: {:?}", joint_axis.axis_primitive_type()), PrintMode::Println, PrintColor::None, false);
             optima_print(&format!("   > axis: {:?}", joint_axis.axis()), PrintMode::Println, PrintColor::None, false);
             optima_print(&format!("   > joint value: {}", robot_joint_state[i]), PrintMode::Println, PrintColor::None, false);
         }

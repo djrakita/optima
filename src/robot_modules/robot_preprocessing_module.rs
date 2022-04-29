@@ -266,8 +266,8 @@ impl Default for RobotPreprocessingModule {
     fn default() -> Self {
         Self {
             replace_robot_model_module_json: true,
-            replace_robot_link_convex_shapes: true,
-            replace_robot_link_convex_shape_subcomponents: true
+            replace_robot_link_convex_shapes: false,
+            replace_robot_link_convex_shape_subcomponents: false
         }
     }
 }
