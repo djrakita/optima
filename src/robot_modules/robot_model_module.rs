@@ -440,7 +440,8 @@ impl RobotModelModule {
             return Err(OptimaError::new_idx_out_of_bound_error(link_idx, self.links().len(), file!(), line!()));
         }
 
-        // The world link idx should never be inactive.
+        // The world link idx should never be inactive?  I'm still deciding on whether this should
+        // be the case...
         if self.world_link_idx == link_idx { return Ok(()) }
 
         self.links[link_idx].set_present(false);

@@ -1,3 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
@@ -113,5 +116,56 @@ impl SaveAndLoadable for RobotSet {
             robot_set_mesh_file_manager,
             robot_set_kinematics_module
         })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[pyclass]
+pub struct RobotSetPy {
+    #[pyo3(get)]
+    robot_set_configuration_module: Py<RobotSetConfigurationModule>,
+    #[pyo3(get)]
+    robot_set_joint_state_module: Py<RobotSetJointStateModule>,
+    #[pyo3(get)]
+    robot_set_mesh_file_manager: Py<RobotSetMeshFileManagerModule>,
+    #[pyo3(get)]
+    robot_set_kinematics_module: Py<RobotSetKinematicsModule>,
+    phantom_robot_set: RobotSet
+}
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl RobotSetPy {
+    #[new]
+    pub fn new_from_set_name_py(set_name: &str, py: Python) -> Self {
+        let r = RobotSet::new_from_set_name(set_name).expect("error");
+
+        Self {
+            robot_set_configuration_module: Py::new(py, r.robot_set_configuration_module.clone()).expect("error"),
+            robot_set_joint_state_module: Py::new(py, r.robot_set_joint_state_module.clone()).expect("error"),
+            robot_set_mesh_file_manager: Py::new(py, r.robot_set_mesh_file_manager.clone()).expect("error"),
+            robot_set_kinematics_module: Py::new(py, r.robot_set_kinematics_module.clone()).expect("error"),
+            phantom_robot_set: r
+        }
+    }
+    #[staticmethod]
+    pub fn new_py(robot_set_configuration_module: &RobotSetConfigurationModule, py: Python) -> Self {
+        let r = RobotSet::new_from_robot_set_configuration_module(robot_set_configuration_module.clone()).expect("error");
+
+        Self {
+            robot_set_configuration_module: Py::new(py, r.robot_set_configuration_module.clone()).expect("error"),
+            robot_set_joint_state_module: Py::new(py, r.robot_set_joint_state_module.clone()).expect("error"),
+            robot_set_mesh_file_manager: Py::new(py, r.robot_set_mesh_file_manager.clone()).expect("error"),
+            robot_set_kinematics_module: Py::new(py, r.robot_set_kinematics_module.clone()).expect("error"),
+            phantom_robot_set: r
+        }
+    }
+    #[staticmethod]
+    pub fn new_single_robot_py(robot_name: &str, configuration_name: Option<&str>, py: Python) -> Self {
+        let mut robot_set_configuration_module = RobotSetConfigurationModule::new_empty();
+        robot_set_configuration_module.add_robot_configuration_from_names(RobotNames::new(robot_name, configuration_name)).expect("error");
+        Self::new_py(&robot_set_configuration_module, py)
+    }
+    pub fn generate_robot_set_geometric_shape_module_py(&self) -> RobotSetGeometricShapeModule {
+        self.phantom_robot_set.generate_robot_set_geometric_shape_module().expect("error")
     }
 }

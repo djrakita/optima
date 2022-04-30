@@ -16,23 +16,21 @@ use pyo3::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 #[pymodule]
 fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<robot_set_modules::robot_set::RobotSetPy>()?;
+    m.add_class::<robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule>()?;
+    m.add_class::<robot_set_modules::robot_set_joint_state_module::RobotSetJointStateModule>()?;
+    m.add_class::<robot_set_modules::robot_set_kinematics_module::RobotSetKinematicsModule>()?;
+    m.add_class::<robot_set_modules::robot_set_geometric_shape_module::RobotSetGeometricShapeModule>()?;
+    m.add_class::<robot_set_modules::robot_set_mesh_file_manager_module::RobotSetMeshFileManagerModule>()?;
+
+    m.add_class::<robot_modules::robot::RobotPy>()?;
     m.add_class::<robot_modules::robot_model_module::RobotModelModule>()?;
     m.add_class::<robot_modules::robot_configuration_module::RobotConfigurationModulePy>()?;
     m.add_class::<robot_modules::robot_joint_state_module::RobotJointStateModule>()?;
     m.add_class::<robot_modules::robot_kinematics_module::RobotKinematicsModule>()?;
     m.add_class::<robot_modules::robot_geometric_shape_module::RobotGeometricShapeModule>()?;
     m.add_class::<robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule>()?;
-    m.add_class::<robot_modules::robot::RobotPy>()?;
 
     m.add_class::<utils::utils_se3::optima_se3_pose::OptimaSE3PosePy>()?;
     Ok(())
-}
-
-#[macro_export]
-macro_rules! dvector {
-    ($v: expr) => {
-        {
-            DVector::from_vec($v)
-        };
-    }
 }

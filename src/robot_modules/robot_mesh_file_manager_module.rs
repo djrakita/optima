@@ -362,6 +362,20 @@ impl RobotMeshFileManagerModule {
         return Self::new_from_name(robot_name).expect("error");
     }
 
+    pub fn get_paths_to_meshes_as_strings(&self) -> Vec<Option<String>> {
+        let mut out_vec = vec![];
+
+        let res = self.get_paths_to_meshes().expect("error");
+        for optima_path_option in &res {
+            match optima_path_option {
+                None => { out_vec.push(None); }
+                Some(optima_path) => { out_vec.push(Some(optima_path.to_string())); }
+            }
+        }
+
+        out_vec
+    }
+
     pub fn get_paths_to_visual_meshes_as_strings(&self) -> Vec<Option<String>> {
         let mut out_vec = vec![];
 

@@ -97,7 +97,6 @@ impl RobotConfigurationModule {
                     chain
                 }
             };
-            println!("{:?}", link_idxs_to_possibly_add);
 
             let mut clash = false;
             for link_idx_to_possibly_add in &link_idxs_to_possibly_add {
@@ -237,12 +236,12 @@ impl RobotConfigurationModule {
         if path.exists() {
             let response = ConsoleInputUtils::get_console_input_string(&format!("Configuration with name {} already exists.  Overwrite?  (y or n)", configuration_name), PrintColor::Cyan)?;
             if response == "y" {
-                path.save_object_to_file_as_json(&self.robot_configuration_info)?;
+                self.save_to_path(&path)?;
             } else {
                 return Ok(());
             }
         } else {
-            path.save_object_to_file_as_json(&self.robot_configuration_info)?;
+            self.save_to_path(&path)?;
         }
 
         Ok(())
@@ -492,14 +491,14 @@ pub enum ContiguousChainMobilityMode {
     PlanarTranslationAndRotation { x_bounds: (f64, f64), y_bounds: (f64, f64), zr_bounds: (f64, f64) }
 }
 impl ContiguousChainMobilityMode {
-    pub fn new_default(t: &BaseOfChainMobilityModeType) -> Self {
+    pub fn new_default(t: &ContiguousChainMobilityModeType) -> Self {
         let default_translation = 5.0;
         let default_rotation = 2.0*std::f64::consts::PI;
         return match t {
-            BaseOfChainMobilityModeType::Static => {
+            ContiguousChainMobilityModeType::Static => {
                 ContiguousChainMobilityMode::Static
             }
-            BaseOfChainMobilityModeType::Floating => {
+            ContiguousChainMobilityModeType::Floating => {
                 ContiguousChainMobilityMode::Floating {
                     x_bounds: (-default_translation, default_translation),
                     y_bounds: (-default_translation, default_translation),
@@ -509,18 +508,18 @@ impl ContiguousChainMobilityMode {
                     zr_bounds: (-default_rotation, default_rotation)
                 }
             }
-            BaseOfChainMobilityModeType::PlanarTranslation => {
+            ContiguousChainMobilityModeType::PlanarTranslation => {
                 ContiguousChainMobilityMode::PlanarTranslation {
                     x_bounds: (-default_translation, default_translation),
                     y_bounds: (-default_translation, default_translation)
                 }
             }
-            BaseOfChainMobilityModeType::PlanarRotation => {
+            ContiguousChainMobilityModeType::PlanarRotation => {
                 ContiguousChainMobilityMode::PlanarRotation {
                     zr_bounds: (-default_rotation, default_rotation)
                 }
             }
-            BaseOfChainMobilityModeType::PlanarTranslationAndRotation => {
+            ContiguousChainMobilityModeType::PlanarTranslationAndRotation => {
                 ContiguousChainMobilityMode::PlanarTranslationAndRotation {
                     x_bounds: (-default_translation, default_translation),
                     y_bounds: (-default_translation, default_translation),
@@ -552,7 +551,7 @@ impl ContiguousChainMobilityMode {
 
 /// An Enum that describes the robot base mode without any of the underlying data (e.g., bounds).
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BaseOfChainMobilityModeType {
+pub enum ContiguousChainMobilityModeType {
     Static,
     Floating,
     PlanarTranslation,

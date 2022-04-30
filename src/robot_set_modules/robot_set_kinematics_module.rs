@@ -280,6 +280,7 @@ impl RobotSetFKResult {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
 impl RobotSetFKResult {
     pub fn get_fk_result(&self, idx: usize) -> RobotFKResult {
         self.robot_fk_results.get(idx).unwrap().clone()

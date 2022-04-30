@@ -259,6 +259,23 @@ impl RobotKinematicsModule {
                             robot_jacobian_end_point: &JacobianEndPoint,
                             start_link_pose: Option<OptimaSE3Pose>,
                             jacobian_mode: JacobianMode) -> Result<DMatrix<f64>, OptimaError> {
+        let start_idx = match start_link_idx {
+            None => { self.robot_configuration_module.robot_model_module().world_link_idx() }
+            Some(s) => {s}
+        };
+        let chain = self.robot_configuration_module.robot_model_module().get_link_chain(start_idx, end_link_idx)?;
+        if chain.is_none() {
+            let s = format!("Link chain does not exist between link {} and {}.  Cannot perform jacobian calculation.", start_idx, end_link_idx);
+            return Err(OptimaError::new_generic_error_str(&s, file!(), line!()));
+        }
+        let chain = chain.unwrap();
+        for c in chain {
+            if !self.robot_configuration_module.robot_model_module().links()[*c].present() {
+                let s = format!("Valid link chain does not exist between link {} and {} because link {} is not present.  Cannot perform jacobian calculation.", start_idx, end_link_idx, *c);
+                return Err(OptimaError::new_generic_error_str(&s, file!(), line!()));
+            }
+        }
+
         let num_dofs = self.robot_joint_state_module.num_dofs();
         let num_rows = match jacobian_mode {
             JacobianMode::Full => { 6 }
@@ -272,10 +289,9 @@ impl RobotKinematicsModule {
             end_link_idx: Some(end_link_idx),
             start_link_pose
         };
+
         let fk_res = self.compute_fk_floating_chain(joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion, &floating_link_input)?;
         let link_entries = &fk_res.link_entries;
-
-        fk_res.print_summary();
 
         let end_pose = link_entries.get(end_link_idx).unwrap().pose.as_ref().unwrap().unwrap_implicit_dual_quaternion()?;
 
