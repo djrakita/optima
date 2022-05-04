@@ -36,6 +36,18 @@ impl Robot {
             robot_kinematics_module: robot_fk_module
         })
     }
+    pub fn new_from_robot_configuration_module(robot_configuration_module: RobotConfigurationModule) -> Result<Self, OptimaError> {
+        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new(robot_configuration_module.robot_model_module())?;
+        let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
+        let robot_fk_module = RobotKinematicsModule::new(robot_configuration_module.clone());
+
+        Ok(Self {
+            robot_configuration_module,
+            robot_mesh_file_manager_module,
+            robot_joint_state_module,
+            robot_kinematics_module: robot_fk_module
+        })
+    }
     pub fn robot_configuration_module(&self) -> &RobotConfigurationModule {
         &self.robot_configuration_module
     }

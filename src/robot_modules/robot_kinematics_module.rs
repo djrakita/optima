@@ -12,7 +12,7 @@ use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaStemCellPath};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
-use crate::utils::utils_robot::joint::JointAxisPrimitiveType;
+use crate::utils::utils_robot::joint::{JointAxisPrimitiveType};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 #[cfg(not(target_arch = "wasm32"))]
@@ -368,12 +368,28 @@ impl RobotKinematicsModule {
 
         return Ok(jacobian)
     }
+    pub fn compute_reverse_fk(&self, input: &RobotFKResult) -> Result<RobotJointState, OptimaError> {
+        let mut out_joint_state = self.robot_joint_state_module.spawn_zeros_robot_joint_state(RobotJointStateType::Full);
+
+        let link_tree_traversal_layers = self.robot_configuration_module.robot_model_module().link_tree_traversal_layers();
+
+        let links = self.robot_configuration_module.robot_model_module().links();
+
+        for link_tree_traversal_layer in link_tree_traversal_layers {
+            for link_idx in link_tree_traversal_layer {
+                if links[*link_idx].present() {
+                    self.compute_reverse_fk_on_single_link(input, &mut out_joint_state, *link_idx)?;
+                }
+            }
+        }
+
+        Ok(out_joint_state)
+    }
     pub fn robot_name(&self) -> &str {
         return self.robot_configuration_module.robot_model_module().robot_name()
     }
     fn compute_fk_on_single_link(&self, joint_state: &RobotJointState, link_idx: usize, t: &OptimaSE3PoseType, output: &mut RobotFKResult) -> Result<(), OptimaError> {
         let link = self.robot_configuration_module.robot_model_module().get_link_by_idx(link_idx)?;
-        let is_chain_base_link = link.is_chain_base_link();
 
         let preceding_link_option = link.preceding_link_idx();
         if preceding_link_option.is_none() {
@@ -391,6 +407,7 @@ impl RobotKinematicsModule {
 
         let preceding_joint_idx = preceding_joint_option.unwrap();
         let preceding_joint = &self.robot_configuration_module.robot_model_module().joints()[preceding_joint_idx];
+        let is_joint_with_all_standard_axes = preceding_joint.is_joint_with_all_standard_axes();
 
         let full_state_idxs = self.robot_joint_state_module.map_joint_idx_to_joint_state_idxs(preceding_joint_idx, &RobotJointStateType::Full)?;
 
@@ -403,10 +420,10 @@ impl RobotKinematicsModule {
 
         let joint_axes = preceding_joint.joint_axes();
 
-        // On a chain base link, we can just use Euler angles.  On other links, we cannot guarantee
-        // that the axis will be [1,0,0], [0,1,0], or [0,0,1], so we must do a sequence of multiplications
-        // on axis angle representations.
-        if is_chain_base_link {
+        // On a chain base link or a joint with all standard axes, we can just use Euler angles.
+        // On other links, some axes will not be [1,0,0], [0,1,0], or [0,0,1],
+        // so we must do a sequence of multiplications on axis angle representations.
+        if is_joint_with_all_standard_axes {
             if full_state_idxs.len() > 0 {
                 let mut tt = vec![0., 0., 0.];
                 let mut rr = vec![0., 0., 0.];
@@ -454,6 +471,74 @@ impl RobotKinematicsModule {
         }
 
         output.link_entries[link_idx].pose = Some(out_pose);
+
+        Ok(())
+    }
+    fn compute_reverse_fk_on_single_link(&self, input: &RobotFKResult, joint_state: &mut RobotJointState, link_idx: usize) -> Result<(), OptimaError> {
+        let link_entries = &input.link_entries;
+
+        let links = self.robot_configuration_module.robot_model_module().links();
+        let link = &links[link_idx];
+
+        let preceding_link_idx = link.preceding_link_idx();
+        if preceding_link_idx.is_none() { return Ok(()) }
+        let preceding_link_idx = preceding_link_idx.unwrap();
+
+        let current_link_pose = link_entries[link_idx].pose().as_ref().expect("error");
+        let preceding_link_pose = link_entries[preceding_link_idx].pose().as_ref().expect("error");
+
+        let preceding_joint_idx = link.preceding_joint_idx();
+        if preceding_joint_idx.is_none() { return Ok(()) }
+        let preceding_joint_idx = preceding_joint_idx.unwrap();
+
+        let joints = self.robot_configuration_module.robot_model_module().joints();
+        let preceding_joint = &joints[preceding_joint_idx];
+
+        if !preceding_joint.is_joint_with_all_standard_axes() {
+            return Err(OptimaError::new_generic_error_str("Cannot perform reverse fk on a joint with non-standard axes.", file!(), line!()));
+        }
+
+        let origin_offset_pose = preceding_joint.origin_offset_pose().get_pose_by_type(preceding_link_pose.map_to_pose_type());
+
+        let combined_pose = preceding_link_pose.multiply(&origin_offset_pose, false).expect("error");
+
+        let displacement = combined_pose.displacement(&current_link_pose, false).expect("error");
+
+        let euler_angles_and_translation = displacement.to_euler_angles_and_translation();
+        let e = euler_angles_and_translation.0;
+        let t = euler_angles_and_translation.1;
+
+        let joint_state_idxs = self.robot_joint_state_module.map_joint_idx_to_joint_state_idxs(preceding_joint_idx, &RobotJointStateType::Full)?;
+
+        for joint_state_idx in joint_state_idxs {
+            let joint_axis = &self.robot_joint_state_module.ordered_joint_axes()[*joint_state_idx];
+            let axis = joint_axis.axis();
+
+            match joint_axis.axis_primitive_type() {
+                JointAxisPrimitiveType::Rotation => {
+                    if axis[0] == 1.0 {
+                        joint_state[*joint_state_idx] = e[0];
+                    } else if axis[1] == 1.0 {
+                        joint_state[*joint_state_idx] = e[1];
+                    } else if axis[2] == 1.0 {
+                        joint_state[*joint_state_idx] = e[2];
+                    } else {
+                        return Err(OptimaError::new_generic_error_str("Looks like a non-standard joint snuck through in reverse fk computation...probably go fix that...", file!(), line!()));
+                    }
+                }
+                JointAxisPrimitiveType::Translation => {
+                    if axis[0] == 1.0 {
+                        joint_state[*joint_state_idx] = t[0];
+                    } else if axis[1] == 1.0 {
+                        joint_state[*joint_state_idx] = t[1];
+                    } else if axis[2] == 1.0 {
+                        joint_state[*joint_state_idx] = t[2];
+                    } else {
+                        return Err(OptimaError::new_generic_error_str("Looks like a non-standard joint snuck through in reverse fk computation...probably go fix that...", file!(), line!()));
+                    }
+                }
+            }
+        }
 
         Ok(())
     }
@@ -622,10 +707,13 @@ impl RobotFKResult {
     pub fn print_summary_py(&self) {
         self.print_summary();
     }
+    pub fn link_entries_py(&self) -> Vec<RobotFKResultLinkEntry> {
+        self.link_entries.clone()
+    }
     pub fn get_robot_fk_result_link_entry(&self, link_idx: usize) -> RobotFKResultLinkEntry {
         return self.link_entries[link_idx].clone();
     }
-    pub fn get_link_pose(&self, link_idx: usize) -> Option<Vec<Vec<f64>>> {
+    pub fn get_link_pose(&self, link_idx: usize) -> Option<OptimaSE3PosePy> {
         let e = &self.link_entries[link_idx];
         return e.pose_py();
     }
@@ -667,13 +755,14 @@ impl RobotFKResultLinkEntry {
 impl RobotFKResultLinkEntry {
     pub fn link_idx_py(&self) -> usize { self.link_idx }
     pub fn link_name_py(&self) -> String { self.link_name.clone() }
-    pub fn pose_py(&self) -> Option<Vec<Vec<f64>>> {
+    pub fn pose_py(&self) -> Option<OptimaSE3PosePy> {
         return match &self.pose {
-            None => {
-                None
-            }
+            None => { None }
             Some(pose) => {
-                Some(pose.to_vec_representation())
+                let euler_angles_and_translation = pose.to_euler_angles_and_translation();
+                let e = euler_angles_and_translation.0;
+                let t = euler_angles_and_translation.1;
+                Some(OptimaSE3PosePy::new_euler_angles_and_translation_py(e[0], e[1], e[2], t[0], t[1], t[2]))
             }
         }
     }

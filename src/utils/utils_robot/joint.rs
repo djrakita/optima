@@ -11,6 +11,7 @@ use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColo
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_robot::urdf_joint::{JointTypeWrapper, URDFJoint};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseAll, OptimaSE3Pose, OptimaSE3PoseType};
+use crate::utils::utils_traits::ToAndFromRonString;
 
 /// A Joint holds all necessary information about a robot joint (specified by a robot URDF file)
 /// in order to do kinematic and dynamic computations on a robot model.
@@ -30,6 +31,8 @@ pub struct Joint {
     origin_offset_pose: OptimaSE3PoseAll,
     has_origin_offset: bool,
     joint_axes: Vec<JointAxis>,
+    is_chain_base_connector_joint: bool,
+    is_joint_with_all_standard_axes: bool,
     urdf_joint: URDFJoint
 }
 impl Joint {
@@ -50,9 +53,12 @@ impl Joint {
             origin_offset_pose: OptimaSE3PoseAll::new(&OptimaSE3Pose::new_implicit_dual_quaternion_from_euler_angles(rpy[0], rpy[1], rpy[2], xyz[0], xyz[1], xyz[2])),
             has_origin_offset: rpy.norm() != 0.0 || xyz.norm() != 0.0,
             joint_axes: vec![],
+            is_chain_base_connector_joint: false,
+            is_joint_with_all_standard_axes: false,
             urdf_joint
         };
         out_self.set_dof_axes(joint_idx);
+        out_self.set_is_joint_with_all_standard_axes();
 
         out_self
     }
@@ -97,6 +103,8 @@ impl Joint {
             origin_offset_pose: OptimaSE3PoseAll::new_identity(),
             has_origin_offset: false,
             joint_axes,
+            is_chain_base_connector_joint: true,
+            is_joint_with_all_standard_axes: true,
             urdf_joint: URDFJoint::new_empty()
         }
     }
@@ -189,6 +197,15 @@ impl Joint {
     pub fn set_present(&mut self, present: bool) {
         self.present = present;
     }
+    pub fn present(&self) -> bool {
+        self.present
+    }
+    pub fn is_chain_base_connector_joint(&self) -> bool {
+        self.is_chain_base_connector_joint
+    }
+    pub fn is_joint_with_all_standard_axes(&self) -> bool {
+        self.is_joint_with_all_standard_axes
+    }
     fn set_dof_axes(&mut self, joint_idx: usize) {
         let joint_type = self.urdf_joint.joint_type();
         let lower_bound = self.urdf_joint.limits_lower();
@@ -236,13 +253,38 @@ impl Joint {
             }
         }
     }
+    fn set_is_joint_with_all_standard_axes(&mut self) {
+        let mut out_val = true;
+        for a in &self.joint_axes {
+            let axis = &a.axis;
+            if !(axis == &Vector3::new(1.,0.,0.) || axis == &Vector3::new(0.,1.,0.) || axis == &Vector3::new(0.,0.,1.)) {
+                out_val = false;
+            }
+        }
+        self.is_joint_with_all_standard_axes = out_val;
+    }
 }
 
 /// Methods supported by python.
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
 impl Joint {
-
+    pub fn name_py(&self) -> String {
+        self.name.clone()
+    }
+    pub fn present_py(&self) -> bool {
+        self.present
+    }
+    pub fn joint_idx_py(&self) -> usize { self.joint_idx }
+    pub fn preceding_link_idx_py(&self) -> Option<usize> {
+        self.preceding_link_idx
+    }
+    pub fn child_link_idx_py(&self) -> Option<usize> {
+        self.child_link_idx
+    }
+    pub fn joint_axes_py(&self) -> Vec<JointAxis> {
+        self.joint_axes.clone()
+    }
 }
 
 /// Methods supported by WASM.
@@ -256,7 +298,9 @@ impl Joint {
 /// characterize either a rotation around the axis or a translation along a given axis.
 /// A Joint can contain multiple joint axes, meaning that a single "joint" may have more than one
 /// degree of freedom (e.g., in the case of a floating joint, it will have 6 DOFs).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
+
 pub struct JointAxis {
     joint_idx: usize,
     joint_sub_dof_idx: usize,
@@ -300,6 +344,30 @@ impl JointAxis {
         &self.axis_primitive_type
     }
     pub fn bounds(&self) -> (f64, f64) {
+        self.bounds
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl JointAxis {
+    pub fn joint_idx_py(&self) -> usize {
+        self.joint_idx
+    }
+    pub fn joint_sub_dof_idx_py(&self) -> usize {
+        self.joint_sub_dof_idx
+    }
+    pub fn fixed_value_py(&self) -> Option<f64> {
+        self.fixed_value
+    }
+    pub fn axis_py(&self) -> Vec<f64> {
+        let a = &self.axis;
+        return vec![a[0], a[1], a[2]];
+    }
+    pub fn axis_primitive_type_py(&self) -> String {
+        self.axis_primitive_type.to_ron_string()
+    }
+    pub fn bounds_py(&self) -> (f64, f64) {
         self.bounds
     }
 }

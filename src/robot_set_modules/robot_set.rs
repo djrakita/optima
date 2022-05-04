@@ -37,19 +37,19 @@ use crate::utils::utils_traits::SaveAndLoadable;
 pub struct RobotSet {
     robot_set_configuration_module: RobotSetConfigurationModule,
     robot_set_joint_state_module: RobotSetJointStateModule,
-    robot_set_mesh_file_manager: RobotSetMeshFileManagerModule,
+    robot_set_mesh_file_manager_module: RobotSetMeshFileManagerModule,
     robot_set_kinematics_module: RobotSetKinematicsModule
 }
 impl RobotSet {
     pub fn new_from_robot_set_configuration_module(r: RobotSetConfigurationModule) -> Result<Self, OptimaError> {
         let robot_set_joint_state_module = RobotSetJointStateModule::new(&r);
-        let robot_set_mesh_file_manager = RobotSetMeshFileManagerModule::new(&r)?;
+        let robot_set_mesh_file_manager_module = RobotSetMeshFileManagerModule::new(&r)?;
         let robot_set_kinematics_module = RobotSetKinematicsModule::new(&r);
 
         Ok(Self {
             robot_set_configuration_module: r,
             robot_set_joint_state_module,
-            robot_set_mesh_file_manager,
+            robot_set_mesh_file_manager_module,
             robot_set_kinematics_module
         })
     }
@@ -71,7 +71,7 @@ impl RobotSet {
         &self.robot_set_joint_state_module
     }
     pub fn robot_set_mesh_file_manager(&self) -> &RobotSetMeshFileManagerModule {
-        &self.robot_set_mesh_file_manager
+        &self.robot_set_mesh_file_manager_module
     }
     pub fn robot_set_kinematics_module(&self) -> &RobotSetKinematicsModule {
         &self.robot_set_kinematics_module
@@ -98,7 +98,7 @@ impl SaveAndLoadable for RobotSet {
     fn get_save_serialization_object(&self) -> Self::SaveType {
         (self.robot_set_configuration_module.get_serialization_string(),
          self.robot_set_joint_state_module.get_serialization_string(),
-         self.robot_set_mesh_file_manager.get_serialization_string(),
+         self.robot_set_mesh_file_manager_module.get_serialization_string(),
          self.robot_set_kinematics_module.get_serialization_string())
     }
 
@@ -113,7 +113,7 @@ impl SaveAndLoadable for RobotSet {
         Ok(Self {
             robot_set_configuration_module,
             robot_set_joint_state_module,
-            robot_set_mesh_file_manager,
+            robot_set_mesh_file_manager_module: robot_set_mesh_file_manager,
             robot_set_kinematics_module
         })
     }
@@ -127,7 +127,7 @@ pub struct RobotSetPy {
     #[pyo3(get)]
     robot_set_joint_state_module: Py<RobotSetJointStateModule>,
     #[pyo3(get)]
-    robot_set_mesh_file_manager: Py<RobotSetMeshFileManagerModule>,
+    robot_set_mesh_file_manager_module: Py<RobotSetMeshFileManagerModule>,
     #[pyo3(get)]
     robot_set_kinematics_module: Py<RobotSetKinematicsModule>,
     phantom_robot_set: RobotSet
@@ -142,7 +142,7 @@ impl RobotSetPy {
         Self {
             robot_set_configuration_module: Py::new(py, r.robot_set_configuration_module.clone()).expect("error"),
             robot_set_joint_state_module: Py::new(py, r.robot_set_joint_state_module.clone()).expect("error"),
-            robot_set_mesh_file_manager: Py::new(py, r.robot_set_mesh_file_manager.clone()).expect("error"),
+            robot_set_mesh_file_manager_module: Py::new(py, r.robot_set_mesh_file_manager_module.clone()).expect("error"),
             robot_set_kinematics_module: Py::new(py, r.robot_set_kinematics_module.clone()).expect("error"),
             phantom_robot_set: r
         }
@@ -154,7 +154,7 @@ impl RobotSetPy {
         Self {
             robot_set_configuration_module: Py::new(py, r.robot_set_configuration_module.clone()).expect("error"),
             robot_set_joint_state_module: Py::new(py, r.robot_set_joint_state_module.clone()).expect("error"),
-            robot_set_mesh_file_manager: Py::new(py, r.robot_set_mesh_file_manager.clone()).expect("error"),
+            robot_set_mesh_file_manager_module: Py::new(py, r.robot_set_mesh_file_manager_module.clone()).expect("error"),
             robot_set_kinematics_module: Py::new(py, r.robot_set_kinematics_module.clone()).expect("error"),
             phantom_robot_set: r
         }

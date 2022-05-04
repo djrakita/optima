@@ -571,6 +571,10 @@ impl RobotModelModule {
     pub fn print_link_tree_traversal_layers_with_link_names_py(&self) {
         self.print_link_tree_traversal_layers_with_link_names()
     }
+    pub fn links_py(&self) -> Vec<Link> {
+        self.links.clone()
+    }
+    pub fn joints_py(&self) -> Vec<Joint> { self.joints.clone() }
 }
 
 /// Methods supported by WASM.

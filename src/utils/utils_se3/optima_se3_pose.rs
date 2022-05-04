@@ -672,7 +672,36 @@ impl OptimaSE3PosePy {
             pose: OptimaSE3Pose::new_rotation_matrix_and_translation(rotation, translation)
         }
     }
-    
+
+    pub fn get_euler_angles_and_translation(&self) -> (Vec<f64>, Vec<f64>) {
+        let euler_angles_and_translation = self.pose.to_euler_angles_and_translation();
+        let e = euler_angles_and_translation.0;
+        let t = euler_angles_and_translation.1;
+        return (vec![e[0], e[1], e[2]], vec![t[0], t[1], t[2]])
+    }
+
+    /// \[i, j, k, w\]
+    pub fn get_unit_quaternion_and_translation(&self) -> (Vec<f64>, Vec<f64>) {
+        let unit_quat_and_translation_pose = self.pose.convert(&OptimaSE3PoseType::UnitQuaternionAndTranslation);
+        let unit_quat_and_translation = unit_quat_and_translation_pose.unwrap_rotation_and_translation().expect("error");
+        let q = unit_quat_and_translation.rotation().unwrap_unit_quaternion().expect("error");
+        let t = unit_quat_and_translation.translation();
+        return (vec![q.i, q.j, q.k, q.w], vec![t[0], t[1], t[2]])
+    }
+
+    pub fn get_rotation_matrix_and_translation(&self) -> (Vec<Vec<f64>>, Vec<f64>) {
+        let rot_mat_and_translation_pose = self.pose.convert(&OptimaSE3PoseType::RotationMatrixAndTranslation);
+        let rot_mat_and_translation = rot_mat_and_translation_pose.unwrap_rotation_and_translation().expect("error");
+        let r = rot_mat_and_translation.rotation().unwrap_rotation_matrix().expect("error");
+        let t = rot_mat_and_translation.translation();
+        let mat = vec![
+            vec![r[(0,0)], r[(0,1)], r[(0,2)]],
+            vec![r[(1,0)], r[(1,1)], r[(1,2)]],
+            vec![r[(2,0)], r[(2,1)], r[(2,2)]]
+        ];
+        return (mat, vec![t[0], t[1], t[2]])
+    }
+
     pub fn print_summary_py(&self) {
         println!("{:?}", self);
     }

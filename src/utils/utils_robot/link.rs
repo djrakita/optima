@@ -113,7 +113,27 @@ impl Link {
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
 impl Link {
-
+    pub fn name_py(&self) -> String {
+        self.name.clone()
+    }
+    pub fn present_py(&self) -> bool {
+        self.present
+    }
+    pub fn link_idx_py(&self) -> usize {
+        self.link_idx
+    }
+    pub fn preceding_link_idx_py(&self) -> Option<usize> {
+        return self.preceding_link_idx
+    }
+    pub fn children_link_idxs_py(&self) -> Vec<usize> {
+        self.children_link_idxs.clone()
+    }
+    pub fn preceding_joint_idx_py(&self) -> Option<usize> {
+        self.preceding_joint_idx
+    }
+    pub fn is_chain_base_link_py(&self) -> bool {
+        self.is_chain_base_link
+    }
 }
 
 /// Methods supported by WASM.

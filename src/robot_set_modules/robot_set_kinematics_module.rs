@@ -6,9 +6,9 @@ use wasm_bindgen::prelude::*;
 
 use nalgebra::DMatrix;
 use serde::{Serialize, Deserialize};
-use crate::robot_modules::robot_kinematics_module::{RobotKinematicsModule, RobotFKResult, FloatingLinkInput, JacobianEndPoint, JacobianMode};
+use crate::robot_modules::robot_kinematics_module::{RobotKinematicsModule, RobotFKResult, FloatingLinkInput, JacobianEndPoint, JacobianMode, RobotFKResultLinkEntry};
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
-use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateModule};
+use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateModule, RobotSetJointStateType};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
@@ -166,6 +166,19 @@ impl RobotSetKinematicsModule {
 
         Ok(jacobian)
     }
+    pub fn compute_reverse_fk(&self, input: &RobotSetFKResult) -> Result<RobotSetJointState, OptimaError> {
+        let mut out_state = self.robot_set_joint_state_module.spawn_zeros_robot_set_joint_state(RobotSetJointStateType::Full);
+        let mut idx = 0;
+        for (robot_idx_in_set, robot_fk_result) in input.robot_fk_results.iter().enumerate() {
+            let res = self.robot_kinematics_modules[robot_idx_in_set].compute_reverse_fk(robot_fk_result)?;
+            let len = res.len();
+            for i in 0..len {
+                out_state[idx] = res[i];
+                idx += 1;
+            }
+        }
+        Ok(out_state)
+    }
 }
 impl SaveAndLoadable for RobotSetKinematicsModule {
     type SaveType = (String, String);
@@ -220,6 +233,9 @@ impl RobotSetKinematicsModule {
 
         let jac_vecs = NalgebraConversions::dmatrix_to_vecs(&jac);
         return jac_vecs;
+    }
+    pub fn robot_kinematics_modules_py(&self) -> Vec<RobotKinematicsModule> {
+        self.robot_kinematics_modules.clone()
     }
 }
 
@@ -285,8 +301,20 @@ impl RobotSetFKResult {
     pub fn get_fk_result(&self, idx: usize) -> RobotFKResult {
         self.robot_fk_results.get(idx).unwrap().clone()
     }
-    pub fn num_fk_results(&self) -> usize {
-        self.robot_fk_results.len()
+    pub fn robot_fk_results_py(&self) -> Vec<RobotFKResult> {
+        self.robot_fk_results.clone()
+    }
+    pub fn robot_fk_result_link_entries(&self) -> Vec<Vec<RobotFKResultLinkEntry>> {
+        let mut out_vec = vec![];
+
+        for fk_res in &self.robot_fk_results {
+            out_vec.push(fk_res.link_entries().clone())
+        }
+
+        out_vec
+    }
+    pub fn print_summary_py(&self) {
+        self.print_summary();
     }
 }
 

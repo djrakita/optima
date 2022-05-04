@@ -11,7 +11,7 @@ use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJoint
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
-use crate::utils::utils_traits::SaveAndLoadable;
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 /// RobotSet analogue of the `RobotJointStateModule`.  The same concepts apply, just on a set of possibly
 /// multiple robots.
@@ -263,6 +263,21 @@ impl RobotSetJointStateModule {
         let out = self.convert_state_to_dof_state(&out).expect("error");
         let out: &Vec<f64> =  out.concatenated_state.data.as_vec();
         return out.clone();
+    }
+    #[args(robot_set_joint_state_type = "\"DOF\"")]
+    pub fn spawn_zeros_robot_set_joint_state_py(&self, robot_set_joint_state_type: &str) -> Vec<f64> {
+        let s = self.spawn_zeros_robot_set_joint_state(RobotSetJointStateType::from_ron_string(robot_set_joint_state_type).expect("error"));
+        let v: &Vec<f64> = s.concatenated_state.data.as_vec();
+        return v.clone()
+    }
+    pub fn num_dofs_py(&self) -> usize {
+        self.num_dofs()
+    }
+    pub fn num_axes_py(&self) -> usize {
+        self.num_axes()
+    }
+    pub fn robot_joint_state_modules_py(&self) -> Vec<RobotJointStateModule> {
+        self.robot_joint_state_modules.clone()
     }
 }
 

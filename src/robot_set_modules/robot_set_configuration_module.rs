@@ -126,6 +126,18 @@ impl RobotSetConfigurationModule {
     pub fn save_robot_set_configuration_module_py(&self, set_name: &str) {
         self.save_robot_set_configuration_module(set_name).expect("error");
     }
+    pub fn num_robot_configurations(&self) -> usize {
+        return self.robot_configuration_modules.len();
+    }
+    pub fn robot_configuration_modules_py(&self, py: Python) -> Vec<RobotConfigurationModulePy> {
+        let mut out_vec = vec![];
+
+        for c in &self.robot_configuration_modules {
+            out_vec.push(RobotConfigurationModulePy::new_from_configuration_module(c.clone(), py));
+        }
+
+        out_vec
+    }
 }
 
 

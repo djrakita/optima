@@ -63,10 +63,7 @@ impl RobotSetMeshFileManagerModule {
     pub fn new_py(robot_set_configuration_module: &RobotSetConfigurationModule) -> Self {
         Self::new(robot_set_configuration_module).expect("error")
     }
-    pub fn num_mesh_file_manager_modules(&self) -> usize {
-        self.robot_mesh_file_manager_modules.len()
-    }
-    pub fn get_mesh_file_manager_module(&self, idx: usize) -> RobotMeshFileManagerModule {
-        return self.robot_mesh_file_manager_modules[idx].clone()
+    pub fn robot_mesh_file_manager_modules_py(&self) -> Vec<RobotMeshFileManagerModule> {
+        self.robot_mesh_file_manager_modules.clone()
     }
 }

@@ -288,6 +288,15 @@ impl RobotConfigurationModulePy {
         }
     }
 
+    #[staticmethod]
+    pub fn new_from_configuration_module(robot_configuration_module: RobotConfigurationModule, py: Python) -> Self {
+        let robot_model_module_py = Py::new(py, robot_configuration_module.robot_model_module.clone()).expect("error");
+        Self {
+            robot_configuration_module,
+            robot_model_module_py
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn copy_robot_model_module_to_py(&mut self, py: Python) {
         self.robot_model_module_py = Py::new(py, self.robot_configuration_module.robot_model_module.clone()).expect("error");
