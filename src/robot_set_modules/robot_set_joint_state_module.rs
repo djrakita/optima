@@ -279,6 +279,20 @@ impl RobotSetJointStateModule {
     pub fn robot_joint_state_modules_py(&self) -> Vec<RobotJointStateModule> {
         self.robot_joint_state_modules.clone()
     }
+    pub fn split_robot_set_joint_state_into_robot_joint_states_py(&self, robot_set_joint_state: Vec<f64>) -> Vec<Vec<f64>> {
+        let d = DVector::from_vec(robot_set_joint_state);
+        let state = self.spawn_robot_set_joint_state_try_auto_type(d).expect("error");
+        let res = self.split_robot_set_joint_state_into_robot_joint_states(&state).expect("error");
+
+        let mut out_vec = vec![];
+
+        for r in &res {
+            let v: &Vec<f64> = r.joint_state().data.as_vec();
+            out_vec.push(v.clone());
+        }
+
+        out_vec
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

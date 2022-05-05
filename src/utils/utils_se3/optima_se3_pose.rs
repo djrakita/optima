@@ -603,25 +603,25 @@ pub struct OptimaSE3PosePy {
 #[pymethods]
 impl OptimaSE3PosePy {
     #[staticmethod]
-    pub fn new_implicit_dual_quaternion_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+    pub fn new_implicit_dual_quaternion_from_euler_angles_and_translation_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
         Self {
             pose: OptimaSE3Pose::new_implicit_dual_quaternion_from_euler_angles(rx, ry, rz, x, y, z)
         }
     }
     #[staticmethod]
-    pub fn new_homogeneous_matrix_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+    pub fn new_homogeneous_matrix_from_euler_angles_and_translation_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
         Self {
             pose: OptimaSE3Pose::new_homogeneous_matrix_from_euler_angles(rx, ry, rz, x, y, z)
         }
     }
     #[staticmethod]
-    pub fn new_unit_quaternion_and_translation_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+    pub fn new_unit_quaternion_and_translation_from_euler_angles_and_translation_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
         Self {
             pose: OptimaSE3Pose::new_unit_quaternion_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
         }
     }
     #[staticmethod]
-    pub fn new_rotation_matrix_and_translation_from_euler_angles_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
+    pub fn new_rotation_matrix_and_translation_from_euler_angles_and_translation_py(rx: f64, ry: f64, rz: f64, x: f64, y: f64, z: f64) -> Self {
         Self {
             pose: OptimaSE3Pose::new_rotation_matrix_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
         }

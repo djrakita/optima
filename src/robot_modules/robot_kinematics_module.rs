@@ -438,11 +438,17 @@ impl RobotKinematicsModule {
                             if axis[0] == 1.0 { rr[0] = joint_value }
                             else if axis[1] == 1.0 { rr[1] = joint_value }
                             else if axis[2] == 1.0 { rr[2] = joint_value }
+                            else if axis[0] == -1.0 { rr[0] = -joint_value }
+                            else if axis[1] == -1.0 { rr[1] = -joint_value }
+                            else if axis[2] == -1.0 { rr[2] = -joint_value }
                         }
                         JointAxisPrimitiveType::Translation => {
                             if axis[0] == 1.0 { tt[0] = joint_value }
                             else if axis[1] == 1.0 { tt[1] = joint_value }
                             else if axis[2] == 1.0 { tt[2] = joint_value }
+                            else if axis[0] == -1.0 { tt[0] = -joint_value }
+                            else if axis[1] == -1.0 { tt[1] = -joint_value }
+                            else if axis[2] == -1.0 { tt[2] = -joint_value }
                         }
                     }
                 }
@@ -495,7 +501,7 @@ impl RobotKinematicsModule {
         let preceding_joint = &joints[preceding_joint_idx];
 
         if !preceding_joint.is_joint_with_all_standard_axes() {
-            return Err(OptimaError::new_generic_error_str("Cannot perform reverse fk on a joint with non-standard axes.", file!(), line!()));
+            return Err(OptimaError::new_generic_error_str(&format!("Cannot perform reverse fk on a joint with non-standard axes.  Axes ---> {:?}", preceding_joint.joint_axes()), file!(), line!()));
         }
 
         let origin_offset_pose = preceding_joint.origin_offset_pose().get_pose_by_type(preceding_link_pose.map_to_pose_type());
@@ -504,37 +510,55 @@ impl RobotKinematicsModule {
 
         let displacement = combined_pose.displacement(&current_link_pose, false).expect("error");
 
-        let euler_angles_and_translation = displacement.to_euler_angles_and_translation();
-        let e = euler_angles_and_translation.0;
-        let t = euler_angles_and_translation.1;
-
         let joint_state_idxs = self.robot_joint_state_module.map_joint_idx_to_joint_state_idxs(preceding_joint_idx, &RobotJointStateType::Full)?;
 
-        for joint_state_idx in joint_state_idxs {
-            let joint_axis = &self.robot_joint_state_module.ordered_joint_axes()[*joint_state_idx];
-            let axis = joint_axis.axis();
+        if joint_state_idxs.len() == 1 {
+            let axis_angle_and_translation = displacement.to_axis_angle_and_translation();
+            let axis = axis_angle_and_translation.0;
+            let angle= axis_angle_and_translation.1;
+            let translation = axis_angle_and_translation.2;
+
+            let joint_state_idx = joint_state_idxs[0];
+            let joint_axis = &self.robot_joint_state_module.ordered_joint_axes()[joint_state_idx];
+            let joint_axis_axis = joint_axis.axis();
+            let joint_axis_axis_vec = joint_axis_axis.as_slice();
 
             match joint_axis.axis_primitive_type() {
                 JointAxisPrimitiveType::Rotation => {
-                    if axis[0] == 1.0 {
-                        joint_state[*joint_state_idx] = e[0];
-                    } else if axis[1] == 1.0 {
-                        joint_state[*joint_state_idx] = e[1];
-                    } else if axis[2] == 1.0 {
-                        joint_state[*joint_state_idx] = e[2];
-                    } else {
-                        return Err(OptimaError::new_generic_error_str("Looks like a non-standard joint snuck through in reverse fk computation...probably go fix that...", file!(), line!()));
+                    for (i, aa) in joint_axis_axis_vec.iter().enumerate() {
+                        if *aa == 1.0 { joint_state[joint_state_idx] = axis[i] * angle; }
+                        else if *aa == -1.0 { joint_state[joint_state_idx] = -axis[i] * angle; }
                     }
                 }
                 JointAxisPrimitiveType::Translation => {
-                    if axis[0] == 1.0 {
-                        joint_state[*joint_state_idx] = t[0];
-                    } else if axis[1] == 1.0 {
-                        joint_state[*joint_state_idx] = t[1];
-                    } else if axis[2] == 1.0 {
-                        joint_state[*joint_state_idx] = t[2];
-                    } else {
-                        return Err(OptimaError::new_generic_error_str("Looks like a non-standard joint snuck through in reverse fk computation...probably go fix that...", file!(), line!()));
+                    for (i, aa) in joint_axis_axis_vec.iter().enumerate() {
+                        if *aa == 1.0 { joint_state[joint_state_idx] = translation[i]; }
+                        else if *aa == -1.0 { joint_state[joint_state_idx] = -translation[i]; }
+                    }
+                }
+            }
+        } else {
+            let euler_angles_and_translation = displacement.to_euler_angles_and_translation();
+            let e = euler_angles_and_translation.0;
+            let t = euler_angles_and_translation.1;
+
+            for joint_state_idx in joint_state_idxs {
+                let joint_axis = &self.robot_joint_state_module.ordered_joint_axes()[*joint_state_idx];
+                let joint_axis_axis = joint_axis.axis();
+                let joint_axis_axis_vec = joint_axis_axis.as_slice();
+
+                match joint_axis.axis_primitive_type() {
+                    JointAxisPrimitiveType::Rotation => {
+                        for (i, aa) in joint_axis_axis_vec.iter().enumerate() {
+                            if *aa == 1.0 { joint_state[*joint_state_idx] = e[i] }
+                            else if *aa == -1.0 { joint_state[*joint_state_idx] = -e[i] }
+                        }
+                    }
+                    JointAxisPrimitiveType::Translation => {
+                        for (i, aa) in joint_axis_axis_vec.iter().enumerate() {
+                            if *aa == 1.0 { joint_state[*joint_state_idx] = t[i] }
+                            else if *aa == -1.0 { joint_state[*joint_state_idx] = -t[i] }
+                        }
                     }
                 }
             }
@@ -617,6 +641,27 @@ impl RobotKinematicsModule {
 
         let jac_vecs = NalgebraConversions::dmatrix_to_vecs(&jac);
         return jac_vecs;
+    }
+    pub fn compute_reverse_fk_py(&self, v: Vec<Option<OptimaSE3PosePy>>) -> Vec<f64> {
+        let mut input = RobotFKResult::new_empty(self);
+        let num_link_entries = input.link_entries().len();
+        if num_link_entries != v.len() {
+            panic!("{}", &format!("Given OptimaSE3PosePy vec in compute_reverse_fk_from_pose_vec_py does not have the correct length (should be {}, is {}.)", num_link_entries, v.len()));
+        }
+
+        for (i, pose) in v.iter().enumerate() {
+            match pose {
+                None => { input.link_entries[i].pose = None; }
+                Some(pose) => { input.link_entries[i].pose = Some(pose.pose().clone()); }
+            }
+        }
+
+        return self.compute_reverse_fk_from_input_py(&input);
+    }
+    fn compute_reverse_fk_from_input_py(&self, input: &RobotFKResult) -> Vec<f64> {
+        let res = self.compute_reverse_fk(input).expect("error");
+        let state: &Vec<f64> = res.joint_state().data.as_vec();
+        return state.clone();
     }
 }
 

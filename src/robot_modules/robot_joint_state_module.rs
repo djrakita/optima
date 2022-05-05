@@ -139,11 +139,11 @@ impl RobotJointStateModule {
     }
     /// Converts a joint state to a full state.
     pub fn convert_joint_state_to_full_state(&self, joint_state: &RobotJointState) -> Result<RobotJointState, OptimaError> {
+        if joint_state.robot_joint_state_type() == &RobotJointStateType::Full { return Ok(joint_state.clone()); }
+
         if joint_state.len() != self.num_dofs {
             return Err(OptimaError::new_robot_state_vec_wrong_size_error("convert_dof_state_to_full_state", joint_state.len(), self.num_dofs, file!(), line!()))
         }
-
-        if joint_state.robot_joint_state_type() == &RobotJointStateType::DOF { return Ok(joint_state.clone()); }
 
         let mut out_robot_state_vector = DVector::zeros(self.num_axes);
 
@@ -162,11 +162,11 @@ impl RobotJointStateModule {
     }
     /// Converts a joint state to a dof joint state.
     pub fn convert_joint_state_to_dof_state(&self, joint_state: &RobotJointState) -> Result<RobotJointState, OptimaError> {
+        if joint_state.robot_joint_state_type() == &RobotJointStateType::DOF { return Ok(joint_state.clone()); }
+
         if joint_state.len() != self.num_axes() {
             return Err(OptimaError::new_robot_state_vec_wrong_size_error("convert_full_state_to_dof_state", joint_state.len(), self.num_axes, file!(), line!()))
         }
-
-        if joint_state.robot_joint_state_type() == &RobotJointStateType::Full { return Ok(joint_state.clone()); }
 
         let mut out_robot_state_vector = DVector::zeros(self.num_dofs);
 
@@ -385,6 +385,19 @@ impl RobotJointStateModule {
         let vec: &Vec<f64> = s.joint_state.data.as_vec();
         return vec.clone();
     }
+    pub fn map_joint_idx_to_dof_joint_state_idxs_py(&self, joint_idx: usize) -> Vec<usize> {
+        self.map_joint_idx_to_joint_state_idxs(joint_idx, &RobotJointStateType::DOF).expect("error").clone()
+    }
+    pub fn map_joint_idx_to_full_joint_state_idxs_py(&self, joint_idx: usize) -> Vec<usize> {
+        self.map_joint_idx_to_joint_state_idxs(joint_idx, &RobotJointStateType::Full).expect("error").clone()
+    }
+    pub fn ordered_dof_joint_axes_py(&self) -> Vec<JointAxis> {
+        self.ordered_dof_joint_axes.clone()
+    }
+    pub fn ordered_joint_axes_py(&self) -> Vec<JointAxis> {
+        self.ordered_joint_axes.clone()
+    }
+
 }
 
 /// WASM implementations.

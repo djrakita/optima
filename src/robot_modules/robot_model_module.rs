@@ -575,6 +575,12 @@ impl RobotModelModule {
         self.links.clone()
     }
     pub fn joints_py(&self) -> Vec<Joint> { self.joints.clone() }
+    pub fn world_link_idx_py(&self) -> usize {
+        self.world_link_idx
+    }
+    pub fn link_tree_traversal_layers_py(&self) -> Vec<Vec<usize>> {
+        self.link_tree_traversal_layers.clone()
+    }
 }
 
 /// Methods supported by WASM.

@@ -257,7 +257,8 @@ impl Joint {
         let mut out_val = true;
         for a in &self.joint_axes {
             let axis = &a.axis;
-            if !(axis == &Vector3::new(1.,0.,0.) || axis == &Vector3::new(0.,1.,0.) || axis == &Vector3::new(0.,0.,1.)) {
+            if !(axis == &Vector3::new(1.,0.,0.) || axis == &Vector3::new(0.,1.,0.) || axis == &Vector3::new(0.,0.,1.) ||
+                axis == &Vector3::new(-1.,0.,0.) || axis == &Vector3::new(0.,-1.,0.) || axis == &Vector3::new(0.,0.,-1.)) {
                 out_val = false;
             }
         }
