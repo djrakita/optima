@@ -1,6 +1,10 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use serde::{Serialize, Deserialize};
-use nalgebra::{UnitQuaternion, Rotation3, Vector3, Unit};
+use nalgebra::{UnitQuaternion, Rotation3, Vector3, Unit, Matrix3};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_traits::ToAndFromRonString;
 
 /// An enum used to represent a rotation or orientation.  The enum affords easy conversion between
 /// rotation types and functions over singular or pairs of rotations.
@@ -31,6 +35,56 @@ impl OptimaRotation {
     pub fn new_unit_quaternion_from_axis_angle(axis: &Unit<Vector3<f64>>, angle: f64) -> OptimaRotation {
         let data = UnitQuaternion::from_axis_angle(axis, angle);
         return Self::new_unit_quaternion(data);
+    }
+    pub fn new_rotation_matrix_from_lookat(lookat_direction: Vector3<f64>, lookat_axis: LookatAxis) -> OptimaRotation {
+        let mut mat = Matrix3::identity();
+
+        let lookat_column = match lookat_axis {
+            LookatAxis::X => {0}
+            LookatAxis::Y => {1}
+            LookatAxis::Z => {2}
+            LookatAxis::NegX => {0}
+            LookatAxis::NegY => {1}
+            LookatAxis::NegZ => {2}
+        };
+        let multiplier = match lookat_axis {
+            LookatAxis::X => {1.0}
+            LookatAxis::Y => {1.0}
+            LookatAxis::Z => {1.0}
+            LookatAxis::NegX => {-1.0}
+            LookatAxis::NegY => {-1.0}
+            LookatAxis::NegZ => {-1.0}
+        };
+        let column_a = (lookat_column + 1) % 3;
+        let column_b = (lookat_column + 2) % 3;
+
+        let l = multiplier * lookat_direction.normalize();
+        mat[(0, lookat_column)] = l[0];
+        mat[(1, lookat_column)] = l[1];
+        mat[(2, lookat_column)] = l[2];
+
+        let mut u = Vector3::new(0.,0.,1.);
+        let dot_test = l.dot(&u);
+        if dot_test == 1.0 || dot_test == -1.0 {
+            u = Vector3::new(0.,1.,0.);
+        }
+
+        let c_a = l.cross(&u).normalize();
+        mat[(0, column_a)] = c_a[0];
+        mat[(1, column_a)] = c_a[1];
+        mat[(2, column_a)] = c_a[2];
+
+        let c_b = l.cross(&c_a).normalize();
+        mat[(0, column_b)] = c_b[0];
+        mat[(1, column_b)] = c_b[1];
+        mat[(2, column_b)] = c_b[2];
+
+        let data = Rotation3::from_matrix(&mat);
+        return Self::new_rotation_matrix(data);
+    }
+    pub fn new_quaternion_from_lookat(lookat_direction: Vector3<f64>, lookat_axis: LookatAxis) -> OptimaRotation {
+        let r = Self::new_rotation_matrix_from_lookat(lookat_direction, lookat_axis);
+        return r.convert(&OptimaRotationType::UnitQuaternion);
     }
     /// Creates new rotation by exponentating the logarithm vector (the vector returned by ln()
     /// function).
@@ -354,4 +408,59 @@ impl OptimaRotation {
 pub enum OptimaRotationType {
     RotationMatrix,
     UnitQuaternion
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum LookatAxis {
+    X,Y,Z,NegX,NegY,NegZ
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+pub struct OptimaRotationPy {
+    rotation: OptimaRotation
+}
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl OptimaRotationPy {
+    #[staticmethod]
+    pub fn new_rotation_matrix_from_lookat_py(lookat: Vec<f64>, lookat_axis: &str) -> Self {
+        let v = Vector3::new(lookat[0], lookat[1], lookat[2]);
+        let rotation = OptimaRotation::new_rotation_matrix_from_lookat(v, LookatAxis::from_ron_string(lookat_axis).expect("error"));
+        return Self {
+            rotation
+        }
+    }
+    #[staticmethod]
+    pub fn new_rotation_matrix_from_euler_angles_py(rx: f64, ry: f64, rz: f64) -> Self {
+        let rotation = OptimaRotation::new_rotation_matrix_from_euler_angles(rx, ry, rz);
+        return Self {
+            rotation
+        }
+    }
+    pub fn to_euler_angles_py(&self) -> Vec<f64> {
+        let mut out_vec = vec![];
+
+        let e = self.rotation.to_euler_angles();
+        out_vec.push(e[0]);
+        out_vec.push(e[1]);
+        out_vec.push(e[2]);
+
+        out_vec
+    }
+    pub fn to_axis_angle_py(&self) -> (Vec<f64>, f64) {
+        let mut out_vec = vec![];
+
+        let e = self.rotation.to_axis_angle();
+        out_vec.push(e.0[0]);
+        out_vec.push(e.0[1]);
+        out_vec.push(e.0[2]);
+
+        (out_vec, e.1)
+    }
+    pub fn print_summary_py(&self) {
+        println!("{:?}", self);
+    }
+}
+impl OptimaRotationPy {
+    pub fn rotation(&self) -> &OptimaRotation { &self.rotation }
 }

@@ -234,6 +234,14 @@ impl RobotSetKinematicsModule {
         let jac_vecs = NalgebraConversions::dmatrix_to_vecs(&jac);
         return jac_vecs;
     }
+    pub fn compute_reverse_fk_py(&self, v: Vec<Vec<Option<OptimaSE3PosePy>>>) -> Vec<f64> {
+        let mut out_vec = vec![];
+        for (robot_idx_in_set, vec) in v.iter().enumerate() {
+            let res = self.robot_kinematics_modules[robot_idx_in_set].compute_reverse_fk_py(vec.clone());
+            for r in res { out_vec.push(r); }
+        }
+        return out_vec;
+    }
     pub fn robot_kinematics_modules_py(&self) -> Vec<RobotKinematicsModule> {
         self.robot_kinematics_modules.clone()
     }
