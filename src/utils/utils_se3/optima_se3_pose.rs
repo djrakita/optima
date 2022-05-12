@@ -702,6 +702,12 @@ impl OptimaSE3PosePy {
         return (mat, vec![t[0], t[1], t[2]])
     }
 
+    pub fn get_homogeneous_matrix(&self) -> Vec<Vec<f64>> {
+        let homogeneous_matrix = self.pose.convert(&OptimaSE3PoseType::HomogeneousMatrix);
+        let mat = homogeneous_matrix.unwrap_homogeneous_matrix().expect("error");
+        return mat.to_vec_representation();
+    }
+
     pub fn print_summary_py(&self) {
         println!("{:?}", self);
     }
