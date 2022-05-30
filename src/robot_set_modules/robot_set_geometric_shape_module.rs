@@ -168,7 +168,7 @@ impl RobotSetGeometricShapeModule {
         for s in &self.robot_set_shape_collections {
             if &s.robot_link_shape_representation == shape_representation { return Ok(s) }
         }
-        Err(OptimaError::UnreachableCode)
+        unreachable!();
     }
     fn setup_robot_set_shape_collections(&mut self, robot_set_configuration_module: &RobotSetConfigurationModule) -> Result<(), OptimaError> {
         let mut robot_geometric_shape_modules = vec![];

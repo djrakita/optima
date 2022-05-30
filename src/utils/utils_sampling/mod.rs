@@ -24,4 +24,9 @@ impl SimpleSamplers {
         }
         out_vec
     }
+    pub fn uniform_samples_i32(bounds: &Vec<(i32, i32)>) -> Vec<i32> {
+        let bounds: Vec<(f64, f64)> = bounds.iter().map(|x| (x.0 as f64, x.1 as f64) ).collect();
+        let float_samples = Self::uniform_samples(&bounds);
+        return float_samples.iter().map(|x| x.round() as i32).collect();
+    }
 }

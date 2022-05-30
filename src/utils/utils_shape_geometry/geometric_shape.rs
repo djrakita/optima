@@ -324,6 +324,7 @@ impl GeometricShapeQueries {
             signatures: input.get_signatures()
         }
     }
+
     pub fn intersection_test(object1: &GeometricShape,
                              object1_pose: &OptimaSE3Pose,
                              object2: &GeometricShape,

@@ -121,6 +121,7 @@ impl SaveAndLoadable for RobotSet {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[pyclass]
+#[derive(Clone)]
 pub struct RobotSetPy {
     #[pyo3(get)]
     robot_set_configuration_module: Py<RobotSetConfigurationModule>,
@@ -136,7 +137,7 @@ pub struct RobotSetPy {
 #[pymethods]
 impl RobotSetPy {
     #[new]
-    pub fn new_from_set_name_py(set_name: &str, py: Python) -> Self {
+    pub fn new_from_set_name(set_name: &str, py: Python) -> Self {
         let r = RobotSet::new_from_set_name(set_name).expect("error");
 
         Self {
@@ -148,7 +149,7 @@ impl RobotSetPy {
         }
     }
     #[staticmethod]
-    pub fn new_py(robot_set_configuration_module: &RobotSetConfigurationModule, py: Python) -> Self {
+    pub fn new(robot_set_configuration_module: &RobotSetConfigurationModule, py: Python) -> Self {
         let r = RobotSet::new_from_robot_set_configuration_module(robot_set_configuration_module.clone()).expect("error");
 
         Self {
@@ -160,12 +161,17 @@ impl RobotSetPy {
         }
     }
     #[staticmethod]
-    pub fn new_single_robot_py(robot_name: &str, configuration_name: Option<&str>, py: Python) -> Self {
+    pub fn new_single_robot(robot_name: &str, configuration_name: Option<&str>, py: Python) -> Self {
         let mut robot_set_configuration_module = RobotSetConfigurationModule::new_empty();
         robot_set_configuration_module.add_robot_configuration_from_names(RobotNames::new(robot_name, configuration_name)).expect("error");
-        Self::new_py(&robot_set_configuration_module, py)
+        Self::new(&robot_set_configuration_module, py)
     }
-    pub fn generate_robot_set_geometric_shape_module_py(&self) -> RobotSetGeometricShapeModule {
+    pub fn generate_robot_set_geometric_shape_module(&self) -> RobotSetGeometricShapeModule {
         self.phantom_robot_set.generate_robot_set_geometric_shape_module().expect("error")
+    }
+}
+impl RobotSetPy {
+    pub fn get_robot_set(&self) -> &RobotSet {
+        &self.phantom_robot_set
     }
 }

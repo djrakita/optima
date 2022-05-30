@@ -34,6 +34,12 @@ getrandom = { version="0.2.6", features=["js"] }
 ron = "0.7"
 toml = "0.5.9"
 instant = { version = "0.1", features = [ "wasm-bindgen" ] }
+took = "0.1.2"
+took-macro = "0.1"
+enum_index = "0.2.0"
+enum_index_derive = "0.2.0"
+strum = { version = "0.24", features = ["derive"] }
+itertools = "0.10.3"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }

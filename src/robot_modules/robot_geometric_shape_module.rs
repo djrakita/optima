@@ -250,13 +250,13 @@ impl RobotGeometricShapeModule {
         for s in &self.robot_shape_collections {
             if &s.robot_link_shape_representation == shape_representation { return Ok(s) }
         }
-        Err(OptimaError::UnreachableCode)
+        unreachable!()
     }
     fn robot_geometric_shape_collection_mut(&mut self, shape_representation: &RobotLinkShapeRepresentation) -> Result<&mut RobotShapeCollection, OptimaError> {
         for s in &mut self.robot_shape_collections {
             if &s.robot_link_shape_representation == shape_representation { return Ok(s) }
         }
-        Err(OptimaError::UnreachableCode)
+        unreachable!()
     }
     pub fn shape_collection_query<'a>(&'a self,
                                       input: &'a RobotShapeCollectionQuery,

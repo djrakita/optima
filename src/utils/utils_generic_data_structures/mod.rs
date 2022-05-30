@@ -1,7 +1,11 @@
 use std::fmt::Debug;
+use std::marker::PhantomData;
+use enum_index::EnumIndex;
 use serde_with::{serde_as};
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
+use enum_index::*;
+use strum::EnumCount;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
@@ -415,4 +419,195 @@ impl Default for AveragingFloat {
     }
 }
 
+pub struct EnumObjectContainer<T, S>
+    where T: EnumIndexWrapper + EnumCount,
+          S: EnumIndexWrapper + EnumCount {
+    enum_objects: Vec<Option<T>>,
+    _phantom: PhantomData<S>
+}
+impl <T, S> EnumObjectContainer<T, S>
+    where T: EnumIndexWrapper + EnumCount,
+          S: EnumIndexWrapper + EnumCount {
+    pub fn new() -> Result<Self, OptimaError> {
+        let c1 = T::COUNT;
+        let c2 = S::COUNT;
 
+        if c1 != c2 {
+            let error_string = format!("Illegal Enums used in EnumObjectContainer.  \
+            The base and signature enums must be of equal length.  The given lengths are {} and {}.", c1, c2);
+            return Err(OptimaError::new_generic_error_str(&error_string, file!(), line!()));
+        }
+
+        let mut enum_objects = vec![];
+        let count = T::COUNT;
+        for _ in 0..count { enum_objects.push(None); }
+
+        Ok(Self {
+            enum_objects,
+            _phantom: Default::default()
+        })
+    }
+    pub fn insert_or_replace_object(&mut self, object: T) {
+        let idx = object.enum_index_wrapper();
+        self.enum_objects[idx] = Some(object);
+    }
+    pub fn object_ref(&self, signature: S) -> Option<&T> {
+        let idx = signature.enum_index_wrapper();
+        let o = &self.enum_objects[idx];
+        return match o {
+            None => { None }
+            Some(o) => { Some(o) }
+        }
+    }
+    pub fn object_mut_ref(&mut self, signature: S) -> Option<&mut T> {
+        let idx = signature.enum_index_wrapper();
+        let o = &mut self.enum_objects[idx];
+        return match o {
+            None => { None }
+            Some(o) => { Some(o) }
+        }
+    }
+    pub fn remove_object(&mut self, signature: S) {
+        let idx = signature.enum_index_wrapper();
+        self.enum_objects[idx] = None;
+    }
+    pub fn contains_object(&self, signature: S) -> bool {
+        return self.object_ref(signature).is_some();
+    }
+}
+
+pub trait EnumIndexWrapper {
+    fn enum_index_wrapper(&self) -> usize;
+}
+impl <T> EnumIndexWrapper for T where T: EnumIndex + IndexEnum {
+    fn enum_index_wrapper(&self) -> usize {
+        self.enum_index()
+    }
+}
+
+/*
+pub struct HashObjectContainer {
+    default_hasher: DefaultHasher,
+    objects: Vec<(u64, Box<dyn MappableToHashableObject>)>
+}
+impl HashObjectContainer {
+    pub fn new() -> HashObjectContainer {
+        Self {
+            default_hasher: Default::default(),
+            objects: vec![]
+        }
+    }
+    pub fn insert_or_replace_object<T>(&mut self, o: T) where T: MappableToHashableObject + 'static {
+        let h = o.map_to_hashable_object().get_hash(&mut self.default_hasher);
+        let binary_search_res = self.get_binary_search_idx(h);
+        match binary_search_res {
+            BinarySearchRes::Found(idx) => {
+                self.objects[idx] = (h, Box::new(o));
+            }
+            BinarySearchRes::NotFound(idx) => {
+                self.objects.insert(idx, (h, Box::new(o)));
+            }
+        }
+    }
+    pub fn remove_object(&mut self, ho: HashableObject) {
+        let h = ho.get_hash(&mut self.default_hasher);
+        let binary_search_res = self.get_binary_search_idx(h);
+        match binary_search_res {
+            BinarySearchRes::Found(idx) => {
+                self.objects.remove(idx);
+            }
+            _ => {  }
+        }
+    }
+    pub fn object_ref<'a, T>(&mut self, ho: HashableObject) -> Option<&Box<T>>
+        where T: MappableToHashableObject + 'static,
+              &'a std::boxed::Box<T>: std::convert::From<&'a std::boxed::Box<dyn MappableToHashableObject>> {
+        let h = ho.get_hash(&mut self.default_hasher);
+        let binary_search_res = self.get_binary_search_idx(h);
+        return match binary_search_res {
+            BinarySearchRes::Found(idx) => {
+                Some((&self.objects[idx].1).into())
+            }
+            BinarySearchRes::NotFound(_) => {
+                None
+            }
+        }
+    }
+    pub fn object_mut_ref(&mut self, ho: HashableObject) -> Option<&mut Box<dyn MappableToHashableObject>> {
+        let h = ho.get_hash(&mut self.default_hasher);
+        let binary_search_res = self.get_binary_search_idx(h);
+        return match binary_search_res {
+            BinarySearchRes::Found(idx) => {
+                Some(&mut self.objects[idx].1)
+            }
+            BinarySearchRes::NotFound(_) => {
+                None
+            }
+        }
+    }
+    fn get_binary_search_idx(&self, idx: u64) -> BinarySearchRes {
+        let binary_search_res = self.objects.binary_search_by(|x| x.0.partial_cmp(&idx).unwrap() );
+        return match binary_search_res {
+            Ok(idx) => { BinarySearchRes::Found(idx) }
+            Err(idx) => { BinarySearchRes::NotFound(idx) }
+        }
+    }
+}
+
+pub enum BinarySearchRes {
+    Found(usize),
+    NotFound(usize)
+}
+impl BinarySearchRes {
+    pub fn get_idx(&self) -> usize {
+        return match self {
+            BinarySearchRes::Found(idx) => { *idx }
+            BinarySearchRes::NotFound(idx) => { *idx }
+        }
+    }
+}
+
+pub trait MappableToHashableObject : Debug {
+    fn map_to_hashable_object(&self) -> HashableObject;
+}
+impl <T> MappableToHashableObject for T where T: HashWrapper {
+    fn map_to_hashable_object(&self) -> HashableObject {
+        HashableObject::Ref(Box::new(self))
+    }
+}
+
+#[derive(Debug)]
+pub enum HashableObject<'a> {
+    Ref(Box<&'a dyn HashWrapper>),
+    NonRef(Box<dyn HashWrapper>)
+}
+impl <'a> HashableObject <'a> {
+    pub fn new_ref<T>(t: &'a T) -> Self where T: HashWrapper {
+        return Self::Ref(Box::new(t));
+    }
+    pub fn new_non_ref<T>(t: T) -> Self where T: HashWrapper + 'static {
+        return Self::NonRef(Box::new(t));
+    }
+    pub fn get_hash(&self, h: &mut DefaultHasher) -> u64 {
+        return match self {
+            HashableObject::Ref(hw) => {
+                hw.hash_wrapper(h);
+                h.finish()
+            }
+            HashableObject::NonRef(hw) => {
+                hw.hash_wrapper(h);
+                h.finish()
+            }
+        }
+    }
+}
+
+pub trait HashWrapper : Debug {
+    fn hash_wrapper(&self, h: &mut DefaultHasher);
+}
+impl<T: Hash + Debug> HashWrapper for T {
+    fn hash_wrapper(&self, h: &mut DefaultHasher) {
+        self.hash(h);
+    }
+}
+*/

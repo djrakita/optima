@@ -52,6 +52,22 @@ impl ShapeCollection {
         self.skips.append_new_row_and_column(Some(MemoryCell::new(false)));
         self.average_distances.append_new_row_and_column(Some(MemoryCell::new(1.0)));
     }
+    pub fn shapes(&self) -> &Vec<GeometricShape> {
+        &self.shapes
+    }
+    pub fn skips(&self) -> &SquareArray2D<MemoryCell<bool>> {
+        &self.skips
+    }
+    pub fn average_distances(&self) -> &SquareArray2D<MemoryCell<f64>> {
+        &self.average_distances
+    }
+    pub fn skips_mut(&mut self) -> &mut SquareArray2D<MemoryCell<bool>> {
+        &mut self.skips
+    }
+    pub fn average_distances_mut(&mut self) -> &mut SquareArray2D<MemoryCell<f64>> {
+        &mut self.average_distances
+    }
+
     pub fn set_base_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         if idx1 == idx2 {
             return self.skips.adjust_data(|x| x.replace_base_value(true), idx1, idx2 )
@@ -64,14 +80,9 @@ impl ShapeCollection {
     pub fn reset_skip_to_base_from_idxs(&mut self, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.skips.adjust_data(|x| x.reset_to_base_value(false), idx1, idx2 )
     }
+
     pub fn set_base_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.average_distances.adjust_data(|x| x.replace_base_value(dis), idx1, idx2 )
-    }
-    pub fn replace_average_distance(&mut self, dis: f64, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature) -> Result<(), OptimaError> {
-        let idx1 = self.get_shape_idx_from_signature(signature1)?;
-        let idx2 = self.get_shape_idx_from_signature(signature2)?;
-
-        self.replace_average_distance_from_idxs(dis, idx1, idx2)
     }
     pub fn replace_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.average_distances.adjust_data(|x| x.replace_value(dis, false), idx1, idx2 )
@@ -79,15 +90,22 @@ impl ShapeCollection {
     pub fn reset_average_distance_to_base_from_idxs(&mut self, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.average_distances.adjust_data(|x| x.reset_to_base_value(false), idx1, idx2 )
     }
-    pub fn shapes(&self) -> &Vec<GeometricShape> {
-        &self.shapes
+
+    pub fn set_skips(&mut self, skips: SquareArray2D<MemoryCell<bool>>) -> Result<(), OptimaError> {
+        if skips.side_length() != self.skips.side_length() {
+            return Err(OptimaError::new_generic_error_str(&format!("Tried to set skips with incorrect size matrix."), file!(), line!()));
+        }
+        self.skips = skips;
+        Ok(())
     }
-    pub fn skips(&self) -> &SquareArray2D<MemoryCell<bool>> {
-        &self.skips
+    pub fn set_average_distances(&mut self, average_distances: SquareArray2D<MemoryCell<f64>>) -> Result<(), OptimaError> {
+        if average_distances.side_length() != self.average_distances.side_length() {
+            return Err(OptimaError::new_generic_error_str(&format!("Tried to set average distances with incorrect size matrix."), file!(), line!()));
+        }
+        self.average_distances = average_distances;
+        Ok(())
     }
-    pub fn average_distances(&self) -> &SquareArray2D<MemoryCell<f64>> {
-        &self.average_distances
-    }
+
     pub fn get_shape_idx_from_signature(&self, signature: &GeometricShapeSignature) -> Result<usize, OptimaError> {
         let binary_search_res = self.sorted_signatures_with_shape_idxs.binary_search_by(|x| signature.partial_cmp(&x.0).unwrap());
         return match binary_search_res {
@@ -114,10 +132,22 @@ impl ShapeCollection {
             ShapeCollectionQuery::CCD { .. } => { self.get_pairwise_objects_geometric_shape_query_input_vec(input) }
         }
     }
+
+    /// This is the workhorse function of this struct.  It does lots of kinds of geometric shape queries
+    /// over collections of shapes.
+    pub fn shape_collection_query<'a>(&'a self,
+                                      input: &'a ShapeCollectionQuery,
+                                      stop_condition: StopCondition,
+                                      log_condition: LogCondition,
+                                      sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
+        let input_vec = self.get_geometric_shape_query_input_vec(input)?;
+        Ok(GeometricShapeQueries::generic_group_query(input_vec, stop_condition, log_condition, sort_outputs))
+    }
+
     fn get_single_object_geometric_shape_query_input_vec<'a>(&'a self, input: &'a ShapeCollectionQuery) -> Result<Vec<GeometricShapeQuery<'a>>, OptimaError> {
         let mut out_vec = vec![];
 
-        let poses = &input.get_poses()?[0].poses;
+        let poses = &input.get_shape_collection_input_poses()?[0].poses;
         for (i, s) in self.shapes.iter().enumerate() {
             let pose = &poses[i];
             if let Some(pose) = pose {
@@ -171,7 +201,7 @@ impl ShapeCollection {
                             solid: *solid
                         });
                     }
-                    _ => { return Err(OptimaError::UnreachableCode) }
+                    _ => { unreachable!()}
                 }
             }
         }
@@ -180,7 +210,7 @@ impl ShapeCollection {
     fn get_pairwise_objects_geometric_shape_query_input_vec<'a>(&'a self, input: &'a ShapeCollectionQuery) -> Result<Vec<GeometricShapeQuery<'a>>, OptimaError> {
         let mut out_vec = vec![];
 
-        let poses = &input.get_poses()?[0].poses;
+        let poses = &input.get_shape_collection_input_poses()?[0].poses;
 
         for (i, shape1) in self.shapes.iter().enumerate() {
             let pose1 = &poses[i];
@@ -242,7 +272,7 @@ impl ShapeCollection {
                                             }
                                         }
                                     }
-                                    _ => { return Err(OptimaError::UnreachableCode) }
+                                    _ => { unreachable!() }
                                 }
                             }
                         }
@@ -252,28 +282,6 @@ impl ShapeCollection {
         }
 
         Ok(out_vec)
-    }
-    pub fn shape_collection_query<'a>(&'a self,
-                                      input: &'a ShapeCollectionQuery,
-                                      stop_condition: StopCondition,
-                                      log_condition: LogCondition,
-                                      sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
-        let input_vec = self.get_geometric_shape_query_input_vec(input)?;
-        Ok(GeometricShapeQueries::generic_group_query(input_vec, stop_condition, log_condition, sort_outputs))
-    }
-    pub fn set_skips(&mut self, skips: SquareArray2D<MemoryCell<bool>>) -> Result<(), OptimaError> {
-        if skips.side_length() != self.skips.side_length() {
-            return Err(OptimaError::new_generic_error_str(&format!("Tried to set skips with incorrect size matrix."), file!(), line!()));
-        }
-        self.skips = skips;
-        Ok(())
-    }
-    pub fn set_average_distances(&mut self, average_distances: SquareArray2D<MemoryCell<f64>>) -> Result<(), OptimaError> {
-        if average_distances.side_length() != self.average_distances.side_length() {
-            return Err(OptimaError::new_generic_error_str(&format!("Tried to set average distances with incorrect size matrix."), file!(), line!()));
-        }
-        self.average_distances = average_distances;
-        Ok(())
     }
 }
 impl SaveAndLoadable for ShapeCollection {
@@ -318,7 +326,7 @@ pub enum ShapeCollectionQuery<'a> {
     CCD { poses_t1: &'a ShapeCollectionInputPoses, poses_t2: &'a ShapeCollectionInputPoses }
 }
 impl <'a> ShapeCollectionQuery<'a> {
-    fn get_poses(&self) -> Result<Vec<&'a ShapeCollectionInputPoses>, OptimaError> {
+    fn get_shape_collection_input_poses(&self) -> Result<Vec<&'a ShapeCollectionInputPoses>, OptimaError> {
         match self {
             ShapeCollectionQuery::ProjectPoint { poses, .. } => { Ok(vec![poses]) }
             ShapeCollectionQuery::ContainsPoint { poses, .. } => { Ok(vec![poses]) }

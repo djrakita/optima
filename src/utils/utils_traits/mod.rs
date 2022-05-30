@@ -96,3 +96,4 @@ pub trait ToAndFromTomlString: Serialize + DeserializeOwned {
     }
 }
 impl <T> ToAndFromTomlString for T where T: Serialize + DeserializeOwned {  }
+

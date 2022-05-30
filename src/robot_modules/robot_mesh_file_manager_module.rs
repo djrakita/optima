@@ -81,10 +81,10 @@ impl RobotMeshFileManagerModule {
 
         let mut directory_string_vecs = vec![];
         let mut directory_idxs = vec![];
-        let subcomponents = self.get_final_n_subcomponents_from_urdf_link_mesh_path_split_vecs(link_mesh_type, 4);
+        let subcomponents = self.get_final_n_subcomponents_from_urdf_link_mesh_path_split_vecs(link_mesh_type, 3);
         for s in &subcomponents {
             if let Some(ss) = s {
-                let check_vec = vec![ ss[0].clone(), ss[1].clone(), ss[2].clone() ];
+                let check_vec = vec![ ss[0].clone(), ss[1].clone() ];
                 if !directory_string_vecs.contains(&check_vec) {
                     directory_idxs.push(Some(directory_string_vecs.len()));
                     directory_string_vecs.push(check_vec.clone());

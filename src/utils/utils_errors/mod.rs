@@ -10,7 +10,6 @@ pub enum OptimaError {
     UnsupportedOperationError(String),
     RobotStateVecWrongSizeError(String),
     CannotBeNoneError(String),
-    UnreachableCode,
     PathDoesNotExist(String)
 }
 impl OptimaError {

@@ -10,3 +10,5 @@ pub mod utils_sampling;
 pub mod utils_generic_data_structures;
 pub mod utils_traits;
 pub mod utils_wasm;
+pub mod utils_optima_tensor_functions;
+pub mod utils_algorithms;
