@@ -1,11 +1,9 @@
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::marker::PhantomData;
-use enum_index::EnumIndex;
+use std::hash::Hash;
 use serde_with::{serde_as};
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
-use enum_index::*;
-use strum::EnumCount;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
@@ -419,6 +417,134 @@ impl Default for AveragingFloat {
     }
 }
 
+pub trait EnumSignatureContainer<T, S> where T: EnumMapToSignature<S> {
+    fn insert_or_replace_object(&mut self, object: T);
+    fn object_ref(&self, signature: &S) -> Option<&T>;
+    fn object_mut_ref(&mut self, signature: &S) -> Option<&mut T>;
+    fn remove_object(&mut self, signature: &S);
+    fn contains_object(&self, signature: &S) -> bool;
+}
+
+pub struct EnumBinarySearchSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: PartialEq + PartialOrd {
+    enum_objects: Vec<T>,
+    signatures: Vec<S>
+}
+impl <T, S> EnumBinarySearchSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: PartialEq + PartialOrd {
+    pub fn new() -> Self {
+        Self {
+            enum_objects: vec![],
+            signatures: vec![]
+        }
+    }
+    fn binary_search_res(&self, signature: &S) -> Result<usize, usize> {
+        return self.signatures.binary_search_by(|x| x.partial_cmp(signature).unwrap() )
+    }
+}
+impl <T, S> EnumSignatureContainer<T, S> for EnumBinarySearchSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: PartialEq + PartialOrd {
+    fn insert_or_replace_object(&mut self, object: T) {
+        let signature = object.map_to_signature();
+        let binary_search_res = self.binary_search_res(&signature);
+        match binary_search_res {
+            Ok(idx) => {
+                self.enum_objects[idx] = object;
+            }
+            Err(idx) => {
+                self.enum_objects.insert(idx, object);
+                self.signatures.insert(idx, signature);
+            }
+        }
+    }
+    fn object_ref(&self, signature: &S) -> Option<&T> {
+        let binary_search_res = self.binary_search_res(signature);
+        return match binary_search_res {
+            Ok(idx) => { Some(&self.enum_objects[idx]) }
+            Err(_) => { None }
+        }
+    }
+    fn object_mut_ref(&mut self, signature: &S) -> Option<&mut T> {
+        let binary_search_res = self.binary_search_res(signature);
+        return match binary_search_res {
+            Ok(idx) => { Some(&mut self.enum_objects[idx]) }
+            Err(_) => { None }
+        }
+    }
+    fn remove_object(&mut self, signature: &S) {
+        let binary_search_res = self.binary_search_res(signature);
+        match binary_search_res {
+            Ok(idx) => { 
+                self.enum_objects.remove(idx);
+                self.signatures.remove(idx);
+            }
+            _ => { }
+        }
+    }
+    fn contains_object(&self, signature: &S) -> bool {
+        let binary_search_res = self.binary_search_res(signature);
+        return binary_search_res.is_ok();
+    }
+}
+
+pub trait EnumMapToSignature<S> {
+    fn map_to_signature(&self) -> S;
+}
+
+pub struct EnumHashMapSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: Hash + Eq {
+    hashmap: HashMap<S, T>
+}
+impl <T, S> EnumHashMapSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: Hash + Eq {
+    pub fn new() -> Self {
+        Self {
+            hashmap: HashMap::new()
+        }
+    }
+}
+impl <T, S> EnumSignatureContainer<T, S> for EnumHashMapSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: Hash + Eq {
+    fn insert_or_replace_object(&mut self, object: T) {
+        let signature = object.map_to_signature();
+        self.hashmap.insert(signature, object);
+    }
+
+    fn object_ref(&self, signature: &S) -> Option<&T> {
+        return self.hashmap.get(signature);
+    }
+
+    fn object_mut_ref(&mut self, signature: &S) -> Option<&mut T> {
+        return self.hashmap.get_mut(signature);
+    }
+
+    fn remove_object(&mut self, signature: &S) {
+        self.hashmap.remove(signature);
+    }
+
+    fn contains_object(&self, signature: &S) -> bool {
+        return self.hashmap.get(signature).is_some();
+    }
+}
+
+pub enum EnumSignatureContainerType {
+    BinarySearch, HashMap
+}
+impl Default for EnumSignatureContainerType {
+    fn default() -> Self {
+        Self::BinarySearch
+    }
+}
+
+//// GARBAGE CODE
+
+/*
 pub struct EnumObjectContainer<T, S>
     where T: EnumIndexWrapper + EnumCount,
           S: EnumIndexWrapper + EnumCount {
@@ -484,7 +610,7 @@ impl <T> EnumIndexWrapper for T where T: EnumIndex + IndexEnum {
         self.enum_index()
     }
 }
-
+*/
 /*
 pub struct HashObjectContainer {
     default_hasher: DefaultHasher,

@@ -1,6 +1,7 @@
 // use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 
 use crate::utils::utils_files::optima_path::{OptimaPath, OptimaStemCellPath};
+use crate::utils::utils_optima_tensor_functions::OptimaTensorVector;
 
 /// A common error type returned by functions throughout the toolbox.
 #[derive(Clone, Debug)]
@@ -10,7 +11,8 @@ pub enum OptimaError {
     UnsupportedOperationError(String),
     RobotStateVecWrongSizeError(String),
     CannotBeNoneError(String),
-    PathDoesNotExist(String)
+    PathDoesNotExist(String),
+    OptimaTensorFunctionInputError(String)
 }
 impl OptimaError {
     pub fn new_generic_error_str(s: &str, file: &str, line: u32) -> Self {
@@ -52,6 +54,12 @@ impl OptimaError {
         return if path.exists() { Ok(()) } else {
             Err(Self::PathDoesNotExist(format!("path: {:?} -- file: {:?}, line: {:?}", path, file, line)))
         }
+    }
+    pub fn new_check_for_optima_tensor_function_input_error(input: &OptimaTensorVector, dimensions: &Vec<usize>, file: &str, line: u32) -> Result<(), Self> {
+        if input.dimensions() != dimensions {
+            return Err(Self::OptimaTensorFunctionInputError(format!("OptimaTensorVector dimensions are not compatible (Should be {:?} and they are {:?}). -- File: {}, Line: {}", dimensions, input.dimensions(), file, line)))
+        }
+        Ok(())
     }
     pub fn new_unsupported_operation_error(function_name: &str, message: &str, file: &str, line: u32) -> Self {
         let s = format!("ERROR: Unsupported operation error in function {}.  {} -- File: {}, Line: {}", function_name, message, file, line);

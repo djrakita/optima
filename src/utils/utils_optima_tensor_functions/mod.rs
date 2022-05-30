@@ -2,25 +2,103 @@ use std::fmt::Debug;
 use serde_with::{serde_as};
 use serde::{Serialize, Deserialize};
 use serde::de::DeserializeOwned;
-use strum::EnumCount;
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_generic_data_structures::{EnumIndexWrapper, EnumObjectContainer};
+use crate::utils::utils_generic_data_structures::{EnumBinarySearchSignatureContainer, EnumHashMapSignatureContainer, EnumMapToSignature, EnumSignatureContainer, EnumSignatureContainerType};
 use crate::utils::utils_sampling::SimpleSamplers;
 
-/// abbreviation for Optima Tensor Function
-pub trait OTF {
-    fn call_precomputation(&self, input: &OptimaTensorVector, vars: &OTFVars) -> OTFPrecomputationVars { todo!() }
-    fn call_precomputations(&self, input: &OptimaTensorVector, vars: &OTFVars) -> Vec<OTFPrecomputationBlock>;
-    fn call(&self, input: &OptimaTensorVector, vars: &OTFVars) -> Result<OptimaTensorVector, OptimaError>;
-    fn call_raw(&self, input: &OptimaTensorVector, output: &mut OptimaTensorVector, vars: &OTFVars, precomputation_vars: &OTFPrecomputationVars) -> Result<OptimaTensorVector, OptimaError> { todo!() }
-    fn derivative_precomputation(&self) -> OTFPrecomputationVars {
-        todo!()
+#[allow(unused_variables)]
+pub trait OptimaTensorFunction {
+    fn call(&self, input: &OptimaTensorVector, vars: &OTFVars) -> Result<OptimaTensorVector, OptimaError> {
+        let mut precomputation_vars = OTFPrecomputationVars::new(EnumSignatureContainerType::default());
+
+        OptimaError::new_check_for_optima_tensor_function_input_error(input, &self.input_dimensions(vars, &mut precomputation_vars), file!(), line!())?;
+        let mut output = OptimaTensorVector::new_default(self.output_dimensions(input, vars, &mut precomputation_vars));
+
+        self.call_raw(input, &mut output, vars, &mut precomputation_vars);
+
+        return Ok(output);
     }
-    fn derivative_precomputations(&self) -> Vec<OTFPrecomputationBlock>;
-    fn derivative(&self, input: &OptimaTensorVector, vars: &OTFVars) -> Result<OptimaTensorMatrix, OptimaError> { todo!() }
-    fn derivative_raw(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &OTFPrecomputationVars) -> Result<OptimaTensorMatrix, OptimaError>;
-    fn input_dimensions(&self, input: &OptimaTensorVector) -> TensorDimensionsInfo;
-    fn output_dimensions(&self, input: &OptimaTensorVector, vars: &OTFVars) -> TensorDimensionsInfo;
+    fn call_raw(&self, input: &OptimaTensorVector, output: &mut OptimaTensorVector, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars);
+    fn derivative(&self, input: &OptimaTensorVector, vars: &OTFVars, mode: Option<OTFDerivativeMode>) -> Result<OptimaTensorMatrix, OptimaError> {
+        let mut precomputation_vars = OTFPrecomputationVars::new(EnumSignatureContainerType::default());
+
+        OptimaError::new_check_for_optima_tensor_function_input_error(input, &self.input_dimensions(vars, &mut precomputation_vars), file!(), line!())?;
+
+        let input_dimensions = self.input_dimensions(vars, &mut precomputation_vars);
+        let output_dimensions = self.output_dimensions(input, vars, &mut precomputation_vars);
+
+        let mut output = OptimaTensorMatrix::new_default(output_dimensions, input_dimensions);
+
+        match mode {
+            None => {
+                let mut computation_completed = false;
+
+                if !computation_completed {
+                    let res = self.derivative_raw(input, &mut output, vars, &mut precomputation_vars);
+                    match res {
+                        OTFDerivativeResult::Unimplemented => {}
+                        OTFDerivativeResult::Complete => { computation_completed = true; }
+                    }
+                }
+
+                if !computation_completed {
+                    let res = self.derivative_fd(input, &mut output, vars, &mut precomputation_vars);
+                    match res {
+                        OTFDerivativeResult::Unimplemented => {}
+                        OTFDerivativeResult::Complete => { computation_completed = true; }
+                    }
+                }
+
+                if !computation_completed {
+                    panic!("Called an Unimplemented Derivative on OTF.")
+                }
+            }
+            Some(mode) => {
+                let res = match mode {
+                    OTFDerivativeMode::Raw => { self.derivative_raw(input, &mut output, vars, &mut precomputation_vars) }
+                    OTFDerivativeMode::FiniteDifference => { self.derivative_fd(input, &mut output, vars, &mut precomputation_vars) }
+                    OTFDerivativeMode::Test1 => { self.derivative_test1(input, &mut output, vars, &mut precomputation_vars)  }
+                    OTFDerivativeMode::Test2 => { self.derivative_test2(input, &mut output, vars, &mut precomputation_vars) }
+                    OTFDerivativeMode::Test3 => { self.derivative_test3(input, &mut output, vars, &mut precomputation_vars) }
+                };
+                match res {
+                    OTFDerivativeResult::Unimplemented => {
+                        panic!("Called an Unimplemented Derivative on OTF.")
+                    }
+                    OTFDerivativeResult::Complete => { }
+                }
+            }
+        }
+
+        return Ok(output);
+    }
+    fn derivative_raw(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
+        OTFDerivativeResult::Unimplemented
+    }
+    fn derivative_fd(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
+        OTFDerivativeResult::Unimplemented
+    }
+    fn derivative_test1(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
+        OTFDerivativeResult::Unimplemented
+    }
+    fn derivative_test2(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
+        OTFDerivativeResult::Unimplemented
+    }
+    fn derivative_test3(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
+        OTFDerivativeResult::Unimplemented
+    }
+    fn input_dimensions(&self, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Vec<usize>;
+    fn output_dimensions(&self, input: &OptimaTensorVector, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Vec<usize>;
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OTFDerivativeResult {
+    Unimplemented, Complete
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OTFDerivativeMode {
+    Raw, FiniteDifference, Test1, Test2, Test3
 }
 
 pub enum TensorDimensionsInfo {
@@ -324,6 +402,91 @@ impl OptimaTensorMatrix {
     }
 }
 
+pub struct OTFVars {
+    pub c: Box<dyn EnumSignatureContainer<OTFVarsObject, OTFVarsObjectSignature>>
+}
+impl OTFVars {
+    pub fn new(enum_signature_container_type: EnumSignatureContainerType) -> Self {
+        Self {
+            c: match enum_signature_container_type {
+                EnumSignatureContainerType::BinarySearch => { Box::new(EnumBinarySearchSignatureContainer::new()) }
+                EnumSignatureContainerType::HashMap => { Box::new(EnumHashMapSignatureContainer::new()) }
+            }
+        }
+    }
+}
+
+pub enum OTFVarsObject {
+    Test
+}
+impl EnumMapToSignature<OTFVarsObjectSignature> for OTFVarsObject {
+    fn map_to_signature(&self) -> OTFVarsObjectSignature {
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OTFVarsObjectSignature {
+    Test
+}
+
+pub struct OTFPrecomputationVars {
+    c: Box<dyn EnumSignatureContainer<OTFPrecomputationVarsObject, OTFPrecomputationVarsObjectSignature>>
+}
+impl OTFPrecomputationVars {
+    pub fn new(enum_signature_container_type: EnumSignatureContainerType) -> Self {
+        Self {
+            c: match enum_signature_container_type {
+                EnumSignatureContainerType::BinarySearch => { Box::new(EnumBinarySearchSignatureContainer::new()) }
+                EnumSignatureContainerType::HashMap => { Box::new(EnumHashMapSignatureContainer::new()) }
+            }
+        }
+    }
+    pub fn object_mut_ref(&mut self, vars: &OTFVars, signature: &OTFPrecomputationVarsObjectSignature) -> &mut OTFPrecomputationVarsObject {
+        signature.precomputation(vars, self);
+        let o = self.c.object_mut_ref(signature);
+        return o.expect("Should be impossible that this is None after precomputation.  If it is, fix the precomputation code.")
+    }
+    pub fn object_ref(&mut self, vars: &OTFVars, signature: &OTFPrecomputationVarsObjectSignature) -> &OTFPrecomputationVarsObject {
+        let o = self.object_mut_ref(vars, signature);
+        return o;
+    }
+}
+
+pub enum OTFPrecomputationVarsObject {
+    Test
+}
+impl EnumMapToSignature<OTFPrecomputationVarsObjectSignature> for OTFPrecomputationVarsObject {
+    fn map_to_signature(&self) -> OTFPrecomputationVarsObjectSignature {
+        match self {
+            OTFPrecomputationVarsObject::Test => { OTFPrecomputationVarsObjectSignature::Test }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OTFPrecomputationVarsObjectSignature {
+    Test
+}
+impl OTFPrecomputationVarsObjectSignature {
+    pub fn precomputation(&self, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) {
+        if precomputation_vars.c.contains_object(self) { return; }
+        let o = self.precompute_raw(vars, precomputation_vars);
+        let signature = o.map_to_signature();
+        if &signature != self {
+            panic!("OTF Precomputation did not return expected type (Expected {:?} and got {:?}.)", self, o.map_to_signature());
+        }
+        precomputation_vars.c.insert_or_replace_object(o);
+    }
+    #[allow(unused_variables)]
+    fn precompute_raw(&self, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFPrecomputationVarsObject {
+        todo!()
+    }
+}
+
+//////////////// GARBAGE CODE
+
+/*
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum OTFPrecomputationBlock {
 
@@ -343,7 +506,8 @@ impl OTFPrecomputationBlock {
         Ok(())
     }
 }
-
+*/
+/*
 pub struct OTFVars {
     pub c: EnumObjectContainer<OTFVarsObject, OTFVarsSignature>
 }
@@ -406,4 +570,5 @@ impl EnumIndexWrapper for OTFPrecomputationVarsSignature {
         todo!()
     }
 }
+*/
 
