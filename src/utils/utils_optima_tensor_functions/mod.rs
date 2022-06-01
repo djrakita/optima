@@ -34,7 +34,7 @@ pub trait OptimaTensorFunction {
                 let mut computation_completed = false;
 
                 if !computation_completed {
-                    let res = self.derivative_raw(input, &mut output, vars, &mut precomputation_vars);
+                    let res = self.derivative_analytical(input, &mut output, vars, &mut precomputation_vars)?;
                     match res {
                         OTFDerivativeResult::Unimplemented => {}
                         OTFDerivativeResult::Complete => { computation_completed = true; }
@@ -42,7 +42,7 @@ pub trait OptimaTensorFunction {
                 }
 
                 if !computation_completed {
-                    let res = self.derivative_fd(input, &mut output, vars, &mut precomputation_vars);
+                    let res = self.derivative_finite_difference(input, &mut output, vars, &mut precomputation_vars)?;
                     match res {
                         OTFDerivativeResult::Unimplemented => {}
                         OTFDerivativeResult::Complete => { computation_completed = true; }
@@ -55,12 +55,12 @@ pub trait OptimaTensorFunction {
             }
             Some(mode) => {
                 let res = match mode {
-                    OTFDerivativeMode::Raw => { self.derivative_raw(input, &mut output, vars, &mut precomputation_vars) }
-                    OTFDerivativeMode::FiniteDifference => { self.derivative_fd(input, &mut output, vars, &mut precomputation_vars) }
+                    OTFDerivativeMode::Analytical => { self.derivative_analytical(input, &mut output, vars, &mut precomputation_vars) }
+                    OTFDerivativeMode::FiniteDifference => { self.derivative_finite_difference(input, &mut output, vars, &mut precomputation_vars) }
                     OTFDerivativeMode::Test1 => { self.derivative_test1(input, &mut output, vars, &mut precomputation_vars)  }
                     OTFDerivativeMode::Test2 => { self.derivative_test2(input, &mut output, vars, &mut precomputation_vars) }
                     OTFDerivativeMode::Test3 => { self.derivative_test3(input, &mut output, vars, &mut precomputation_vars) }
-                };
+                }?;
                 match res {
                     OTFDerivativeResult::Unimplemented => {
                         panic!("Called an Unimplemented Derivative on OTF.")
@@ -72,20 +72,38 @@ pub trait OptimaTensorFunction {
 
         return Ok(output);
     }
-    fn derivative_raw(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
-        OTFDerivativeResult::Unimplemented
+    fn derivative_analytical(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Result<OTFDerivativeResult, OptimaError> {
+        Ok(OTFDerivativeResult::Unimplemented)
     }
-    fn derivative_fd(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
-        OTFDerivativeResult::Unimplemented
+    fn derivative_finite_difference(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Result<OTFDerivativeResult, OptimaError> {
+        let num_input_elements = input.total_number_of_elements();
+
+        let x_0 = self.call(input, vars)?;
+        let x_0_values = x_0.vectorized_data();
+        let perturbation = 0.000001;
+
+        for i in 0..num_input_elements {
+            let mut input_copy = input.clone();
+            input_copy.vectorized_data_mut()[i] += perturbation;
+            let mut x_h = self.call(&input_copy, vars)?;
+
+            for (j, x_h_value) in x_h.vectorized_data_mut().iter_mut().enumerate() {
+                *x_h_value = (-x_0_values[j] + *x_h_value) / perturbation;
+            }
+
+            output.vectorized_data_mut()[i] = x_h;
+        }
+
+        Ok(OTFDerivativeResult::Complete)
     }
-    fn derivative_test1(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
-        OTFDerivativeResult::Unimplemented
+    fn derivative_test1(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Result<OTFDerivativeResult, OptimaError> {
+        Ok(OTFDerivativeResult::Unimplemented)
     }
-    fn derivative_test2(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
-        OTFDerivativeResult::Unimplemented
+    fn derivative_test2(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Result<OTFDerivativeResult, OptimaError> {
+        Ok(OTFDerivativeResult::Unimplemented)
     }
-    fn derivative_test3(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFDerivativeResult {
-        OTFDerivativeResult::Unimplemented
+    fn derivative_test3(&self, input: &OptimaTensorVector, output: &mut OptimaTensorMatrix, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Result<OTFDerivativeResult, OptimaError> {
+        Ok(OTFDerivativeResult::Unimplemented)
     }
     fn input_dimensions(&self, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Vec<usize>;
     fn output_dimensions(&self, input: &OptimaTensorVector, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> Vec<usize>;
@@ -98,7 +116,7 @@ pub enum OTFDerivativeResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum OTFDerivativeMode {
-    Raw, FiniteDifference, Test1, Test2, Test3
+    Analytical, FiniteDifference, Test1, Test2, Test3
 }
 
 pub enum TensorDimensionsInfo {
@@ -312,7 +330,7 @@ impl OptimaTensorVector {
     pub fn vectorized_data(&self) -> &Vec<f64> {
         &self.o.vectorized_data
     }
-    pub fn vectorized_data_mut(&mut self) -> &Vec<f64> {
+    pub fn vectorized_data_mut(&mut self) -> &mut Vec<f64> {
         &mut self.o.vectorized_data
     }
 }
@@ -399,6 +417,9 @@ impl OptimaTensorMatrix {
     }
     pub fn vectorized_data(&self) -> &Vec<OptimaTensorVector> {
         &self.o.vectorized_data
+    }
+    pub fn vectorized_data_mut(&mut self) -> &mut Vec<OptimaTensorVector> {
+        &mut self.o.vectorized_data
     }
 }
 
