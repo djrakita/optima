@@ -37,6 +37,8 @@ instant = { version = "0.1", features = [ "wasm-bindgen" ] }
 took = "0.1.2"
 took-macro = "0.1"
 ordered-float = "3.0.0"
+ndarray = "0.15.4"
+ndarray_einsum_beta = "0.7.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }

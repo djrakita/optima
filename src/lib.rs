@@ -39,3 +39,4 @@ fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<utils::utils_se3::optima_rotation::OptimaRotationPy>()?;
     Ok(())
 }
+
