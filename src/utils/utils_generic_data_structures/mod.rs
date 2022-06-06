@@ -368,8 +368,8 @@ impl Mixable for OptimaSE3Pose {
 impl Mixable for AveragingFloat {
     fn mix(&self, other: &Self) -> Self {
         let mut out_self = AveragingFloat::new();
-        out_self.absorb(self.value);
-        out_self.absorb(other.value);
+        out_self.add_new_value(self.value);
+        out_self.add_new_value(other.value);
         out_self.counter = self.counter + other.counter;
         return out_self
     }
@@ -404,7 +404,7 @@ impl AveragingFloat {
             value: 0.0
         }
     }
-    pub fn absorb(&mut self, value: f64) {
+    pub fn add_new_value(&mut self, value: f64) {
         self.total_sum += value;
         self.counter += 1.0;
         self.value = self.total_sum / self.counter;
@@ -448,17 +448,7 @@ impl <T, S> EnumSignatureContainer<T, S> for EnumBinarySearchSignatureContainer<
     where T: EnumMapToSignature<S>,
           S: PartialEq + PartialOrd {
     fn insert_or_replace_object(&mut self, object: T) {
-        let signature = object.map_to_signature();
-        let binary_search_res = self.binary_search_res(&signature);
-        match binary_search_res {
-            Ok(idx) => {
-                self.enum_objects[idx] = object;
-            }
-            Err(idx) => {
-                self.enum_objects.insert(idx, object);
-                self.signatures.insert(idx, signature);
-            }
-        }
+        self.insert_or_replace_object_with_idx(object);
     }
     fn object_ref(&self, signature: &S) -> Option<&T> {
         let binary_search_res = self.binary_search_res(signature);
@@ -475,18 +465,68 @@ impl <T, S> EnumSignatureContainer<T, S> for EnumBinarySearchSignatureContainer<
         }
     }
     fn remove_object(&mut self, signature: &S) {
-        let binary_search_res = self.binary_search_res(signature);
-        match binary_search_res {
-            Ok(idx) => { 
-                self.enum_objects.remove(idx);
-                self.signatures.remove(idx);
-            }
-            _ => { }
-        }
+        self.remove_object_with_idx(signature);
     }
     fn contains_object(&self, signature: &S) -> bool {
         let binary_search_res = self.binary_search_res(signature);
         return binary_search_res.is_ok();
+    }
+}
+impl <T, S> EnumBinarySearchSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: PartialEq + PartialOrd {
+    pub fn get_object_idx(&self, signature: &S) -> Option<usize> {
+        let binary_search_res = self.binary_search_res(&signature);
+        return match binary_search_res {
+            Ok(idx) => { Some(idx) }
+            Err(_) => { None }
+        }
+    }
+    pub fn insert_or_replace_object_with_idx(&mut self, object: T) -> usize {
+        let signature = object.map_to_signature();
+        let binary_search_res = self.binary_search_res(&signature);
+        return match binary_search_res {
+            Ok(idx) => {
+                self.enum_objects[idx] = object;
+                idx
+            }
+            Err(idx) => {
+                self.enum_objects.insert(idx, object);
+                self.signatures.insert(idx, signature);
+                idx
+            }
+        }
+    }
+    pub fn remove_object_with_idx(&mut self, signature: &S) -> Option<usize> {
+        let binary_search_res = self.binary_search_res(signature);
+        return match binary_search_res {
+            Ok(idx) => {
+                self.enum_objects.remove(idx);
+                self.signatures.remove(idx);
+                Some(idx)
+            }
+            _ => { None }
+        }
+    }
+    pub fn object_ref_with_idx(&self, signature: &S) -> Option<(&T, usize)> {
+        let binary_search_res = self.binary_search_res(signature);
+        return match binary_search_res {
+            Ok(idx) => { Some((&self.enum_objects[idx], idx)) }
+            Err(_) => { None }
+        }
+    }
+    pub fn object_mut_ref_with_idx(&mut self, signature: &S) -> Option<(&mut T, usize)> {
+        let binary_search_res = self.binary_search_res(signature);
+        return match binary_search_res {
+            Ok(idx) => { Some((&mut self.enum_objects[idx], idx)) }
+            Err(_) => { None }
+        }
+    }
+    pub fn object_ref_from_idx(&self, idx: usize) -> &T {
+        &self.enum_objects[idx]
+    }
+    pub fn object_mut_ref_from_idx(&mut self, idx: usize) -> &mut T {
+        &mut self.enum_objects[idx]
     }
 }
 

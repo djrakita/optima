@@ -166,7 +166,7 @@ impl RobotGeometricShapeModule {
                 let shape_idx1 = robot_shape_collection.shape_collection.get_shape_idx_from_signature(signature1)?;
                 let shape_idx2 = robot_shape_collection.shape_collection.get_shape_idx_from_signature(signature2)?;
                 let dis = output.raw_output().unwrap_distance()?;
-                distance_average_array.adjust_data(|x| x.absorb(dis.clone()), shape_idx1, shape_idx2 )?;
+                distance_average_array.adjust_data(|x| x.add_new_value(dis.clone()), shape_idx1, shape_idx2 )?;
                 if dis <= 0.0 {
                     collision_counter_array.adjust_data(|x| *x += 1.0, shape_idx1, shape_idx2)?;
                 }
