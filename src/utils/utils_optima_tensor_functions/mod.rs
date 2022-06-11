@@ -8,41 +8,33 @@ use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchSignatureContainer, EnumHashMapSignatureContainer, EnumMapToSignature, EnumSignatureContainer, EnumSignatureContainerType};
 use crate::utils::utils_sampling::SimpleSamplers;
 
-pub const FD_PERTURBATION: f64 = 0.000001;
-
 #[allow(unused_variables)]
 pub trait OptimaTensorFunction {
-    fn call(&self, input: &OptimaTensor, vars: &OTFVars) -> Result<OTFResult, OptimaError> {
-        let mut precomp_vars = OTFPrecomputationVars::new(EnumSignatureContainerType::default());
-        return self.call_with_precomputation(input, vars, &mut precomp_vars);
+    fn call(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        let session_key = precomp_vars.register_session(input);
+        let out = self.call_raw(input, vars, precomp_vars, &session_key);
+        precomp_vars.close_session(&session_key);
+        return out;
     }
-    fn call_with_precomputation(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        let mut per_call_precomp_vars = OTFPrecomputationVars::new(EnumSignatureContainerType::default());
-        return self.call_raw(input, vars, precomp_vars, &mut per_call_precomp_vars);
-    }
-    fn call_raw(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, per_call_precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError>;
+    fn call_raw(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError>;
 
-    fn derivative(&self, input: &OptimaTensor, vars: &OTFVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        let mut precomp_vars = OTFPrecomputationVars::new(EnumSignatureContainerType::default());
-        return self.derivative_with_precomputation(input, vars, &mut precomp_vars, mode);
+    fn derivative(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative_analytical, Self::derivative_finite_difference, Self::derivative_test, input, vars, precomp_vars, mode)
     }
-    fn derivative_with_precomputation(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        return self.derivative_with_precomputation_generic(Self::derivative_analytical,
-                                                    Self::derivative_finite_difference,
-                                                    Self::derivative_test,
-                                                    input,
-                                                    vars,
-                                                    precomp_vars,
-                                                    mode);
-    }
-    fn derivative_with_precomputation_no_mode(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_with_precomputation(input, vars, precomp_vars, None);
+    fn derivative_none_mode(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative(input, vars, precomp_vars, None);
     }
     fn derivative_analytical(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        let session_key = precomp_vars.register_session(input);
+        let out = self.derivative_analytical_raw(input, vars, precomp_vars, &session_key);
+        precomp_vars.close_session(&session_key);
+        return out;
+    }
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative_finite_difference(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_finite_difference_generic(Self::call_with_precomputation,
+        return self.derivative_finite_difference_generic(Self::call,
                                                          Self::get_derivative_output_tensor,
                                                          input,
                                                          vars,
@@ -52,73 +44,92 @@ pub trait OptimaTensorFunction {
         Ok(OTFResult::Unimplemented)
     }
 
-    fn derivative2(&self, input: &OptimaTensor, vars: &OTFVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        let mut precomp_vars = OTFPrecomputationVars::new(EnumSignatureContainerType::default());
-        return self.derivative_with_precomputation2(input, vars, &mut precomp_vars, mode);
+    fn derivative2(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative2_analytical, Self::derivative2_finite_difference, Self::derivative2_test, input, vars, precomp_vars, mode)
     }
-    fn derivative_with_precomputation2(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        return self.derivative_with_precomputation_generic(Self::derivative_analytical2,
-                                                    Self::derivative_finite_difference2,
-                                                    Self::derivative_test2,
-                                                    input,
-                                                    vars,
-                                                    precomp_vars,
-                                                    mode);
+    fn derivative2_none_mode(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative2(input, vars, precomp_vars, None);
     }
-    fn derivative_with_precomputation_no_mode2(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_with_precomputation2(input, vars, precomp_vars, None);
+    fn derivative2_analytical(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        let session_key = precomp_vars.register_session(input);
+        let out = self.derivative2_analytical_raw(input, vars, precomp_vars, &session_key);
+        precomp_vars.close_session(&session_key);
+        return out;
     }
-    fn derivative_analytical2(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+    fn derivative2_analytical_raw(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
-    fn derivative_finite_difference2(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_finite_difference_generic(Self::derivative_with_precomputation_no_mode,
+    fn derivative2_finite_difference(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative_finite_difference_generic(Self::derivative_none_mode,
                                                          Self::get_derivative2_output_tensor,
                                                          input,
                                                          vars,
                                                          precomp_vars);
     }
-    fn derivative_test2(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+    fn derivative2_test(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
 
-    fn derivative3(&self, input: &OptimaTensor, vars: &OTFVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        let mut precomp_vars = OTFPrecomputationVars::new(EnumSignatureContainerType::default());
-        return self.derivative_with_precomputation3(input, vars, &mut precomp_vars, mode);
+    fn derivative3(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative3_analytical, Self::derivative3_finite_difference, Self::derivative3_test, input, vars, precomp_vars, mode)
     }
-    fn derivative_with_precomputation3(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        return self.derivative_with_precomputation_generic(Self::derivative_analytical3,
-                                                    Self::derivative_finite_difference3,
-                                                    Self::derivative_test3,
-                                                    input,
-                                                    vars,
-                                                    precomp_vars,
-                                                    mode);
+    fn derivative3_none_mode(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative3(input, vars, precomp_vars, None);
     }
-    fn derivative_with_precomputation_no_mode3(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_with_precomputation3(input, vars, precomp_vars, None);
+    fn derivative3_analytical(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        let session_key = precomp_vars.register_session(input);
+        let out = self.derivative3_analytical_raw(input, vars, precomp_vars, &session_key);
+        precomp_vars.close_session(&session_key);
+        return out;
     }
-    fn derivative_analytical3(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+    fn derivative3_analytical_raw(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
-    fn derivative_finite_difference3(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_finite_difference_generic(Self::derivative_with_precomputation_no_mode2,
+    fn derivative3_finite_difference(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative_finite_difference_generic(Self::derivative2_none_mode,
                                                          Self::get_derivative3_output_tensor,
                                                          input,
                                                          vars,
                                                          precomp_vars);
     }
-    fn derivative_test3(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+    fn derivative3_test(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
 
-    fn derivative_with_precomputation_generic<F1, F2, F3>(&self,
-                                                      analytical: F1,
-                                                      finite_difference: F2,
-                                                      test: F3,
-                                                      input: &OptimaTensor,
-                                                      vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars,
-                                                      mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError>
+    fn derivative4(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative4_analytical, Self::derivative4_finite_difference, Self::derivative4_test, input, vars, precomp_vars, mode)
+    }
+    fn derivative4_none_mode(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative4(input, vars, precomp_vars, None);
+    }
+    fn derivative4_analytical(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        let session_key = precomp_vars.register_session(input);
+        let out = self.derivative4_analytical_raw(input, vars, precomp_vars, &session_key);
+        precomp_vars.close_session(&session_key);
+        return out;
+    }
+    fn derivative4_analytical_raw(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+    fn derivative4_finite_difference(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative_finite_difference_generic(Self::derivative3_none_mode,
+                                                         Self::get_derivative4_output_tensor,
+                                                         input,
+                                                         vars,
+                                                         precomp_vars);
+    }
+    fn derivative4_test(&self, input: &OptimaTensor, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+
+    fn derivative_generic<F1, F2, F3>(&self,
+                                      analytical: F1,
+                                      finite_difference: F2,
+                                      test: F3,
+                                      input: &OptimaTensor,
+                                      vars: &OTFVars,
+                                      precomp_vars: &mut OTFPrecomputationVars,
+                                      mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError>
         where F1: Fn(&Self, &OptimaTensor, &OTFVars, &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError>,
               F2: Fn(&Self, &OptimaTensor, &OTFVars, &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError>,
               F3: Fn(&Self, &OptimaTensor, &OTFVars, &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
@@ -215,22 +226,24 @@ pub trait OptimaTensorFunction {
         return OptimaTensor::new_from_inner_and_outer_dimensions(inner_dimensions, input.combined_dimensions.clone());
     }
 
-    fn diagnostics(&self, vars: &OTFVars) {
+    fn diagnostics(&self, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars) {
         optima_print_new_line();
         optima_print("Call Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.call_diagnostics(vars, 1000);
+        self.call_diagnostics(vars, precomp_vars, 1000);
         optima_print_new_line();
         optima_print("Derivative Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative_diagnostics(vars, 1000);
+        self.derivative_diagnostics(vars, precomp_vars, 1000);
         optima_print_new_line();
-        optima_print("Derivative 2 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative2_diagnostics(vars, 500);
+        optima_print("Derivative2 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative2_diagnostics(vars, precomp_vars, 500);
         optima_print_new_line();
-        optima_print("Derivative 3 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative3_diagnostics(vars, 100);
+        optima_print("Derivative3 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative3_diagnostics(vars, precomp_vars, 100);
         optima_print_new_line();
+        optima_print("Derivative4 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative4_diagnostics(vars, precomp_vars, 50);
     }
-    fn call_diagnostics(&self, vars: &OTFVars, num_inputs: usize) {
+    fn call_diagnostics(&self, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, num_inputs: usize) {
         let input_dimensions = self.input_dimensions(vars);
 
         let mut random_inputs = vec![];
@@ -242,7 +255,7 @@ pub trait OptimaTensorFunction {
 
         for r in &random_inputs {
             let start = instant::Instant::now();
-            self.call(r, vars).expect("error");
+            self.call(r, vars, precomp_vars).expect("error");
             let duration = start.elapsed();
             call_time.add_new_value(duration.as_secs_f64());
         }
@@ -254,17 +267,21 @@ pub trait OptimaTensorFunction {
         optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
 
     }
-    fn derivative_diagnostics(&self, vars: &OTFVars, num_inputs: usize) {
-        self.derivative_diagnostics_generic(Self::derivative, vars, num_inputs);
+    fn derivative_diagnostics(&self, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative, vars, precomp_vars, num_inputs);
     }
-    fn derivative2_diagnostics(&self, vars: &OTFVars, num_inputs: usize) {
-        self.derivative_diagnostics_generic(Self::derivative2, vars, num_inputs);
+    fn derivative2_diagnostics(&self, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative2, vars, precomp_vars, num_inputs);
     }
-    fn derivative3_diagnostics(&self, vars: &OTFVars, num_inputs: usize) {
-        self.derivative_diagnostics_generic(Self::derivative3, vars, num_inputs);
+    fn derivative3_diagnostics(&self, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative3, vars, precomp_vars, num_inputs);
     }
-    fn derivative_diagnostics_generic<F>(&self, derivative_function: F, vars: &OTFVars, num_inputs: usize)
-        where F: Fn(&Self, &OptimaTensor, &OTFVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+    fn derivative4_diagnostics(&self, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative4, vars, precomp_vars, num_inputs);
+    }
+
+    fn derivative_diagnostics_generic<F>(&self, derivative_function: F, vars: &OTFVars, precomp_vars: &mut OTFPrecomputationVars, num_inputs: usize)
+        where F: Fn(&Self, &OptimaTensor, &OTFVars, &mut OTFPrecomputationVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
         let input_dimensions = self.input_dimensions(vars);
 
         let mut random_inputs = vec![];
@@ -276,7 +293,7 @@ pub trait OptimaTensorFunction {
         let mut finite_difference_results = vec![];
         for r in &random_inputs {
             let start = instant::Instant::now();
-            let res = derivative_function(self, r, vars, Some(OTFDerivativeMode::FiniteDifference)).expect("error");
+            let res = derivative_function(self, r, vars, precomp_vars, Some(OTFDerivativeMode::FiniteDifference)).expect("error");
             let duration = start.elapsed();
             finite_difference_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -292,7 +309,7 @@ pub trait OptimaTensorFunction {
         let mut analytical_unimplemented = false;
         for r in &random_inputs {
             let start = instant::Instant::now();
-            let res = derivative_function(self, r, vars, Some(OTFDerivativeMode::Analytical)).expect("error");
+            let res = derivative_function(self, r, vars, precomp_vars, Some(OTFDerivativeMode::Analytical)).expect("error");
             let duration = start.elapsed();
             analytical_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -308,7 +325,7 @@ pub trait OptimaTensorFunction {
         let mut test_unimplemented = false;
         for r in &random_inputs {
             let start = instant::Instant::now();
-            let res = derivative_function(self, r, vars, Some(OTFDerivativeMode::Test)).expect("error");
+            let res = derivative_function(self, r, vars, precomp_vars, Some(OTFDerivativeMode::Test)).expect("error");
             let duration = start.elapsed();
             test_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -379,31 +396,34 @@ pub trait OptimaTensorFunction {
     }
 }
 
+pub const FD_PERTURBATION: f64 = 0.000001;
+
 pub struct OTFSin;
 impl OptimaTensorFunction for OTFSin {
-    fn call_raw(&self, input: &OptimaTensor, vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars, _per_call_precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        let mut output = self.get_call_output_tensor(input, vars);
-        output.assign_value(vec![0,0], input.get_value(vec![0,0]).sin());
-        return Ok(OTFResult::Complete(output));
+    fn call_raw(&self, input: &OptimaTensor, _vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars, _session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(input.get_value(vec![0,0]).sin())));
     }
-    fn derivative_analytical(&self, input: &OptimaTensor, vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        let mut output = self.get_call_output_tensor(input, vars);
-        output.assign_value(vec![0,0], input.get_value(vec![0,0]).cos());
-        return Ok(OTFResult::Complete(output));
+
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, _vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars, _session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(input.get_value(vec![0,0]).cos())));
     }
-    fn derivative_analytical2(&self, input: &OptimaTensor, vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        let mut output = self.get_call_output_tensor(input, vars);
-        output.assign_value(vec![0,0], -input.get_value(vec![0,0]).sin());
-        return Ok(OTFResult::Complete(output));
+
+    fn derivative2_analytical_raw(&self, input: &OptimaTensor, _vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars, _session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(-input.get_value(vec![0,0]).sin())));
     }
-    fn derivative_analytical3(&self, input: &OptimaTensor, vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars) -> Result<OTFResult, OptimaError> {
-        let mut output = self.get_call_output_tensor(input, vars);
-        output.assign_value(vec![0,0], -input.get_value(vec![0,0]).cos());
-        return Ok(OTFResult::Complete(output));
+
+    fn derivative3_analytical_raw(&self, input: &OptimaTensor, _vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars, _session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(-input.get_value(vec![0,0]).cos())));
     }
+
+    fn derivative4_analytical_raw(&self, input: &OptimaTensor, _vars: &OTFVars, _precomp_vars: &mut OTFPrecomputationVars, _session_key: &OTFPrecomputationVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(input.get_value(vec![0,0]).sin())));
+    }
+
     fn input_dimensions(&self, _vars: &OTFVars) -> (Vec<usize>, Vec<usize>) {
         (vec![1], vec![1])
     }
+
     fn output_dimensions(&self, _input: &OptimaTensor, _vars: &OTFVars) -> (Vec<usize>, Vec<usize>) {
         (vec![1], vec![1])
     }
@@ -433,7 +453,8 @@ pub struct OptimaTensor {
     outer_dimensions_axes: Vec<Axis>,
     inner_dimensions_strides: Vec<usize>,
     outer_dimensions_strides: Vec<usize>,
-    combined_strides: Vec<usize>
+    combined_strides: Vec<usize>,
+    id: i32
 }
 impl OptimaTensor {
     pub fn new(dimensions: Vec<usize>) -> Self {
@@ -529,7 +550,8 @@ impl OptimaTensor {
             outer_dimensions_axes,
             inner_dimensions_strides,
             outer_dimensions_strides,
-            combined_strides
+            combined_strides,
+            id: SimpleSamplers::uniform_samples_i32(&vec![(i32::MIN, i32::MAX)])[0]
         }
     }
     pub fn new_from_scalar(val: f64) -> Self {
@@ -1219,63 +1241,147 @@ pub enum OTFVarsObjectSignature {
     Test
 }
 
-
+/// var indices must be locked prior to getting keys
+#[derive(Clone, Debug)]
 pub struct OTFPrecomputationVars {
-    c: Box<dyn EnumSignatureContainer<OTFPrecomputationVarsObject, OTFPrecomputationVarsObjectSignature>>
+    enum_objects: Vec<OTFPrecomputationVarsObject>,
+    signatures: Vec<OTFPrecomputationVarsObjectSignature>,
+    vectorized_tensors: Vec<Vec<f64>>,
+    registered_session_blocks: Vec<OTFPrecomputationVarsSessionBlock>,
+    session_key_counter: usize
 }
 impl OTFPrecomputationVars {
-    pub fn new(enum_signature_container_type: EnumSignatureContainerType) -> Self {
-        Self {
-            c: match enum_signature_container_type {
-                EnumSignatureContainerType::BinarySearch => { Box::new(EnumBinarySearchSignatureContainer::new()) }
-                EnumSignatureContainerType::HashMap => { Box::new(EnumHashMapSignatureContainer::new()) }
-            }
-        }
-    }
-    pub fn object_mut_ref(&mut self, vars: &OTFVars, signature: &OTFPrecomputationVarsObjectSignature) -> &mut OTFPrecomputationVarsObject {
-        // signature.precomputation(vars, &mut self.c);
-        let o = self.c.object_mut_ref(signature);
-        return o.expect("Should be impossible that this is None after precomputation.  If it is, fix the precomputation code.")
-    }
-    pub fn object_ref(&mut self, vars: &OTFVars, signature: &OTFPrecomputationVarsObjectSignature) -> &OTFPrecomputationVarsObject {
-        let o = self.object_mut_ref(vars, signature);
-        return o;
-    }
-}
-
-pub struct OTFPrecomputationVars2 {
-    c: EnumBinarySearchSignatureContainer<OTFPrecomputationVarsObject, OTFPrecomputationVarsObjectSignature>,
-    vectorized_tensors: Vec<Vec<f64>>
-}
-impl OTFPrecomputationVars2 {
     pub fn new() -> Self {
         Self {
-            c: EnumBinarySearchSignatureContainer::new(),
-            vectorized_tensors: vec![]
+            enum_objects: vec![],
+            signatures: vec![],
+            vectorized_tensors: vec![],
+            registered_session_blocks: vec![],
+            session_key_counter: 0
         }
     }
-    pub fn object_mut_ref(&mut self, input: &OptimaTensor, vars: &OTFVars, recompute_var_if: &RecomputeVarIf, signature: &OTFPrecomputationVarsObjectSignature) -> &mut OTFPrecomputationVarsObject {
-        let idx = self.c.get_object_idx(signature);
-        return if let Some(idx) = idx {
-            let previous_vectorized_tensor = &self.vectorized_tensors[idx];
-            let recompute = recompute_var_if.recompute(input, &previous_vectorized_tensor, vars);
-            if recompute {
-                self.vectorized_tensors.insert(idx, input.vectorized_data().to_vec());
-                signature.precomputation(vars, &mut self.c);
-                self.c.object_mut_ref_from_idx(idx)
-            } else {
-                self.c.object_mut_ref_from_idx(idx)
+    pub fn register_session(&mut self, input: &OptimaTensor) -> OTFPrecomputationVarsSessionKey {
+        let out = OTFPrecomputationVarsSessionKey { key_idx: self.session_key_counter };
+        let block = OTFPrecomputationVarsSessionBlock {
+            key: out.clone(),
+            input_tensor_id: input.id,
+            already_gave_out_var_keys_this_session: false,
+            registered_vars: vec![]
+        };
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(&out).unwrap());
+        let idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(idx) => {idx}
+        };
+        self.registered_session_blocks.insert(idx, block);
+        self.session_key_counter += 1;
+        return out;
+    }
+    pub fn close_session(&mut self, session_key: &OTFPrecomputationVarsSessionKey) {
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        match binary_search_res {
+            Ok(idx) => { self.registered_session_blocks.remove(idx); }
+            Err(_) => { panic!("Tried to close a session that does not exist.") }
+        }
+    }
+    pub fn register_vars(&mut self, input: &OptimaTensor, vars: &OTFVars, recompute_var_ifs: &Vec<RecomputeVarIf>, signatures: &Vec<OTFPrecomputationVarsObjectSignature>, session_key: &OTFPrecomputationVarsSessionKey) {
+        if recompute_var_ifs.len() != signatures.len() {
+            panic!("recompute_var_ifs len must equal signatures len");
+        }
+
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        let session_block_idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(_) => { panic!("Tried to register a var in a session that does not exist.") }
+        };
+        let session_block = &self.registered_session_blocks[session_block_idx];
+        if session_block.already_gave_out_var_keys_this_session {
+            panic!("Cannot register var in this session as it has already given out var keys.  All registers should be done before getting keys.");
+        }
+
+        if session_block.input_tensor_id != input.id {
+            panic!("Tried to register a variable with an input tensor that does not match the given session.")
+        }
+
+        for (i, signature) in signatures.iter().enumerate() {
+            let session_block = &self.registered_session_blocks[session_block_idx];
+            let binary_search_res = session_block.registered_vars.binary_search_by(|x| x.cmp(signature));
+            match binary_search_res {
+                Ok(_) => { continue; }
+                Err(_) => {
+                    let binary_search_res = self.signatures.binary_search_by(|x| x.partial_cmp(signature).unwrap());
+                    let (compute, idx) = match binary_search_res {
+                        Ok(idx) => {
+                            (recompute_var_ifs[i].recompute(input, &self.vectorized_tensors[idx], vars), idx)
+                        }
+                        Err(idx) => {
+                            (true, idx)
+                        }
+                    };
+
+                    if compute {
+                        let var_object = signature.register_var(input, vars, self);
+                        self.signatures.insert(idx, signature.clone());
+                        self.enum_objects.insert(idx, var_object);
+                        self.vectorized_tensors.insert(idx, input.vectorized_data().to_vec());
+                    }
+                }
             }
-        } else {
-            signature.precomputation(vars, &mut self.c);
-            let o = self.c.object_mut_ref_with_idx(signature).expect("Should be impossible that this is None after precomputation.  If it is, fix the precomputation code.");
-            self.vectorized_tensors.insert(o.1, input.vectorized_data().to_vec());
-            o.0
+            let session_block = &mut self.registered_session_blocks[session_block_idx];
+            session_block.registered_vars.push(signature.clone());
         }
     }
-    pub fn object_ref(&mut self, input: &OptimaTensor, vars: &OTFVars, recompute_var_if: &RecomputeVarIf, signature: &OTFPrecomputationVarsObjectSignature) -> &OTFPrecomputationVarsObject {
-        let o = self.object_mut_ref(input, vars, recompute_var_if, signature);
-        return o;
+    pub fn get_var_keys(&mut self, signatures: &Vec<OTFPrecomputationVarsObjectSignature>, input: &OptimaTensor, session_key: &OTFPrecomputationVarsSessionKey) -> OTFPrecomputationVarKeyContainer {
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        let session_block_idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(_) => { panic!("Tried to register a var in a session that does not exist.") }
+        };
+        let session_block = &self.registered_session_blocks[session_block_idx];
+
+        if session_block.input_tensor_id != input.id {
+            panic!("Tried to get var keys with an input tensor that does not match the given session.")
+        }
+
+        let mut out_keys = OTFPrecomputationVarKeyContainer { container: vec![] };
+
+        for signature in signatures {
+            if !session_block.registered_vars.contains(signature) {
+                panic!("Tried to get var key from a variable that was not registered.");
+            }
+            let binary_search_res = self.signatures.binary_search_by(|x| x.partial_cmp(signature).unwrap());
+            match binary_search_res {
+                Ok(idx) => {
+                    out_keys.container.push(OTFPrecomputationVarKey { key_idx: idx });
+                }
+                Err(_) => { unreachable!("Should be unreachable since the variable should have been registered already.") }
+            }
+        }
+
+        let session_block = &mut self.registered_session_blocks[session_block_idx];
+        session_block.already_gave_out_var_keys_this_session = true;
+
+        out_keys
+    }
+    pub fn unlock_object_mut_refs(&mut self, keys: &OTFPrecomputationVarKeyContainer, input: &OptimaTensor, session_key: &OTFPrecomputationVarsSessionKey) -> Vec<&mut OTFPrecomputationVarsObject> {
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        let session_block_idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(_) => { panic!("Tried to register a var in a session that does not exist.") }
+        };
+        let session_block = &self.registered_session_blocks[session_block_idx];
+
+        if session_block.input_tensor_id != input.id {
+            panic!("Tried to get object refs with an input tensor that does not match the given session.")
+        }
+
+        let out = self.enum_objects.iter_mut()
+            .enumerate()
+            .filter(|(i, _)| keys.container.contains(&OTFPrecomputationVarKey { key_idx: *i }))
+            .map(|(_, o)| o)
+            .collect();
+
+        return out;
     }
 }
 
@@ -1287,6 +1393,7 @@ pub enum RecomputeVarIf {
     Never
 }
 impl RecomputeVarIf {
+    #[allow(unused_variables)]
     pub fn recompute(&self, input: &OptimaTensor, previous_vectorized_tensor: &Vec<f64>, vars: &OTFVars) -> bool {
         match self {
             RecomputeVarIf::IsAnyNewInput => {
@@ -1317,7 +1424,7 @@ impl RecomputeVarIf {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum OTFPrecomputationVarsObject {
     Test
 }
@@ -1347,9 +1454,42 @@ impl OTFPrecomputationVarsObjectSignature {
     fn precompute_raw(&self, vars: &OTFVars, c: &mut EnumBinarySearchSignatureContainer<OTFPrecomputationVarsObject, OTFPrecomputationVarsObjectSignature>) -> OTFPrecomputationVarsObject {
         todo!()
     }
+    pub fn register_var(&self, input: &OptimaTensor, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars) -> OTFPrecomputationVarsObject {
+        let session_key = precomputation_vars.register_session(input);
+        let out = self.register_var_raw(input, vars, precomputation_vars, &session_key);
+        precomputation_vars.close_session(&session_key);
+        out
+    }
+    #[allow(unused_variables)]
+    fn register_var_raw(&self, input: &OptimaTensor, vars: &OTFVars, precomputation_vars: &mut OTFPrecomputationVars, session_key: &OTFPrecomputationVarsSessionKey) -> OTFPrecomputationVarsObject {
+        match self {
+            OTFPrecomputationVarsObjectSignature::Test => { return OTFPrecomputationVarsObject::Test }
+        }
+    }
 }
 
-//////////////// GARBAGE CODE
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct OTFPrecomputationVarKey {
+    key_idx: usize
+}
+#[derive(Clone, Debug)]
+pub struct OTFPrecomputationVarKeyContainer {
+    container: Vec<OTFPrecomputationVarKey>
+}
+
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub struct OTFPrecomputationVarsSessionKey {
+    key_idx: usize
+}
+#[derive(Clone, Debug)]
+struct OTFPrecomputationVarsSessionBlock {
+    key: OTFPrecomputationVarsSessionKey,
+    input_tensor_id: i32,
+    already_gave_out_var_keys_this_session: bool,
+    registered_vars: Vec<OTFPrecomputationVarsObjectSignature>,
+}
+
+///////////////////////////////////////////////////////////// GARBAGE CODE
 
 /*
 pub enum TensorDimensionsInfo {
