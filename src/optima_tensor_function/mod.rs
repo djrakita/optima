@@ -1,0 +1,1635 @@
+use nalgebra::{DMatrix, DVector};
+use ndarray::{Array, ArrayD};
+use serde::{Serialize, Deserialize};
+use crate::robot_set_modules::GetRobotSet;
+use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
+use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchSignatureContainer, EnumHashMapSignatureContainer, EnumMapToSignature, EnumSignatureContainer, EnumSignatureContainerType};
+use crate::utils::utils_sampling::SimpleSamplers;
+
+pub trait OptimaTensorFunction {
+    fn input_dimensions(&self) -> Vec<usize>;
+    fn output_dimensions(&self) -> Vec<usize>;
+
+    fn call(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        let session_key = mut_vars.register_session(input);
+        let out = self.call_raw(input, immut_vars, mut_vars, &session_key);
+        mut_vars.close_session(&session_key);
+        return out;
+    }
+    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError>;
+
+    fn derivative(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative_analytical, Self::derivative_finite_difference, Self::derivative_test, input, immut_vars, mut_vars, mode)
+    }
+    fn derivative_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative(input, immut_vars, mut_vars, None);
+    }
+    fn derivative_analytical(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        let session_key = mut_vars.register_session(input);
+        let out = self.derivative_analytical_raw(input, immut_vars, mut_vars, &session_key);
+        mut_vars.close_session(&session_key);
+        return out;
+    }
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative_finite_difference_generic(Self::call,
+                                                         input,
+                                                         immut_vars,
+                                                         mut_vars);
+    }
+    fn derivative_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+
+    fn derivative2(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative2_analytical, Self::derivative2_finite_difference, Self::derivative2_test, input, immut_vars, mut_vars, mode)
+    }
+    fn derivative2_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative2(input, immut_vars, mut_vars, None);
+    }
+    fn derivative2_analytical(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        let session_key = mut_vars.register_session(input);
+        let out = self.derivative2_analytical_raw(input, immut_vars, mut_vars, &session_key);
+        mut_vars.close_session(&session_key);
+        return out;
+    }
+    fn derivative2_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+    fn derivative2_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative_finite_difference_generic(Self::derivative_none_mode,
+                                                         input,
+                                                         immut_vars,
+                                                         mut_vars);
+    }
+    fn derivative2_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+
+    fn derivative3(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative3_analytical, Self::derivative3_finite_difference, Self::derivative3_test, input, immut_vars, mut_vars, mode)
+    }
+    fn derivative3_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative3(input, immut_vars, mut_vars, None);
+    }
+    fn derivative3_analytical(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        let session_key = mut_vars.register_session(input);
+        let out = self.derivative3_analytical_raw(input, immut_vars, mut_vars, &session_key);
+        mut_vars.close_session(&session_key);
+        return out;
+    }
+    fn derivative3_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+    fn derivative3_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative_finite_difference_generic(Self::derivative2_none_mode,
+                                                         input,
+                                                         immut_vars,
+                                                         mut_vars);
+    }
+    fn derivative3_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+
+    fn derivative4(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        self.derivative_generic(Self::derivative4_analytical, Self::derivative4_finite_difference, Self::derivative4_test, input, immut_vars, mut_vars, mode)
+    }
+    fn derivative4_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative4(input, immut_vars, mut_vars, None);
+    }
+    fn derivative4_analytical(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        let session_key = mut_vars.register_session(input);
+        let out = self.derivative4_analytical_raw(input, immut_vars, mut_vars, &session_key);
+        mut_vars.close_session(&session_key);
+        return out;
+    }
+    fn derivative4_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+    fn derivative4_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        return self.derivative_finite_difference_generic(Self::derivative3_none_mode,
+                                                         input,
+                                                         immut_vars,
+                                                         mut_vars);
+    }
+    fn derivative4_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        Ok(OTFResult::Unimplemented)
+    }
+
+    fn derivative_generic<F1, F2, F3>(&self,
+                                      analytical: F1,
+                                      finite_difference: F2,
+                                      test: F3,
+                                      input: &OptimaTensor,
+                                      immut_vars: &OTFImmutVars,
+                                      mut_vars: &mut OTFMutVars,
+                                      mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError>
+        where F1: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError>,
+              F2: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError>,
+              F3: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        match mode {
+            None => {
+                {
+                    let res = analytical(self, input, immut_vars, mut_vars)?;
+                    match res {
+                        OTFResult::Unimplemented => { }
+                        OTFResult::Complete(_) => { return Ok(res); }
+                    }
+                }
+
+                {
+                    let res = finite_difference(self, input, immut_vars, mut_vars)?;
+                    match res {
+                        OTFResult::Unimplemented => {}
+                        OTFResult::Complete(_) => { return Ok(res); }
+                    }
+                }
+
+
+                panic!("Called an Unimplemented Derivative on OTF.")
+
+            }
+            Some(mode) => {
+                let res = match mode {
+                    OTFDerivativeMode::Analytical => { analytical(self, input, immut_vars, mut_vars) }
+                    OTFDerivativeMode::FiniteDifference => { finite_difference(self, input,  immut_vars, mut_vars) }
+                    OTFDerivativeMode::Test => { test(self, input, immut_vars, mut_vars) }
+                }?;
+                return Ok(res);
+            }
+        }
+    }
+    fn derivative_finite_difference_generic<F>(&self, caller: F, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
+        where F: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+
+        let input_vectorized_data = input.vectorized_data();
+        let mut output = input.spawn_new_with_new_dimension( input_vectorized_data.len() );
+
+        let f_0_res = caller(self, input, immut_vars, mut_vars)?;
+        let f_0 = f_0_res.unwrap_tensor();
+
+        let mut slice_scope = vec![];
+        let output_ndim = output.dimensions().len();
+        for _ in 0..output_ndim { slice_scope.push(OptimaTensorSliceScope::Free) }
+        if output_ndim != 0 { slice_scope[output_ndim - 1] = OptimaTensorSliceScope::Fixed(0); }
+
+        for (vectorized_input_idx, _) in input_vectorized_data.iter().enumerate() {
+            if output_ndim != 0 { slice_scope[output_ndim - 1] = OptimaTensorSliceScope::Fixed(vectorized_input_idx); }
+
+            let mut input_clone = input.clone();
+            input_clone.vectorized_data_mut()[vectorized_input_idx] += FD_PERTURBATION;
+
+            let f_h_result = caller(self, &input_clone, immut_vars, mut_vars)?;
+            let f_h = f_h_result.unwrap_tensor();
+
+            let mut f_d = f_h.elementwise_subtraction(&f_0);
+            f_d.scalar_division(FD_PERTURBATION);
+
+            output.insert_slice(slice_scope.clone(), f_d);
+        }
+
+        return Ok(OTFResult::Complete(output));
+    }
+
+    fn diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
+        optima_print_new_line();
+        optima_print("Call Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.call_diagnostics(immut_vars, mut_vars, 1000);
+        optima_print_new_line();
+        optima_print("Derivative Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative_diagnostics(immut_vars, mut_vars, 1000);
+        optima_print_new_line();
+        optima_print("Derivative2 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative2_diagnostics(immut_vars, mut_vars, 500);
+        optima_print_new_line();
+        optima_print("Derivative3 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative3_diagnostics(immut_vars, mut_vars, 100);
+        optima_print_new_line();
+        optima_print("Derivative4 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative4_diagnostics(immut_vars, mut_vars, 50);
+    }
+    fn call_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        let input_dimensions = self.input_dimensions();
+
+        let mut random_inputs = vec![];
+        for _ in 0..num_inputs {
+            random_inputs.push(OptimaTensor::new_random_sampling(self.input_dimensions()));
+        }
+
+        let mut call_time = AveragingFloat::new();
+
+        for r in &random_inputs {
+            let start = instant::Instant::now();
+            self.call(r, immut_vars, mut_vars).expect("error");
+            let duration = start.elapsed();
+            call_time.add_new_value(duration.as_secs_f64());
+        }
+
+        let call_time_as_duration = instant::Duration::from_secs_f64(call_time.value());
+
+        optima_print(&format!("Call time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+        optima_print(&format!("{:?}", call_time_as_duration), PrintMode::Print, PrintColor::Green, true);
+        optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
+
+    }
+    fn derivative_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative, immut_vars, mut_vars, num_inputs);
+    }
+    fn derivative2_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative2, immut_vars, mut_vars, num_inputs);
+    }
+    fn derivative3_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative3, immut_vars, mut_vars, num_inputs);
+    }
+    fn derivative4_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        self.derivative_diagnostics_generic(Self::derivative4, immut_vars, mut_vars, num_inputs);
+    }
+    fn derivative_diagnostics_generic<F>(&self, derivative_function: F, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize)
+        where F: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
+        let input_dimensions = self.input_dimensions();
+
+        let mut random_inputs = vec![];
+        for _ in 0..num_inputs {
+            random_inputs.push(OptimaTensor::new_random_sampling(self.input_dimensions()));
+        }
+
+        let mut finite_difference_time = AveragingFloat::new();
+        let mut finite_difference_results = vec![];
+        for r in &random_inputs {
+            let start = instant::Instant::now();
+            let res = derivative_function(self, r, immut_vars, mut_vars, Some(OTFDerivativeMode::FiniteDifference)).expect("error");
+            let duration = start.elapsed();
+            finite_difference_time.add_new_value(duration.as_secs_f64());
+            match res {
+                OTFResult::Unimplemented => { unreachable!() }
+                OTFResult::Complete(tensor) => { finite_difference_results.push(tensor); }
+            }
+        }
+        let finite_difference_time_as_duration = instant::Duration::from_secs_f64(finite_difference_time.value());
+
+        let mut analytical_time = AveragingFloat::new();
+        let mut analytical_diffs = AveragingFloat::new();
+        let mut analytical_results = vec![];
+        let mut analytical_unimplemented = false;
+        for r in &random_inputs {
+            let start = instant::Instant::now();
+            let res = derivative_function(self, r, immut_vars, mut_vars, Some(OTFDerivativeMode::Analytical)).expect("error");
+            let duration = start.elapsed();
+            analytical_time.add_new_value(duration.as_secs_f64());
+            match res {
+                OTFResult::Unimplemented => { analytical_unimplemented = true; break; }
+                OTFResult::Complete(tensor) => { analytical_results.push(tensor); }
+            }
+        }
+        let analytical_time_as_duration = instant::Duration::from_secs_f64(analytical_time.value());
+
+        let mut test_time = AveragingFloat::new();
+        let mut test_diffs = AveragingFloat::new();
+        let mut test_results = vec![];
+        let mut test_unimplemented = false;
+        for r in &random_inputs {
+            let start = instant::Instant::now();
+            let res = derivative_function(self, r, immut_vars, mut_vars, Some(OTFDerivativeMode::Test)).expect("error");
+            let duration = start.elapsed();
+            test_time.add_new_value(duration.as_secs_f64());
+            match res {
+                OTFResult::Unimplemented => { test_unimplemented = true; break; }
+                OTFResult::Complete(tensor) => { test_results.push(tensor); }
+            }
+        }
+        let test_time_as_duration = instant::Duration::from_secs_f64(test_time.value());
+
+        if !analytical_unimplemented {
+            for (i, finite_difference_res) in finite_difference_results.iter().enumerate() {
+                let analytical_res = &analytical_results[i];
+                let diff = finite_difference_res.average_difference(analytical_res);
+                analytical_diffs.add_new_value(diff);
+            }
+        }
+        if !test_unimplemented {
+            for (i, finite_difference_res) in finite_difference_results.iter().enumerate() {
+                let test_res = &test_results[i];
+                let diff = finite_difference_res.average_difference(test_res);
+                test_diffs.add_new_value(diff);
+            }
+        }
+
+        optima_print(&format!("Finite Difference time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+        optima_print(&format!("{:?}", finite_difference_time_as_duration), PrintMode::Print, PrintColor::Green, true);
+        optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
+
+        if !analytical_unimplemented {
+            optima_print(&format!("Analytical time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("{:?}", analytical_time_as_duration), PrintMode::Print, PrintColor::Green, true);
+            optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
+        }
+        if !test_unimplemented {
+            optima_print(&format!("Test time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("{:?}", test_time_as_duration), PrintMode::Print, PrintColor::Green, true);
+            optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
+        }
+
+        optima_print_new_line();
+
+        if !analytical_unimplemented {
+            let analytical_diffs_value = analytical_diffs.value();
+            let color = if analytical_diffs_value.abs() > 0.5 {
+                PrintColor::Red
+            } else if analytical_diffs_value.abs() > 0.05 {
+                PrintColor::Yellow
+            } else {
+                PrintColor::Green
+            };
+            optima_print(&format!("Analytical difference from Finite Difference over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("{:?}", analytical_diffs_value), PrintMode::Print, color, true);
+            optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
+        }
+        if !test_unimplemented {
+            let test_diffs_value = test_diffs.value();
+            let color = if test_diffs_value.abs() > 0.5 {
+                PrintColor::Red
+            } else if test_diffs_value.abs() > 0.05 {
+                PrintColor::Yellow
+            } else {
+                PrintColor::Green
+            };
+            optima_print(&format!("Test difference from Finite Difference over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("{:?}", test_diffs_value), PrintMode::Print, color, true);
+            optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
+        }
+    }
+}
+
+pub const FD_PERTURBATION: f64 = 0.000001;
+
+#[derive(Clone, Debug)]
+pub enum OTFResult {
+    Unimplemented, Complete(OptimaTensor)
+}
+impl OTFResult {
+    pub fn unwrap_tensor(&self) -> &OptimaTensor {
+        match self {
+            OTFResult::Unimplemented => { unimplemented!() }
+            OTFResult::Complete(t) => { return t; }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OTFDerivativeMode {
+    Analytical, FiniteDifference, Test
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug)]
+pub enum OptimaTensor {
+    Scalar(OptimaTensor0D),
+    Vector(OptimaTensor1D),
+    Matrix(OptimaTensor2D),
+    TensorND(OptimaTensorND)
+}
+impl OptimaTensor {
+    pub fn new_from_scalar(value: f64) -> Self {
+        Self::Scalar(OptimaTensor0D::new(value))
+    }
+    pub fn new_from_vector(vector: DVector<f64>) -> Self {
+        Self::Vector(OptimaTensor1D::new(vector))
+    }
+    pub fn new_from_matrix(matrix: DMatrix<f64>) -> Self {
+        Self::Matrix(OptimaTensor2D::new(matrix))
+    }
+    pub fn new_from_tensor(tensor: ArrayD<f64>) -> Self {
+        Self::TensorND(OptimaTensorND::new(tensor))
+    }
+    pub fn new_zeros(dimensions: Vec<usize>) -> Self {
+        let l = dimensions.len();
+        return if l == 0 {
+            Self::Scalar(OptimaTensor0D::new_zero())
+        } else if l == 1 {
+            Self::Vector(OptimaTensor1D::new_zeros(dimensions[0]))
+        } else if l == 2 {
+            Self::Matrix(OptimaTensor2D::new_zeros(dimensions[0], dimensions[1]))
+        } else {
+            Self::TensorND(OptimaTensorND::new_zeros(dimensions))
+        }
+    }
+    pub fn new_random_sampling(dimensions: Vec<usize>) -> Self {
+        let mut out = Self::new_zeros(dimensions);
+        let v = out.vectorized_data_mut();
+        for vv in v {
+            *vv = SimpleSamplers::uniform_sample((-5.0,5.0));
+        }
+        out
+    }
+    pub fn unwrap_scalar(&self) -> f64 {
+        match self {
+            OptimaTensor::Scalar(t) => { t.value[0] }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_vector(&self) -> &DVector<f64> {
+        match self {
+            OptimaTensor::Vector(t) => { &t.vector }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_matrix(&self) -> &DMatrix<f64> {
+        match self {
+            OptimaTensor::Matrix(t) => { &t.matrix }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_tensor_nd(&self) -> &ArrayD<f64> {
+        match self {
+            OptimaTensor::TensorND(t) => { &t.tensor }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn collapse_dimensions(&mut self) {
+        let dimensions = self.dimensions();
+        let mut true_dimensions = vec![];
+        for d in &dimensions {
+            if *d > 1 { true_dimensions.push(*d); }
+        }
+
+        if dimensions.len() == true_dimensions.len() { return; }
+
+        let mut new_self = Self::new_zeros(true_dimensions);
+        copy_vectorized_data(self.vectorized_data(), new_self.vectorized_data_mut());
+
+        *self = new_self;
+    }
+    pub fn spawn_new_with_new_dimension(&self, new_dimension_length: usize) -> OptimaTensor {
+        let mut dimensions = self.dimensions();
+        if new_dimension_length > 1 {
+            dimensions.push(new_dimension_length);
+        }
+        return Self::new_zeros(dimensions);
+    }
+    pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
+        return match self {
+            OptimaTensor::Scalar(t) => { t.convert(target) }
+            OptimaTensor::Vector(t) => { t.convert(target) }
+            OptimaTensor::Matrix(t) => { t.convert(target) }
+            OptimaTensor::TensorND(t) => { t.convert(target) }
+        }
+    }
+    pub fn dimensions(&self) -> Vec<usize> {
+        match self {
+            OptimaTensor::Scalar(t) => { t.dimensions() }
+            OptimaTensor::Vector(t) => { t.dimensions() }
+            OptimaTensor::Matrix(t) => { t.dimensions() }
+            OptimaTensor::TensorND(t) => { t.dimensions() }
+        }
+    }
+    pub fn dot(&self, other: &OptimaTensor) -> OptimaTensor {
+        let mut out = match self {
+            OptimaTensor::Scalar(t) => { t.dot(other) }
+            OptimaTensor::Vector(t) => { t.dot(other) }
+            OptimaTensor::Matrix(t) => { t.dot(other) }
+            OptimaTensor::TensorND(t) => { t.dot(other) }
+        };
+        out.collapse_dimensions();
+        out
+    }
+    pub fn elementwise_addition(&self, other: &OptimaTensor) -> OptimaTensor {
+        match self {
+            OptimaTensor::Scalar(t) => { t.elementwise_addition(other) }
+            OptimaTensor::Vector(t) => { t.elementwise_addition(other) }
+            OptimaTensor::Matrix(t) => { t.elementwise_addition(other) }
+            OptimaTensor::TensorND(t) => { t.elementwise_addition(other) }
+        }
+    }
+    pub fn elementwise_subtraction(&self, other: &OptimaTensor) -> OptimaTensor {
+        match self {
+            OptimaTensor::Scalar(t) => { t.elementwise_subtraction(other) }
+            OptimaTensor::Vector(t) => { t.elementwise_subtraction(other) }
+            OptimaTensor::Matrix(t) => { t.elementwise_subtraction(other) }
+            OptimaTensor::TensorND(t) => { t.elementwise_subtraction(other) }
+        }
+    }
+    pub fn scalar_multiplication(&mut self, value: f64) {
+        let v = self.vectorized_data_mut();
+        for vv in v { *vv *= value; }
+    }
+    pub fn scalar_addition(&mut self, value: f64) {
+        let v = self.vectorized_data_mut();
+        for vv in v { *vv += value; }
+    }
+    pub fn scalar_subtraction(&mut self, value: f64) {
+        let v = self.vectorized_data_mut();
+        for vv in v { *vv -= value; }
+    }
+    pub fn scalar_division(&mut self, value: f64) {
+        let v = self.vectorized_data_mut();
+        for vv in v { *vv /= value; }
+    }
+    pub fn set_value(&mut self, indices: Vec<usize>, value: f64) {
+        match self {
+            OptimaTensor::Scalar(t) => { t.set_value(indices, value); }
+            OptimaTensor::Vector(t) => { t.set_value(indices, value); }
+            OptimaTensor::Matrix(t) => { t.set_value(indices, value); }
+            OptimaTensor::TensorND(t) => { t.set_value(indices, value); }
+        }
+    }
+    pub fn get_value(&self, indices: Vec<usize>) -> f64 {
+        return match self {
+            OptimaTensor::Scalar(t) => { t.get_value(indices) }
+            OptimaTensor::Vector(t) => { t.get_value(indices) }
+            OptimaTensor::Matrix(t) => { t.get_value(indices) }
+            OptimaTensor::TensorND(t) => { t.get_value(indices) }
+        }
+    }
+    pub fn insert_slice(&mut self, slice_scope: Vec<OptimaTensorSliceScope>, slice: OptimaTensor) {
+        let self_dimensions = self.dimensions();
+
+        if self_dimensions.len() != slice_scope.len() {
+            panic!("slice scope must be same length as dimensions.");
+        }
+
+        let mut combined_indices = vec![];
+
+        let mut free_indices = vec![];
+        let mut free_vectorized_len = 1;
+        for (i, s) in slice_scope.iter().enumerate() {
+            match s {
+                OptimaTensorSliceScope::Free => {
+                    free_vectorized_len *= self_dimensions[i];
+                    free_indices.push(i);
+                    combined_indices.push(0);
+                }
+                OptimaTensorSliceScope::Fixed(idx) => {
+                    combined_indices.push(*idx);
+                }
+            }
+        }
+
+        let slice_vectorized_data = slice.vectorized_data();
+        if free_vectorized_len != slice_vectorized_data.len() {
+            panic!("slice data is incorrect length.")
+        }
+
+        for (i, s) in slice_vectorized_data.iter().enumerate() {
+            let slice_indices = slice.vectorized_idx_to_indices(i);
+            for (j, slice_idx) in slice_indices.iter().enumerate() {
+                combined_indices[free_indices[j]] = *slice_idx;
+            }
+            self.set_value(combined_indices.clone(), *s);
+        }
+
+    }
+    pub fn vectorized_data(&self) -> &[f64] {
+        match self {
+            OptimaTensor::Scalar(t) => { t.vectorized_data() }
+            OptimaTensor::Vector(t) => { t.vectorized_data() }
+            OptimaTensor::Matrix(t) => { t.vectorized_data() }
+            OptimaTensor::TensorND(t) => { t.vectorized_data() }
+        }
+    }
+    pub fn average_difference(&self, other: &OptimaTensor) -> f64 {
+        let self_vectorized_data = self.vectorized_data();
+        let other_vectorized_data = other.vectorized_data();
+
+        let l1 = self_vectorized_data.len();
+        let l2 = other_vectorized_data.len();
+
+        assert_eq!(l1, l2);
+
+        let mut a = AveragingFloat::new();
+
+        for i in 0..l1 {
+            a.add_new_value( (self_vectorized_data[i] - other_vectorized_data[i]) )
+        }
+
+        a.value()
+    }
+    pub fn id(&self) -> f64 {
+        match self {
+            OptimaTensor::Scalar(t) => { t.id }
+            OptimaTensor::Vector(t) => { t.id }
+            OptimaTensor::Matrix(t) => { t.id }
+            OptimaTensor::TensorND(t) => { t.id }
+        }
+    }
+    fn vectorized_data_mut(&mut self) -> &mut [f64] {
+        match self {
+            OptimaTensor::Scalar(t) => { t.vectorized_data_mut() }
+            OptimaTensor::Vector(t) => { t.vectorized_data_mut() }
+            OptimaTensor::Matrix(t) => { t.vectorized_data_mut() }
+            OptimaTensor::TensorND(t) => { t.vectorized_data_mut() }
+        }
+    }
+    fn vectorized_idx_to_indices(&self, vectorized_idx: usize) -> Vec<usize> {
+        match self {
+            OptimaTensor::Scalar(t) => { t.vectorized_idx_to_indices(vectorized_idx) }
+            OptimaTensor::Vector(t) => { t.vectorized_idx_to_indices(vectorized_idx) }
+            OptimaTensor::Matrix(t) => { t.vectorized_idx_to_indices(vectorized_idx) }
+            OptimaTensor::TensorND(t) => { t.vectorized_idx_to_indices(vectorized_idx) }
+        }
+    }
+    fn indices_to_vectorized_idx(&self, indices: Vec<usize>) -> usize {
+        return match self {
+            OptimaTensor::Scalar(t) => { t.indices_to_vectorized_idx(indices) }
+            OptimaTensor::Vector(t) => { t.indices_to_vectorized_idx(indices) }
+            OptimaTensor::Matrix(t) => { t.indices_to_vectorized_idx(indices) }
+            OptimaTensor::TensorND(t) => { t.indices_to_vectorized_idx(indices) }
+        }
+    }
+}
+impl EnumMapToSignature<OptimaTensorSignature> for OptimaTensor {
+    fn map_to_signature(&self) -> OptimaTensorSignature {
+        match self {
+            OptimaTensor::Scalar(_) => { OptimaTensorSignature::Scalar }
+            OptimaTensor::Vector(_) => { OptimaTensorSignature::Vector }
+            OptimaTensor::Matrix(_) => { OptimaTensorSignature::Matrix }
+            OptimaTensor::TensorND(_) => { OptimaTensorSignature::TensorND }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OptimaTensorSignature {
+    Scalar,
+    Vector,
+    Matrix,
+    TensorND
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimaTensor0D {
+    value: [f64; 1],
+    id: f64
+}
+impl OptimaTensor0D {
+    pub fn new_zero() -> Self {
+        Self::new(0.0)
+    }
+    pub fn new(value: f64) -> Self {
+        Self {
+            value: [value],
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+    pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
+        return match target {
+            OptimaTensorSignature::Scalar => {
+                OptimaTensor::Scalar(self.clone())
+            },
+            OptimaTensorSignature::Vector => {
+                let mut vector = DVector::zeros(1);
+                vector[0] = self.value[0];
+                OptimaTensor::Vector(OptimaTensor1D::new(vector))
+            }
+            OptimaTensorSignature::Matrix => {
+                let mut matrix = DMatrix::zeros(1, 1);
+                matrix[(0, 0)] = self.value[0];
+                OptimaTensor::Matrix(OptimaTensor2D::new(matrix))
+            }
+            OptimaTensorSignature::TensorND => {
+                let mut tensor = OptimaTensorND::new_zeros(vec![1]);
+                tensor.vectorized_data_mut()[0] = self.value[0];
+                OptimaTensor::TensorND(tensor)
+            }
+        }
+    }
+    pub fn dimensions(&self) -> Vec<usize> { vec![] }
+    pub fn set_value(&mut self, indices: Vec<usize>, value: f64) {
+        if indices.len() > 0 {
+            panic!("incorrect indices.");
+        }
+        self.value = [value];
+    }
+    pub fn get_value(&self, indices: Vec<usize>) -> f64 {
+        if indices.len() > 0 {
+            panic!("incorrect indices.");
+        }
+        return self.value[0];
+    }
+    pub fn dot(&self, other: &OptimaTensor) -> OptimaTensor {
+        return match other {
+            OptimaTensor::Scalar(t) => {
+                let val = self.value[0] * t.value[0];
+                OptimaTensor::new_from_scalar(val)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_addition(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Scalar(v) => {
+                let out_val = &self.value[0] + &v.value[0];
+                OptimaTensor::new_from_scalar(out_val)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_subtraction(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Scalar(v) => {
+                let out_val = &self.value[0] - &v.value[0];
+                OptimaTensor::new_from_scalar(out_val)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    fn vectorized_data(&self) -> &[f64] { &self.value }
+    fn vectorized_data_mut(&mut self) -> &mut [f64] { &mut self.value }
+    fn vectorized_idx_to_indices(&self, vectorized_idx: usize) -> Vec<usize> {
+        if vectorized_idx > 0 {
+            panic!("invalid vectorized idx.");
+        }
+        return vec![];
+    }
+    fn indices_to_vectorized_idx(&self, indices: Vec<usize>) -> usize {
+        if indices.len() > 0 {
+            panic!("invalid indices.");
+        }
+        return 0;
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimaTensor1D {
+    vector: DVector<f64>,
+    id: f64
+}
+impl OptimaTensor1D {
+    pub fn new_zeros(len: usize) -> Self {
+        Self::new(DVector::zeros(len))
+    }
+    pub fn new(vector: DVector<f64>) -> Self {
+        Self {
+            vector,
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+    pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
+        return match target {
+            OptimaTensorSignature::Scalar => {
+                if self.vectorized_data().len() != 1 {
+                    panic!("illegal conversion.");
+                }
+                OptimaTensor::Scalar(OptimaTensor0D::new(self.vectorized_data()[0]))
+            }
+            OptimaTensorSignature::Vector => {
+                OptimaTensor::Vector(self.clone())
+            }
+            OptimaTensorSignature::Matrix => {
+                let mut out = OptimaTensor::Matrix(OptimaTensor2D::new_zeros(self.vector.nrows(), self.vector.ncols()));
+                copy_vectorized_data(self.vectorized_data(), out.vectorized_data_mut());
+                out
+            }
+            OptimaTensorSignature::TensorND => {
+                let mut out = OptimaTensor::TensorND(OptimaTensorND::new_zeros(self.dimensions()));
+                copy_vectorized_data(self.vectorized_data(), out.vectorized_data_mut());
+                out
+            }
+        }
+    }
+    pub fn dimensions(&self) -> Vec<usize> { vec![self.vector.len()] }
+    pub fn set_value(&mut self, indices: Vec<usize>, value: f64) {
+        if indices.len() != 1 {
+            panic!("incorrect indices.");
+        }
+        self.vector[indices[0]] = value;
+    }
+    pub fn get_value(&self, indices: Vec<usize>) -> f64 {
+        if indices.len() != 1 {
+            panic!("incorrect indices.");
+        }
+        return self.vector[indices[0]];
+    }
+    pub fn dot(&self, other: &OptimaTensor) -> OptimaTensor {
+        return match other {
+            OptimaTensor::Vector(t) => {
+                let out_sum = self.vector.dot(&t.vector);
+                OptimaTensor::new_from_scalar(out_sum)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_addition(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Vector(v) => {
+                let out_vec = &self.vector + &v.vector;
+                OptimaTensor::new_from_vector(out_vec)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_subtraction(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Vector(v) => {
+                let out_vec = &self.vector - &v.vector;
+                OptimaTensor::new_from_vector(out_vec)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    fn vectorized_data(&self) -> &[f64] { self.vector.as_slice() }
+    fn vectorized_data_mut(&mut self) -> &mut [f64] { self.vector.as_mut_slice() }
+    fn vectorized_idx_to_indices(&self, vectorized_idx: usize) -> Vec<usize> {
+        if vectorized_idx > self.vector.len() {
+            panic!("invalid vectorized idx.");
+        }
+        return vec![vectorized_idx];
+    }
+    fn indices_to_vectorized_idx(&self, indices: Vec<usize>) -> usize {
+        if indices.len() != 1 {
+            panic!("invalid indices.");
+        }
+        return indices[0];
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimaTensor2D {
+    matrix: DMatrix<f64>,
+    id: f64
+}
+impl OptimaTensor2D {
+    pub fn new_zeros(nrows: usize, ncols: usize) -> Self {
+        let mat = DMatrix::zeros(nrows, ncols);
+        return Self::new(mat);
+    }
+    pub fn new(matrix: DMatrix<f64>) -> Self {
+        Self {
+            matrix,
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+    pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
+        return match target {
+            OptimaTensorSignature::Scalar => {
+                if self.vectorized_data().len() != 1 {
+                    panic!("illegal conversion.");
+                }
+                OptimaTensor::Scalar(OptimaTensor0D::new(self.vectorized_data()[0]))
+            }
+            OptimaTensorSignature::Vector => {
+                let dimensions = self.dimensions();
+                let mut num_non_one = 0;
+                for d in dimensions {
+                    if d != 1 { num_non_one += 1 }
+                }
+                if num_non_one > 1 {
+                    panic!("illegal conversion.");
+                }
+                OptimaTensor::Vector(OptimaTensor1D::new(DVector::from_column_slice(self.vectorized_data())))
+            }
+            OptimaTensorSignature::Matrix => {
+                OptimaTensor::Matrix(self.clone())
+            }
+            OptimaTensorSignature::TensorND => {
+                let mut out = OptimaTensor::TensorND(OptimaTensorND::new_zeros(self.dimensions()));
+                copy_vectorized_data(self.vectorized_data(), out.vectorized_data_mut());
+                out
+            }
+        }
+    }
+    pub fn dimensions(&self) -> Vec<usize> { vec![ self.matrix.nrows(), self.matrix.ncols() ] }
+    pub fn set_value(&mut self, indices: Vec<usize>, value: f64) {
+        if indices.len() != 2 {
+            panic!("incorrect indices.");
+        }
+        self.matrix[(indices[0], indices[1])] = value;
+    }
+    pub fn get_value(&self, indices: Vec<usize>) -> f64 {
+        if indices.len() != 2 {
+            panic!("incorrect indices.");
+        }
+        return self.matrix[(indices[0], indices[1])];
+    }
+    pub fn dot(&self, other: &OptimaTensor) -> OptimaTensor {
+        return match other {
+            OptimaTensor::Matrix(t) => {
+                let out_mat = if self.matrix.ncols() == t.matrix.nrows() {
+                    &self.matrix * &t.matrix
+                } else if self.matrix.nrows() == t.matrix.nrows() {
+                    &self.matrix.transpose() * &t.matrix
+                } else if self.matrix.ncols() == t.matrix.ncols() {
+                    &self.matrix * &t.matrix.transpose()
+                } else {
+                    panic!("dimensions do not align.")
+                };
+
+                OptimaTensor::new_from_matrix(out_mat)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_addition(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Matrix(v) => {
+                let out_mat = &self.matrix + &v.matrix;
+                OptimaTensor::new_from_matrix(out_mat)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_subtraction(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Matrix(v) => {
+                let out_mat = &self.matrix - &v.matrix;
+                OptimaTensor::new_from_matrix(out_mat)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    fn vectorized_data(&self) -> &[f64] { self.matrix.as_slice() }
+    fn vectorized_data_mut(&mut self) -> &mut [f64] { self.matrix.as_mut_slice() }
+    fn vectorized_idx_to_indices(&self, vectorized_idx: usize) -> Vec<usize> {
+        if vectorized_idx >= self.vectorized_data().len() {
+            panic!("invalid vectorized idx.");
+        }
+
+        let mut out_vec = vec![];
+        let mut remainder = vectorized_idx;
+
+        let strides = vec![self.matrix.ncols(), 1];
+
+        for dim in strides {
+            if remainder == 0 {
+                out_vec.push(0);
+            } else if remainder >= dim as usize {
+                let div = remainder / dim as usize;
+                out_vec.push(div);
+                remainder %= dim as usize;
+            } else {
+                out_vec.push(0);
+            }
+        }
+
+        out_vec
+    }
+    fn indices_to_vectorized_idx(&self, indices: Vec<usize>) -> usize {
+        if indices.len() != 2 {
+            panic!("invalid indices.");
+        }
+
+        let mut out = 0;
+
+        let strides_tuple = self.matrix.strides();
+        let strides = vec![strides_tuple.0, strides_tuple.1];
+
+        for (i, idx) in indices.iter().enumerate() {
+            out += strides[i] * *idx;
+        }
+
+        out
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OptimaTensorND {
+    tensor: ArrayD<f64>,
+    id: f64
+}
+impl OptimaTensorND {
+    pub fn new_zeros(dimensions: Vec<usize>) -> Self {
+        if dimensions.len() > 6 { panic!("cannot support greater than 6 dimensions.") }
+        let tensor = Array::<f64, _>::zeros(dimensions);
+        return Self::new(tensor);
+    }
+    pub fn new(tensor: ArrayD<f64>) -> Self {
+        Self {
+            tensor,
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+    pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
+        return match target {
+            OptimaTensorSignature::Scalar => {
+                if self.vectorized_data().len() != 1 {
+                    panic!("illegal conversion.");
+                }
+                OptimaTensor::Scalar(OptimaTensor0D::new(self.vectorized_data()[0]))
+            }
+            OptimaTensorSignature::Vector => {
+                let dimensions = self.dimensions();
+                let mut num_non_one = 0;
+                for d in dimensions {
+                    if d != 1 { num_non_one += 1 }
+                }
+                if num_non_one > 1 {
+                    panic!("illegal conversion.");
+                }
+                OptimaTensor::Vector(OptimaTensor1D::new(DVector::from_column_slice(self.vectorized_data())))
+            }
+            OptimaTensorSignature::Matrix => {
+                let dimensions = self.dimensions();
+                if dimensions.len() > 2 {
+                    panic!("illegal conversion.");
+                }
+                let mut out = OptimaTensor2D::new_zeros(dimensions[0], dimensions[1]);
+                copy_vectorized_data(self.vectorized_data(), out.vectorized_data_mut());
+                OptimaTensor::Matrix(out)
+            }
+            OptimaTensorSignature::TensorND => {
+                OptimaTensor::TensorND(self.clone())
+            }
+        }
+    }
+    pub fn dimensions(&self) -> Vec<usize> { self.tensor.shape().to_vec() }
+    pub fn set_value(&mut self, indices: Vec<usize>, value: f64) {
+        let dimensions = self.dimensions();
+        let l = dimensions.len();
+        if l != indices.len() {
+            panic!("incorrect indices.")
+        }
+
+        let mut_val = if l == 1 {
+            self.cell_mut_ref1(indices)
+        } else if l == 2 {
+            self.cell_mut_ref2(indices)
+        } else if l == 3 {
+            self.cell_mut_ref3(indices)
+        } else if l == 4 {
+            self.cell_mut_ref4(indices)
+        } else if l == 5 {
+            self.cell_mut_ref5(indices)
+        } else if l == 6 {
+            self.cell_mut_ref6(indices)
+        } else {
+            unreachable!()
+        };
+
+        *mut_val = value;
+    }
+    pub fn get_value(&self, indices: Vec<usize>) -> f64 {
+        let dimensions = self.dimensions();
+        let l = dimensions.len();
+        if l != indices.len() {
+            panic!("incorrect indices.")
+        }
+
+        let val = if l == 1 {
+            self.cell_ref1(indices)
+        } else if l == 2 {
+            self.cell_ref2(indices)
+        } else if l == 3 {
+            self.cell_ref3(indices)
+        } else if l == 4 {
+            self.cell_ref4(indices)
+        } else if l == 5 {
+            self.cell_ref5(indices)
+        } else if l == 6 {
+            self.cell_ref6(indices)
+        } else {
+            unreachable!()
+        };
+
+        return *val;
+    }
+    pub fn dot(&self, other: &OptimaTensor) -> OptimaTensor {
+        return match other {
+            OptimaTensor::TensorND(_) => {
+                todo!("This hasn't been implemented yet.  If you encounter this error, it's probably time to implement it.")
+                // For reference: let res = tensordot(&arr, &arr2, &vec![Axis(1)], &vec![Axis(0)]);
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_addition(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::TensorND(v) => {
+                let out_tensor = &self.tensor + &v.tensor;
+                OptimaTensor::new_from_tensor(out_tensor)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+    pub fn elementwise_subtraction(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::TensorND(v) => {
+                let out_tensor = &self.tensor - &v.tensor;
+                OptimaTensor::new_from_tensor(out_tensor)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_signature());
+                c.dot(other)
+            }
+        }
+    }
+
+    fn vectorized_data(&self) -> &[f64] { self.tensor.as_slice().unwrap() }
+    fn vectorized_data_mut(&mut self) -> &mut [f64] { self.tensor.as_slice_mut().unwrap() }
+    fn vectorized_idx_to_indices(&self, vectorized_idx: usize) -> Vec<usize> {
+        if vectorized_idx >= self.vectorized_data().len() {
+            panic!("invalid vectorized idx.");
+        }
+
+        let mut out_vec = vec![];
+        let mut remainder = vectorized_idx;
+
+        let strides = self.tensor.strides();
+        for dim in strides {
+            if remainder == 0 {
+                out_vec.push(0);
+            } else if remainder >= *dim as usize {
+                let div = remainder / *dim as usize;
+                out_vec.push(div);
+                remainder %= *dim as usize;
+            } else {
+                out_vec.push(0);
+            }
+        }
+
+        out_vec
+    }
+    fn indices_to_vectorized_idx(&self, indices: Vec<usize>) -> usize {
+        let mut out = 0;
+
+        let strides = self.tensor.strides();
+
+        for (i, idx) in indices.iter().enumerate() {
+            out += strides[i] as usize * *idx;
+        }
+
+        out
+    }
+
+    fn cell_mut_ref1(&mut self, indices: Vec<usize>) -> &mut f64 {
+        return &mut self.tensor[[indices[0]]]
+    }
+    fn cell_mut_ref2(&mut self, indices: Vec<usize>) -> &mut f64 {
+        return &mut self.tensor[[indices[0], indices[1]]]
+    }
+    fn cell_mut_ref3(&mut self, indices: Vec<usize>) -> &mut f64 {
+        return &mut self.tensor[[indices[0], indices[1], indices[2]]]
+    }
+    fn cell_mut_ref4(&mut self, indices: Vec<usize>) -> &mut f64 {
+        return &mut self.tensor[[indices[0], indices[1], indices[2], indices[3]]]
+    }
+    fn cell_mut_ref5(&mut self, indices: Vec<usize>) -> &mut f64 {
+        return &mut self.tensor[[indices[0], indices[1], indices[2], indices[3], indices[4]]]
+    }
+    fn cell_mut_ref6(&mut self, indices: Vec<usize>) -> &mut f64 {
+        return &mut self.tensor[[indices[0], indices[1], indices[2], indices[3], indices[4], indices[5]]]
+    }
+
+    fn cell_ref1(&self, indices: Vec<usize>) -> &f64 {
+        return &self.tensor[[indices[0]]]
+    }
+    fn cell_ref2(&self, indices: Vec<usize>) -> &f64 {
+        return &self.tensor[[indices[0], indices[1]]]
+    }
+    fn cell_ref3(&self, indices: Vec<usize>) -> &f64 {
+        return &self.tensor[[indices[0], indices[1], indices[2]]]
+    }
+    fn cell_ref4(&self, indices: Vec<usize>) -> &f64 {
+        return &self.tensor[[indices[0], indices[1], indices[2], indices[3]]]
+    }
+    fn cell_ref5(&self, indices: Vec<usize>) -> &f64 {
+        return &self.tensor[[indices[0], indices[1], indices[2], indices[3], indices[4]]]
+    }
+    fn cell_ref6(&self, indices: Vec<usize>) -> &f64 {
+        return &self.tensor[[indices[0], indices[1], indices[2], indices[3], indices[4], indices[5]]]
+    }
+}
+
+fn copy_vectorized_data(from: &[f64], to: &mut [f64]) {
+    let l1 = from.len();
+    let l2 = to.len();
+    if l1 != l2 {
+        panic!("lengths must be the same");
+    }
+
+    for i in 0..l1 {
+        to[i] = from[i];
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum OptimaTensorSliceScope {
+    Free,
+    Fixed(usize)
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub struct OTFImmutVars {
+    c: Box<dyn EnumSignatureContainer<OTFImmutVarsObject, OTFImmutVarsObjectSignature>>
+}
+impl OTFImmutVars {
+    pub fn new() -> Self {
+        Self::new_with_enum_signature_container_type(EnumSignatureContainerType::default())
+    }
+    pub fn new_with_enum_signature_container_type(enum_signature_container_type: EnumSignatureContainerType) -> Self {
+        Self {
+            c: match enum_signature_container_type {
+                EnumSignatureContainerType::BinarySearch => { Box::new(EnumBinarySearchSignatureContainer::new()) }
+                EnumSignatureContainerType::HashMap => { Box::new(EnumHashMapSignatureContainer::new()) }
+            }
+        }
+    }
+    pub fn object_ref(&self, signature: &OTFImmutVarsObjectSignature) -> Option<&OTFImmutVarsObject> {
+        self.c.object_ref(signature)
+    }
+    pub fn insert_or_replace(&mut self, object: OTFImmutVarsObject) {
+        self.c.insert_or_replace_object(object);
+    }
+    pub fn insert_or_replace_get_robot_set<T: GetRobotSet + 'static>(&mut self, object: T) {
+        self.insert_or_replace(OTFImmutVarsObject::GetRobotSet(Box::new(object)));
+    }
+}
+
+pub enum OTFImmutVarsObject {
+    Test,
+    GetRobotSet(Box<dyn GetRobotSet>)
+}
+impl EnumMapToSignature<OTFImmutVarsObjectSignature> for OTFImmutVarsObject {
+    fn map_to_signature(&self) -> OTFImmutVarsObjectSignature {
+        match self {
+            OTFImmutVarsObject::Test => { OTFImmutVarsObjectSignature::Test }
+            OTFImmutVarsObject::GetRobotSet(_) => { OTFImmutVarsObjectSignature::GetRobotSet }
+        }
+    }
+}
+impl OTFImmutVarsObject {
+    pub fn unwrap_get_robot_set(&self) -> &Box<dyn GetRobotSet> {
+        match self {
+            OTFImmutVarsObject::GetRobotSet(t) => { return t; }
+            _ => { panic!("wrong type.") }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OTFImmutVarsObjectSignature {
+    Test,
+    GetRobotSet
+}
+
+/// var indices must be locked prior to getting keys
+#[derive(Clone, Debug)]
+pub struct OTFMutVars {
+    enum_objects: Vec<OTFMutVarsObject>,
+    signatures: Vec<OTFMutVarsObjectSignature>,
+    vectorized_tensors: Vec<Vec<f64>>,
+    registered_session_blocks: Vec<OTFMutVarsSessionBlock>,
+    session_key_counter: usize
+}
+impl OTFMutVars {
+    pub fn new() -> Self {
+        Self {
+            enum_objects: vec![],
+            signatures: vec![],
+            vectorized_tensors: vec![],
+            registered_session_blocks: vec![],
+            session_key_counter: 0
+        }
+    }
+    pub fn register_session(&mut self, input: &OptimaTensor) -> OTFMutVarsSessionKey {
+        let out = OTFMutVarsSessionKey { key_idx: self.session_key_counter };
+        let block = OTFMutVarsSessionBlock {
+            key: out.clone(),
+            input_tensor_id: input.id(),
+            already_gave_out_var_keys_this_session: false,
+            registered_vars: vec![]
+        };
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(&out).unwrap());
+        let idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(idx) => {idx}
+        };
+        self.registered_session_blocks.insert(idx, block);
+        self.session_key_counter += 1;
+        return out;
+    }
+    pub fn close_session(&mut self, session_key: &OTFMutVarsSessionKey) {
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        match binary_search_res {
+            Ok(idx) => { self.registered_session_blocks.remove(idx); }
+            Err(_) => { panic!("Tried to close a session that does not exist.") }
+        }
+    }
+    pub fn insert_base_variable(&mut self, object: OTFMutVarsObject, session_key: &OTFMutVarsSessionKey) {
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        let session_block_idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(_) => { panic!("Tried to insert a var in a session that does not exist.") }
+        };
+        let session_block = &self.registered_session_blocks[session_block_idx];
+
+        if session_block.already_gave_out_var_keys_this_session {
+            panic!("Cannot insert a variable in a session that has already given out var keys.");
+        }
+
+        let signature = object.map_to_signature();
+        let binary_search_res = self.signatures.binary_search_by(|x| x.partial_cmp(&signature).unwrap());
+        match binary_search_res {
+            Ok(idx) => {
+                self.enum_objects[idx] = object;
+            }
+            Err(idx) => {
+                self.enum_objects.insert(idx, object);
+                self.signatures.insert(idx, signature);
+                self.vectorized_tensors.insert(idx, vec![]);
+            }
+        };
+    }
+    pub fn register_vars(&mut self, input: &OptimaTensor, immut_vars: &OTFImmutVars, recompute_var_ifs: &Vec<RecomputeVarIf>, signatures: &Vec<OTFMutVarsObjectSignature>, session_key: &OTFMutVarsSessionKey) {
+        if recompute_var_ifs.len() != signatures.len() {
+            panic!("recompute_var_ifs len must equal signatures len");
+        }
+
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        let session_block_idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(_) => { panic!("Tried to register a var in a session that does not exist.") }
+        };
+        let session_block = &self.registered_session_blocks[session_block_idx];
+        if session_block.already_gave_out_var_keys_this_session {
+            panic!("Cannot register var in this session as it has already given out var keys.  All registers should be done before getting keys.");
+        }
+
+        if session_block.input_tensor_id != input.id() {
+            panic!("Tried to register a variable with an input tensor that does not match the given session.")
+        }
+
+        for (i, signature) in signatures.iter().enumerate() {
+            let session_block = &self.registered_session_blocks[session_block_idx];
+            let binary_search_res = session_block.registered_vars.binary_search_by(|x| x.cmp(signature));
+            match binary_search_res {
+                Ok(_) => { continue; }
+                Err(_) => {
+                    let binary_search_res = self.signatures.binary_search_by(|x| x.partial_cmp(signature).unwrap());
+                    let (compute, idx) = match binary_search_res {
+                        Ok(idx) => {
+                            (recompute_var_ifs[i].recompute(input, &self.vectorized_tensors[idx], immut_vars), idx)
+                        }
+                        Err(idx) => {
+                            (true, idx)
+                        }
+                    };
+
+                    if compute {
+                        let var_object = signature.compute_var(input, immut_vars, self);
+                        self.signatures.insert(idx, signature.clone());
+                        self.enum_objects.insert(idx, var_object);
+                        self.vectorized_tensors.insert(idx, input.vectorized_data().to_vec());
+                    }
+                }
+            }
+            let session_block = &mut self.registered_session_blocks[session_block_idx];
+            session_block.registered_vars.push(signature.clone());
+        }
+    }
+    pub fn get_var_keys(&mut self, signatures: &Vec<OTFMutVarsObjectSignature>, input: &OptimaTensor, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsKeyContainer {
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        let session_block_idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(_) => { panic!("Tried to register a var in a session that does not exist.") }
+        };
+        let session_block = &self.registered_session_blocks[session_block_idx];
+
+        if session_block.input_tensor_id != input.id() {
+            panic!("Tried to get var keys with an input tensor that does not match the given session.")
+        }
+
+        let mut out_keys = OTFMutVarsKeyContainer { container: vec![] };
+
+        for signature in signatures {
+            if !session_block.registered_vars.contains(signature) {
+                panic!("Tried to get var key from a variable that was not registered.");
+            }
+            let binary_search_res = self.signatures.binary_search_by(|x| x.partial_cmp(signature).unwrap());
+            match binary_search_res {
+                Ok(idx) => {
+                    out_keys.container.push(OTFMutVarsKey { key_idx: idx });
+                }
+                Err(_) => { unreachable!("Should be unreachable since the variable should have been registered already.") }
+            }
+        }
+
+        let session_block = &mut self.registered_session_blocks[session_block_idx];
+        session_block.already_gave_out_var_keys_this_session = true;
+
+        out_keys
+    }
+    pub fn unlock_object_mut_refs(&mut self, keys: &OTFMutVarsKeyContainer, input: &OptimaTensor, session_key: &OTFMutVarsSessionKey) -> Vec<&mut OTFMutVarsObject> {
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
+        let session_block_idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(_) => { panic!("Tried to register a var in a session that does not exist.") }
+        };
+        let session_block = &self.registered_session_blocks[session_block_idx];
+
+        if session_block.input_tensor_id != input.id() {
+            panic!("Tried to get object refs with an input tensor that does not match the given session.")
+        }
+
+        let out = self.enum_objects.iter_mut()
+            .enumerate()
+            .filter(|(i, _)| keys.container.contains(&OTFMutVarsKey { key_idx: *i }))
+            .map(|(_, o)| o)
+            .collect();
+
+        return out;
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum RecomputeVarIf {
+    IsAnyNewInput,
+    IsAnyNonFDPerturbationInput,
+    InputInfNormIsGreaterThan(f64),
+    Never
+}
+impl RecomputeVarIf {
+    #[allow(unused_variables)]
+    pub fn recompute(&self, input: &OptimaTensor, previous_vectorized_tensor: &Vec<f64>, immut_vars: &OTFImmutVars) -> bool {
+        match self {
+            RecomputeVarIf::IsAnyNewInput => {
+                let vectorized_tensor = input.vectorized_data();
+                for (i, v) in vectorized_tensor.iter().enumerate() {
+                    if *v != previous_vectorized_tensor[i] { return true; }
+                }
+                return false;
+            }
+            RecomputeVarIf::IsAnyNonFDPerturbationInput => {
+                let vectorized_tensor = input.vectorized_data();
+                for (i, v) in vectorized_tensor.iter().enumerate() {
+                    let diff = (*v - previous_vectorized_tensor[i]).abs();
+                    if diff > FD_PERTURBATION { return true; }
+                }
+                return false;
+            }
+            RecomputeVarIf::InputInfNormIsGreaterThan(val) => {
+                let vectorized_tensor = input.vectorized_data();
+                for (i, v) in vectorized_tensor.iter().enumerate() {
+                    let diff = (*v - previous_vectorized_tensor[i]).abs();
+                    if diff > *val { return true; }
+                }
+                return false;
+            }
+            RecomputeVarIf::Never => { return false; }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum OTFMutVarsObject {
+    Test
+}
+impl EnumMapToSignature<OTFMutVarsObjectSignature> for OTFMutVarsObject {
+    fn map_to_signature(&self) -> OTFMutVarsObjectSignature {
+        match self {
+            OTFMutVarsObject::Test => { OTFMutVarsObjectSignature::Test }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum OTFMutVarsObjectSignature {
+    Test
+}
+impl OTFMutVarsObjectSignature {
+    pub fn compute_var(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> OTFMutVarsObject {
+        let session_key = mut_vars.register_session(input);
+        let out = self.compute_var_raw(input, immut_vars, mut_vars, &session_key);
+        mut_vars.close_session(&session_key);
+        out
+    }
+    #[allow(unused_variables)]
+    fn compute_var_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsObject {
+        match self {
+            OTFMutVarsObjectSignature::Test => { return OTFMutVarsObject::Test }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct OTFMutVarsKey {
+    key_idx: usize
+}
+#[derive(Clone, Debug)]
+pub struct OTFMutVarsKeyContainer {
+    container: Vec<OTFMutVarsKey>
+}
+
+#[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq)]
+pub struct OTFMutVarsSessionKey {
+    key_idx: usize
+}
+#[derive(Clone, Debug)]
+struct OTFMutVarsSessionBlock {
+    key: OTFMutVarsSessionKey,
+    input_tensor_id: f64,
+    already_gave_out_var_keys_this_session: bool,
+    registered_vars: Vec<OTFMutVarsObjectSignature>,
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+pub mod robotics_functions;
+pub mod standard_functions;
+
+/*
+use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_optima_tensor_functions::{OptimaTensor_, OptimaTensorFunction_, OTFImmutVars, OTFMutVars, OTFMutVarsSessionKey, OTFResult};
+
+/// f(g(x))
+pub struct OTFComposition<F, G>
+    where F: OptimaTensorFunction_,
+          G: OptimaTensorFunction_ {
+    input_dimensions: (Vec<usize>, Vec<usize>),
+    output_dimensions: (Vec<usize>, Vec<usize>),
+    f: F,
+    g: G
+}
+impl<F, G> OTFComposition <F, G>
+    where F: OptimaTensorFunction_,
+          G: OptimaTensorFunction_ {
+    pub fn new(f: F, g: G) -> Self {
+        if g.output_dimensions() != f.input_dimensions() {
+            panic!("OTFComposition dimensions do not align. (envloped: {:?}, outer: {:?})", g.output_dimensions(), f.input_dimensions());
+        }
+
+        Self {
+            input_dimensions: g.input_dimensions(),
+            output_dimensions: f.output_dimensions(),
+            f,
+            g
+        }
+    }
+}
+impl <F, G> OptimaTensorFunction_ for OTFComposition<F, G>
+    where F: OptimaTensorFunction_,
+          G: OptimaTensorFunction_ {
+    fn call_raw(&self, input: &OptimaTensor_, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let g_res = self.g.call_raw(input, immut_vars, mut_vars, session_key)?;
+        let g = g_res.unwrap_tensor();
+        let f = self.f.call_raw(g, immut_vars, mut_vars, session_key)?;
+        return Ok(f);
+    }
+    fn derivative_analytical_raw(&self, input: &OptimaTensor_, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let g_res = self.g.call_raw(input, immut_vars, mut_vars, session_key)?;
+        let g = g_res.unwrap_tensor();
+        let dg_dx_res = self.g.derivative(input, immut_vars, mut_vars, None)?;
+        let dg_dx = dg_dx_res.unwrap_tensor();
+        let df_dg_res = self.f.derivative(g, immut_vars, mut_vars, None)?;
+        let df_dg = df_dg_res.unwrap_tensor();
+        let df_dx = df_dg.dot(dg_dx);
+        return Ok(OTFResult::Complete(df_dx));
+    }
+    fn input_dimensions(&self) -> (Vec<usize>, Vec<usize>) {
+        self.input_dimensions.clone()
+    }
+    fn output_dimensions(&self) -> (Vec<usize>, Vec<usize>) {
+        self.output_dimensions.clone()
+    }
+}
+
+*/
+

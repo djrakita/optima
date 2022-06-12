@@ -15,6 +15,10 @@ impl SimpleSamplers {
         }
         out_vec
     }
+    pub fn uniform_sample(bounds: (f64, f64)) -> f64 {
+        let mut rng = rand::thread_rng();
+        return rng.gen_range(bounds.0..bounds.1)
+    }
     pub fn normal_samples(means_and_standard_deviations: &Vec<(f64, f64)>) -> Vec<f64> {
         let mut out_vec = vec![];
         let mut rng = rand::thread_rng();

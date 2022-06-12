@@ -7,7 +7,7 @@
 
 extern crate core;
 
-pub mod optima_tensor_functions;
+pub mod optima_tensor_function;
 pub mod robot_modules;
 pub mod robot_set_modules;
 pub mod scenes;
