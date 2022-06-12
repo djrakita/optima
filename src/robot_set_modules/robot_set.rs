@@ -3,6 +3,7 @@ use pyo3::*;
 
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
+use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::robot_set_modules::robot_set_kinematics_module::RobotSetKinematicsModule;
 use crate::robot_set_modules::robot_set_geometric_shape_module::RobotSetGeometricShapeModule;
@@ -116,6 +117,11 @@ impl SaveAndLoadable for RobotSet {
             robot_set_mesh_file_manager_module: robot_set_mesh_file_manager,
             robot_set_kinematics_module
         })
+    }
+}
+impl GetRobotSet for RobotSet {
+    fn get_robot_set(&self) -> &RobotSet {
+        self
     }
 }
 

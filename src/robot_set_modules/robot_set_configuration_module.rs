@@ -3,7 +3,7 @@ use pyo3::*;
 
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_configuration_module::{RobotConfigurationModule, RobotConfigurationModulePy};
-use crate::utils::utils_console::{ConsoleInputUtils, optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{ConsoleInputUtils, optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
@@ -64,6 +64,13 @@ impl RobotSetConfigurationModule {
     pub fn robot_configuration_module(&self, idx: usize) -> Result<&RobotConfigurationModule, OptimaError> {
         OptimaError::new_check_for_idx_out_of_bound_error(idx, self.robot_configuration_modules.len(), file!(), line!())?;
         Ok(&self.robot_configuration_modules[idx])
+    }
+    pub fn print_summary(&self) {
+        for (i, r) in self.robot_configuration_modules.iter().enumerate() {
+            optima_print(&format!("Robot {} ---> ", i), PrintMode::Println, PrintColor::Cyan, true);
+            r.print_summary();
+            optima_print_new_line();
+        }
     }
     /// Robot set configurations are saved to the optima_assets/optima_robot_sets directory.
     pub fn save_robot_set_configuration_module(&self, set_name: &str) -> Result<(), OptimaError> {

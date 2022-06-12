@@ -443,38 +443,6 @@ impl <T, S> EnumBinarySearchSignatureContainer<T, S>
     fn binary_search_res(&self, signature: &S) -> Result<usize, usize> {
         return self.signatures.binary_search_by(|x| x.partial_cmp(signature).unwrap() )
     }
-}
-impl <T, S> EnumSignatureContainer<T, S> for EnumBinarySearchSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
-          S: PartialEq + PartialOrd {
-    fn insert_or_replace_object(&mut self, object: T) {
-        self.insert_or_replace_object_with_idx(object);
-    }
-    fn object_ref(&self, signature: &S) -> Option<&T> {
-        let binary_search_res = self.binary_search_res(signature);
-        return match binary_search_res {
-            Ok(idx) => { Some(&self.enum_objects[idx]) }
-            Err(_) => { None }
-        }
-    }
-    fn object_mut_ref(&mut self, signature: &S) -> Option<&mut T> {
-        let binary_search_res = self.binary_search_res(signature);
-        return match binary_search_res {
-            Ok(idx) => { Some(&mut self.enum_objects[idx]) }
-            Err(_) => { None }
-        }
-    }
-    fn remove_object(&mut self, signature: &S) {
-        self.remove_object_with_idx(signature);
-    }
-    fn contains_object(&self, signature: &S) -> bool {
-        let binary_search_res = self.binary_search_res(signature);
-        return binary_search_res.is_ok();
-    }
-}
-impl <T, S> EnumBinarySearchSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
-          S: PartialEq + PartialOrd {
     pub fn get_object_idx(&self, signature: &S) -> Option<usize> {
         let binary_search_res = self.binary_search_res(&signature);
         return match binary_search_res {
@@ -527,6 +495,37 @@ impl <T, S> EnumBinarySearchSignatureContainer<T, S>
     }
     pub fn object_mut_ref_from_idx(&mut self, idx: usize) -> &mut T {
         &mut self.enum_objects[idx]
+    }
+    pub fn object_refs(&self) -> &Vec<T> {
+        &self.enum_objects
+    }
+}
+impl <T, S> EnumSignatureContainer<T, S> for EnumBinarySearchSignatureContainer<T, S>
+    where T: EnumMapToSignature<S>,
+          S: PartialEq + PartialOrd {
+    fn insert_or_replace_object(&mut self, object: T) {
+        self.insert_or_replace_object_with_idx(object);
+    }
+    fn object_ref(&self, signature: &S) -> Option<&T> {
+        let binary_search_res = self.binary_search_res(signature);
+        return match binary_search_res {
+            Ok(idx) => { Some(&self.enum_objects[idx]) }
+            Err(_) => { None }
+        }
+    }
+    fn object_mut_ref(&mut self, signature: &S) -> Option<&mut T> {
+        let binary_search_res = self.binary_search_res(signature);
+        return match binary_search_res {
+            Ok(idx) => { Some(&mut self.enum_objects[idx]) }
+            Err(_) => { None }
+        }
+    }
+    fn remove_object(&mut self, signature: &S) {
+        self.remove_object_with_idx(signature);
+    }
+    fn contains_object(&self, signature: &S) -> bool {
+        let binary_search_res = self.binary_search_res(signature);
+        return binary_search_res.is_ok();
     }
 }
 

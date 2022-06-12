@@ -8,8 +8,10 @@ use nalgebra::{DVector, Vector3};
 use parry3d_f64::query::Ray;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
+use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set::{RobotSet, RobotSetPy};
 use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
+use crate::scenes::GetRobotGeometricShapeScene;
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
@@ -567,6 +569,16 @@ impl SaveAndLoadable for RobotGeometricShapeScene {
     fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
         let load: Self::SaveType = load_object_from_json_string(json_str)?;
         return Ok(load);
+    }
+}
+impl GetRobotSet for RobotGeometricShapeScene {
+    fn get_robot_set(&self) -> &RobotSet {
+        &self.robot_set
+    }
+}
+impl GetRobotGeometricShapeScene for RobotGeometricShapeScene {
+    fn get_robot_geometric_shape_scene(&self) -> &RobotGeometricShapeScene {
+        self
     }
 }
 
