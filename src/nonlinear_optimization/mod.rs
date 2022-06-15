@@ -385,6 +385,9 @@ impl NLoptNonlinearOptimizer {
             nlopt.add_inequality_constraint(ineq_con, (), 0.000001).expect("error");
         }
 
+        let l = nlopt.get_local_optimizer(Algorithm::Slsqp);
+        nlopt.set_local_optimizer(l);
+
         if let Some(bounds) = &self.bounds {
             nlopt.set_lower_bounds(&bounds.0).expect("error");
             nlopt.set_upper_bounds(&bounds.1).expect("error");
