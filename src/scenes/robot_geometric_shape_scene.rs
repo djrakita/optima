@@ -9,14 +9,18 @@ use parry3d_f64::query::Ray;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
 use crate::robot_set_modules::GetRobotSet;
-use crate::robot_set_modules::robot_set::{RobotSet, RobotSetPy};
+use crate::robot_set_modules::robot_set::{RobotSet};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::robot_set_modules::robot_set::{RobotSetPy};
 use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
 use crate::scenes::GetRobotGeometricShapeScene;
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PosePy, OptimaSE3PoseType};
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeQueryGroupOutputPy, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
 use crate::utils::utils_shape_geometry::shape_collection::{ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery};
 use crate::utils::utils_shape_geometry::trimesh_engine::ConvexDecompositionResolution;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};

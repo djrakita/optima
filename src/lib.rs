@@ -7,6 +7,7 @@
 
 extern crate core;
 
+pub mod nonlinear_optimization;
 pub mod optima_tensor_function;
 pub mod robot_modules;
 pub mod robot_set_modules;

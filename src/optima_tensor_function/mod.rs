@@ -7,20 +7,18 @@ use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchSignatureContainer, EnumHashMapSignatureContainer, EnumMapToSignature, EnumSignatureContainer, EnumSignatureContainerType};
 use crate::utils::utils_sampling::SimpleSamplers;
 
-pub trait OptimaTensorFunction {
-    fn input_dimensions(&self) -> Vec<usize>;
+pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
     fn output_dimensions(&self) -> Vec<usize>;
-
     fn call(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let out = self.call_raw(input, immut_vars, mut_vars, &session_key);
         mut_vars.close_session(&session_key);
         return out;
     }
-    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError>;
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError>;
 
     fn derivative(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        self.derivative_generic(Self::derivative_analytical, Self::derivative_finite_difference, Self::derivative_test, input, immut_vars, mut_vars, mode)
+        OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative_analytical, Self::derivative_finite_difference, Self::derivative_test, input, immut_vars, mut_vars, mode)
     }
     fn derivative_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         return self.derivative(input, immut_vars, mut_vars, None);
@@ -31,21 +29,23 @@ pub trait OptimaTensorFunction {
         mut_vars.close_session(&session_key);
         return out;
     }
-    fn derivative_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+    fn derivative_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_finite_difference_generic(Self::call,
-                                                         input,
-                                                         immut_vars,
-                                                         mut_vars);
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self,
+                                                                                  Self::call,
+                                                                                  1,
+                                                                                  input,
+                                                                                  immut_vars,
+                                                                                  mut_vars);
     }
-    fn derivative_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative_test(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
 
     fn derivative2(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        self.derivative_generic(Self::derivative2_analytical, Self::derivative2_finite_difference, Self::derivative2_test, input, immut_vars, mut_vars, mode)
+        OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative2_analytical, Self::derivative2_finite_difference, Self::derivative2_test, input, immut_vars, mut_vars, mode)
     }
     fn derivative2_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         return self.derivative2(input, immut_vars, mut_vars, None);
@@ -56,21 +56,23 @@ pub trait OptimaTensorFunction {
         mut_vars.close_session(&session_key);
         return out;
     }
-    fn derivative2_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+    fn derivative2_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative2_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_finite_difference_generic(Self::derivative_none_mode,
-                                                         input,
-                                                         immut_vars,
-                                                         mut_vars);
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self,
+                                                                                  Self::derivative_none_mode,
+                                                                                  2,
+                                                                                  input,
+                                                                                  immut_vars,
+                                                                                  mut_vars);
     }
-    fn derivative2_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative2_test(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
 
     fn derivative3(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        self.derivative_generic(Self::derivative3_analytical, Self::derivative3_finite_difference, Self::derivative3_test, input, immut_vars, mut_vars, mode)
+        OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative3_analytical, Self::derivative3_finite_difference, Self::derivative3_test, input, immut_vars, mut_vars, mode)
     }
     fn derivative3_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         return self.derivative3(input, immut_vars, mut_vars, None);
@@ -81,21 +83,23 @@ pub trait OptimaTensorFunction {
         mut_vars.close_session(&session_key);
         return out;
     }
-    fn derivative3_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+    fn derivative3_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative3_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_finite_difference_generic(Self::derivative2_none_mode,
-                                                         input,
-                                                         immut_vars,
-                                                         mut_vars);
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self,
+                                                                                  Self::derivative2_none_mode,
+                                                                                  3,
+                                                                                  input,
+                                                                                  immut_vars,
+                                                                                  mut_vars);
     }
-    fn derivative3_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative3_test(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
 
     fn derivative4(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        self.derivative_generic(Self::derivative4_analytical, Self::derivative4_finite_difference, Self::derivative4_test, input, immut_vars, mut_vars, mode)
+        OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative4_analytical, Self::derivative4_finite_difference, Self::derivative4_test, input, immut_vars, mut_vars, mode)
     }
     fn derivative4_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         return self.derivative4(input, immut_vars, mut_vars, None);
@@ -106,34 +110,98 @@ pub trait OptimaTensorFunction {
         mut_vars.close_session(&session_key);
         return out;
     }
-    fn derivative4_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+    fn derivative4_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative4_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return self.derivative_finite_difference_generic(Self::derivative3_none_mode,
-                                                         input,
-                                                         immut_vars,
-                                                         mut_vars);
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self, Self::derivative3_none_mode,
+                                                                                  4,
+                                                                                  input,
+                                                                                  immut_vars,
+                                                                                  mut_vars);
     }
-    fn derivative4_test(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative4_test(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         Ok(OTFResult::Unimplemented)
     }
 
-    fn derivative_generic<F1, F2, F3>(&self,
-                                      analytical: F1,
-                                      finite_difference: F2,
-                                      test: F3,
-                                      input: &OptimaTensor,
-                                      immut_vars: &OTFImmutVars,
-                                      mut_vars: &mut OTFMutVars,
-                                      mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError>
-        where F1: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError>,
-              F2: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError>,
-              F3: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    /// derivative order of 0 here essentially means the "call" function output
+    fn get_output_dimensions_from_derivative_order(&self, input: &OptimaTensor, derivative_order: usize) -> Vec<usize> {
+        let input_dimensions = input.dimensions();
+        let output_dimensions = self.output_dimensions();
+
+        let mut combined_dimensions = output_dimensions.clone();
+        for _ in 0..derivative_order {
+            combined_dimensions = [combined_dimensions, input_dimensions.clone()].concat();
+        }
+
+        return combined_dimensions;
+    }
+
+    fn diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
+        optima_print_new_line();
+        optima_print("Call Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.call_diagnostics(input, immut_vars, mut_vars, 1000);
+        optima_print_new_line();
+        optima_print("Derivative Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative_diagnostics(input, immut_vars, mut_vars, 1000);
+        optima_print_new_line();
+        optima_print("Derivative2 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative2_diagnostics(input, immut_vars, mut_vars, 500);
+        optima_print_new_line();
+        optima_print("Derivative3 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative3_diagnostics(input, immut_vars, mut_vars, 100);
+        optima_print_new_line();
+        optima_print("Derivative4 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
+        self.derivative4_diagnostics(input, immut_vars, mut_vars, 50);
+    }
+    fn call_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize) {
+        let mut call_time = AveragingFloat::new();
+
+        for _ in 0..num_calls {
+            let start = instant::Instant::now();
+            self.call( input, immut_vars, mut_vars).expect("error");
+            let duration = start.elapsed();
+            call_time.add_new_value(duration.as_secs_f64());
+        }
+
+        let call_time_as_duration = instant::Duration::from_secs_f64(call_time.value());
+
+        optima_print(&format!("Call time over {} inputs is ", num_calls), PrintMode::Print, PrintColor::None, false);
+        optima_print(&format!("{:?}", call_time_as_duration), PrintMode::Print, PrintColor::Green, true);
+        optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
+
+    }
+    fn derivative_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative, input, immut_vars, mut_vars, num_inputs);
+    }
+    fn derivative2_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative2, input, immut_vars, mut_vars, num_inputs);
+    }
+    fn derivative3_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative3, input, immut_vars, mut_vars, num_inputs);
+    }
+    fn derivative4_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative4, input, immut_vars, mut_vars, num_inputs);
+    }
+}
+pub struct OptimaTensorFunctionGenerics;
+impl OptimaTensorFunctionGenerics {
+    fn derivative_generic<S: ?Sized, F1, F2, F3>(s: &S,
+                                         analytical: F1,
+                                         finite_difference: F2,
+                                         test: F3,
+                                         input: &OptimaTensor,
+                                         immut_vars: &OTFImmutVars,
+                                         mut_vars: &mut OTFMutVars,
+                                         mode: Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError>
+        where S: OptimaTensorFunction,
+              F1: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError>,
+              F2: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError>,
+              F3: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError>{
         match mode {
             None => {
                 {
-                    let res = analytical(self, input, immut_vars, mut_vars)?;
+                    let res = analytical(s, input, immut_vars, mut_vars)?;
                     match res {
                         OTFResult::Unimplemented => { }
                         OTFResult::Complete(_) => { return Ok(res); }
@@ -141,7 +209,7 @@ pub trait OptimaTensorFunction {
                 }
 
                 {
-                    let res = finite_difference(self, input, immut_vars, mut_vars)?;
+                    let res = finite_difference(s, input, immut_vars, mut_vars)?;
                     match res {
                         OTFResult::Unimplemented => {}
                         OTFResult::Complete(_) => { return Ok(res); }
@@ -154,21 +222,22 @@ pub trait OptimaTensorFunction {
             }
             Some(mode) => {
                 let res = match mode {
-                    OTFDerivativeMode::Analytical => { analytical(self, input, immut_vars, mut_vars) }
-                    OTFDerivativeMode::FiniteDifference => { finite_difference(self, input,  immut_vars, mut_vars) }
-                    OTFDerivativeMode::Test => { test(self, input, immut_vars, mut_vars) }
+                    OTFDerivativeMode::Analytical => { analytical(s, input, immut_vars, mut_vars) }
+                    OTFDerivativeMode::FiniteDifference => { finite_difference(s, input, immut_vars, mut_vars) }
+                    OTFDerivativeMode::Test => { test(s, input, immut_vars, mut_vars) }
                 }?;
                 return Ok(res);
             }
         }
     }
-    fn derivative_finite_difference_generic<F>(&self, caller: F, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
-        where F: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative_finite_difference_generic<S: ?Sized, F>(s: &S, caller: F, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
+        where S: OptimaTensorFunction,
+              F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
 
         let input_vectorized_data = input.vectorized_data();
-        let mut output = input.spawn_new_with_new_dimension( input_vectorized_data.len() );
+        let mut output = input.spawn_new_with_new_dimensions( input.dimensions() );
 
-        let f_0_res = caller(self, input, immut_vars, mut_vars)?;
+        let f_0_res = caller(s, input, immut_vars, mut_vars)?;
         let f_0 = f_0_res.unwrap_tensor();
 
         let mut slice_scope = vec![];
@@ -182,7 +251,7 @@ pub trait OptimaTensorFunction {
             let mut input_clone = input.clone();
             input_clone.vectorized_data_mut()[vectorized_input_idx] += FD_PERTURBATION;
 
-            let f_h_result = caller(self, &input_clone, immut_vars, mut_vars)?;
+            let f_h_result = caller(s, &input_clone, immut_vars, mut_vars)?;
             let f_h = f_h_result.unwrap_tensor();
 
             let mut f_d = f_h.elementwise_subtraction(&f_0);
@@ -193,74 +262,51 @@ pub trait OptimaTensorFunction {
 
         return Ok(OTFResult::Complete(output));
     }
+    fn derivative_finite_difference_generic2<S: ?Sized, F>(s: &S, caller: F, derivative_order: usize, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
+        where S: OptimaTensorFunction,
+              F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        assert!(derivative_order > 0);
 
-    fn diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
-        optima_print_new_line();
-        optima_print("Call Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.call_diagnostics(immut_vars, mut_vars, 1000);
-        optima_print_new_line();
-        optima_print("Derivative Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative_diagnostics(immut_vars, mut_vars, 1000);
-        optima_print_new_line();
-        optima_print("Derivative2 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative2_diagnostics(immut_vars, mut_vars, 500);
-        optima_print_new_line();
-        optima_print("Derivative3 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative3_diagnostics(immut_vars, mut_vars, 100);
-        optima_print_new_line();
-        optima_print("Derivative4 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative4_diagnostics(immut_vars, mut_vars, 50);
-    }
-    fn call_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        let input_dimensions = self.input_dimensions();
+        let input_vectorized_data = input.vectorized_data();
 
-        let mut random_inputs = vec![];
-        for _ in 0..num_inputs {
-            random_inputs.push(OptimaTensor::new_random_sampling(self.input_dimensions()));
+        let output_dimensions = s.get_output_dimensions_from_derivative_order(input, derivative_order);
+        let slice_dimensions = s.get_output_dimensions_from_derivative_order(input, derivative_order - 1);
+
+        let mut output = OptimaTensor::new_zeros(output_dimensions);
+
+        let f_0_res = caller(s, input, immut_vars, mut_vars)?;
+        let f_0 = f_0_res.unwrap_tensor();
+
+        for (vectorized_input_idx, _) in input_vectorized_data.iter().enumerate() {
+            let mut input_clone = input.clone();
+            input_clone.vectorized_data_mut()[vectorized_input_idx] += FD_PERTURBATION;
+
+            let f_h_result = caller(s, &input_clone, immut_vars, mut_vars)?;
+            let f_h = f_h_result.unwrap_tensor();
+
+            let mut f_d = f_h.elementwise_subtraction(&f_0);
+            f_d.scalar_division(FD_PERTURBATION);
+
+            let input_indices = input.vectorized_idx_to_indices(vectorized_input_idx);
+
+            let mut slice_scope = vec![];
+            for _ in &slice_dimensions { slice_scope.push(OptimaTensorSliceScope::Free); }
+            for i in input_indices { slice_scope.push(OptimaTensorSliceScope::Fixed(i)); }
+
+            output.insert_slice(slice_scope, f_d);
         }
 
-        let mut call_time = AveragingFloat::new();
-
-        for r in &random_inputs {
-            let start = instant::Instant::now();
-            self.call(r, immut_vars, mut_vars).expect("error");
-            let duration = start.elapsed();
-            call_time.add_new_value(duration.as_secs_f64());
-        }
-
-        let call_time_as_duration = instant::Duration::from_secs_f64(call_time.value());
-
-        optima_print(&format!("Call time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
-        optima_print(&format!("{:?}", call_time_as_duration), PrintMode::Print, PrintColor::Green, true);
-        optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
-
+        return Ok(OTFResult::Complete(output));
     }
-    fn derivative_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        self.derivative_diagnostics_generic(Self::derivative, immut_vars, mut_vars, num_inputs);
-    }
-    fn derivative2_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        self.derivative_diagnostics_generic(Self::derivative2, immut_vars, mut_vars, num_inputs);
-    }
-    fn derivative3_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        self.derivative_diagnostics_generic(Self::derivative3, immut_vars, mut_vars, num_inputs);
-    }
-    fn derivative4_diagnostics(&self, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        self.derivative_diagnostics_generic(Self::derivative4, immut_vars, mut_vars, num_inputs);
-    }
-    fn derivative_diagnostics_generic<F>(&self, derivative_function: F, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize)
-        where F: Fn(&Self, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
-        let input_dimensions = self.input_dimensions();
-
-        let mut random_inputs = vec![];
-        for _ in 0..num_inputs {
-            random_inputs.push(OptimaTensor::new_random_sampling(self.input_dimensions()));
-        }
+    fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
+        where S: OptimaTensorFunction,
+              F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
 
         let mut finite_difference_time = AveragingFloat::new();
         let mut finite_difference_results = vec![];
-        for r in &random_inputs {
+        for _ in 0..num_calls {
             let start = instant::Instant::now();
-            let res = derivative_function(self, r, immut_vars, mut_vars, Some(OTFDerivativeMode::FiniteDifference)).expect("error");
+            let res = derivative_function(s, input, immut_vars, mut_vars, Some(OTFDerivativeMode::FiniteDifference)).expect("error");
             let duration = start.elapsed();
             finite_difference_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -274,9 +320,9 @@ pub trait OptimaTensorFunction {
         let mut analytical_diffs = AveragingFloat::new();
         let mut analytical_results = vec![];
         let mut analytical_unimplemented = false;
-        for r in &random_inputs {
+        for _ in 0..num_calls {
             let start = instant::Instant::now();
-            let res = derivative_function(self, r, immut_vars, mut_vars, Some(OTFDerivativeMode::Analytical)).expect("error");
+            let res = derivative_function(s, input, immut_vars, mut_vars, Some(OTFDerivativeMode::Analytical)).expect("error");
             let duration = start.elapsed();
             analytical_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -290,9 +336,9 @@ pub trait OptimaTensorFunction {
         let mut test_diffs = AveragingFloat::new();
         let mut test_results = vec![];
         let mut test_unimplemented = false;
-        for r in &random_inputs {
+        for _ in 0..num_calls {
             let start = instant::Instant::now();
-            let res = derivative_function(self, r, immut_vars, mut_vars, Some(OTFDerivativeMode::Test)).expect("error");
+            let res = derivative_function(s, input, immut_vars, mut_vars, Some(OTFDerivativeMode::Test)).expect("error");
             let duration = start.elapsed();
             test_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -317,17 +363,17 @@ pub trait OptimaTensorFunction {
             }
         }
 
-        optima_print(&format!("Finite Difference time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+        optima_print(&format!("Finite Difference time over {} inputs is ", num_calls), PrintMode::Print, PrintColor::None, false);
         optima_print(&format!("{:?}", finite_difference_time_as_duration), PrintMode::Print, PrintColor::Green, true);
         optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
 
         if !analytical_unimplemented {
-            optima_print(&format!("Analytical time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("Analytical time over {} inputs is ", num_calls), PrintMode::Print, PrintColor::None, false);
             optima_print(&format!("{:?}", analytical_time_as_duration), PrintMode::Print, PrintColor::Green, true);
             optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
         }
         if !test_unimplemented {
-            optima_print(&format!("Test time over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("Test time over {} inputs is ", num_calls), PrintMode::Print, PrintColor::None, false);
             optima_print(&format!("{:?}", test_time_as_duration), PrintMode::Print, PrintColor::Green, true);
             optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
         }
@@ -343,7 +389,7 @@ pub trait OptimaTensorFunction {
             } else {
                 PrintColor::Green
             };
-            optima_print(&format!("Analytical difference from Finite Difference over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("Analytical difference from Finite Difference over {} inputs is ", num_calls), PrintMode::Print, PrintColor::None, false);
             optima_print(&format!("{:?}", analytical_diffs_value), PrintMode::Print, color, true);
             optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
         }
@@ -356,14 +402,63 @@ pub trait OptimaTensorFunction {
             } else {
                 PrintColor::Green
             };
-            optima_print(&format!("Test difference from Finite Difference over {} inputs is ", num_inputs), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("Test difference from Finite Difference over {} inputs is ", num_calls), PrintMode::Print, PrintColor::None, false);
             optima_print(&format!("{:?}", test_diffs_value), PrintMode::Print, color, true);
             optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
         }
     }
 }
 
+pub trait OptimaTensorFunctionClone {
+    fn clone_box(&self) -> Box<dyn OptimaTensorFunction>;
+}
+impl<T> OptimaTensorFunctionClone for T where T: 'static + OptimaTensorFunction + Clone {
+    fn clone_box(&self) -> Box<dyn OptimaTensorFunction> {
+        Box::new(self.clone())
+    }
+}
+impl Clone for Box<dyn OptimaTensorFunction> {
+    fn clone(&self) -> Box<dyn OptimaTensorFunction> {
+        self.clone_box()
+    }
+}
+
 pub const FD_PERTURBATION: f64 = 0.000001;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OTFDimensions {
+    Any,
+    PerDimension(Vec<OTFDimension>),
+    Fixed(Vec<usize>)
+}
+impl OTFDimensions {
+    pub fn num_dimensions(&self) -> usize {
+        match self {
+            OTFDimensions::Any => { panic!("cannot get number of dimensions from Any.") }
+            OTFDimensions::PerDimension(d) => { d.len() }
+            OTFDimensions::Fixed(d) => { d.len() }
+        }
+    }
+    pub fn total_num_elements(&self) -> usize {
+        match self {
+            OTFDimensions::Any => { panic!("cannot get number of elements from Any.") }
+            OTFDimensions::PerDimension(_) => { panic!("cannot get number of elements from PerDimension.")  }
+            OTFDimensions::Fixed(d) => {
+                let mut out = 1;
+
+                for dd in d { out *= *dd; }
+
+                return out;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OTFDimension {
+    Any,
+    Fixed(usize)
+}
 
 #[derive(Clone, Debug)]
 pub enum OTFResult {
@@ -371,6 +466,12 @@ pub enum OTFResult {
 }
 impl OTFResult {
     pub fn unwrap_tensor(&self) -> &OptimaTensor {
+        match self {
+            OTFResult::Unimplemented => { unimplemented!() }
+            OTFResult::Complete(t) => { return t; }
+        }
+    }
+    pub fn unwrap_tensor_mut(&mut self) -> &mut OptimaTensor {
         match self {
             OTFResult::Unimplemented => { unimplemented!() }
             OTFResult::Complete(t) => { return t; }
@@ -399,17 +500,33 @@ impl OptimaTensor {
         Self::Scalar(OptimaTensor0D::new(value))
     }
     pub fn new_from_vector(vector: DVector<f64>) -> Self {
-        Self::Vector(OptimaTensor1D::new(vector))
+        let mut out = Self::Vector(OptimaTensor1D::new(vector));
+        out.collapse_dimensions();
+        out
     }
     pub fn new_from_matrix(matrix: DMatrix<f64>) -> Self {
-        Self::Matrix(OptimaTensor2D::new(matrix))
+        let mut out = Self::Matrix(OptimaTensor2D::new(matrix));
+        out.collapse_dimensions();
+        out
     }
     pub fn new_from_tensor(tensor: ArrayD<f64>) -> Self {
-        Self::TensorND(OptimaTensorND::new(tensor))
+        let mut out = Self::TensorND(OptimaTensorND::new(tensor));
+        out.collapse_dimensions();
+        out
+    }
+    pub fn new_from_single_array(arr: &[f64]) -> Self {
+        let l = arr.len();
+        assert!(l > 0);
+        return if l == 1 {
+            Self::new_from_scalar(arr[0])
+        } else {
+            let vector = DVector::from_column_slice(arr);
+            Self::new_from_vector(vector)
+        }
     }
     pub fn new_zeros(dimensions: Vec<usize>) -> Self {
         let l = dimensions.len();
-        return if l == 0 {
+        let mut out = if l == 0 {
             Self::Scalar(OptimaTensor0D::new_zero())
         } else if l == 1 {
             Self::Vector(OptimaTensor1D::new_zeros(dimensions[0]))
@@ -417,9 +534,35 @@ impl OptimaTensor {
             Self::Matrix(OptimaTensor2D::new_zeros(dimensions[0], dimensions[1]))
         } else {
             Self::TensorND(OptimaTensorND::new_zeros(dimensions))
-        }
+        };
+        out.collapse_dimensions();
+        return out;
     }
-    pub fn new_random_sampling(dimensions: Vec<usize>) -> Self {
+    pub fn new_random_sampling(dimensions: OTFDimensions) -> Self {
+        let dimensions = match dimensions {
+            OTFDimensions::Any => {
+                let mut dimensions = vec![];
+                let num_dimensions = SimpleSamplers::uniform_samples_i32(&vec![(1,5)])[0] as usize;
+                for _ in 0..num_dimensions {
+                    dimensions.push( SimpleSamplers::uniform_samples_i32(&vec![(1,7)])[0] as usize );
+                }
+                dimensions
+            }
+            OTFDimensions::PerDimension(d) => {
+                let mut dimensions = vec![];
+
+                for dd in d {
+                    match dd {
+                        OTFDimension::Any => { dimensions.push( SimpleSamplers::uniform_samples_i32(&vec![(1,7)])[0] as usize ); }
+                        OTFDimension::Fixed(a) => { dimensions.push(a); }
+                    }
+                }
+
+                dimensions
+            }
+            OTFDimensions::Fixed(d) => { d }
+        };
+
         let mut out = Self::new_zeros(dimensions);
         let v = out.vectorized_data_mut();
         for vv in v {
@@ -465,10 +608,10 @@ impl OptimaTensor {
 
         *self = new_self;
     }
-    pub fn spawn_new_with_new_dimension(&self, new_dimension_length: usize) -> OptimaTensor {
+    pub fn spawn_new_with_new_dimensions(&self, new_added_dimensions: Vec<usize>) -> OptimaTensor {
         let mut dimensions = self.dimensions();
-        if new_dimension_length > 1 {
-            dimensions.push(new_dimension_length);
+        for d in new_added_dimensions {
+            dimensions.push(d);
         }
         return Self::new_zeros(dimensions);
     }
@@ -572,7 +715,7 @@ impl OptimaTensor {
 
         let slice_vectorized_data = slice.vectorized_data();
         if free_vectorized_len != slice_vectorized_data.len() {
-            panic!("slice data is incorrect length.")
+            panic!("slice data is incorrect length. {:?}, {:?}", free_vectorized_len, slice_vectorized_data.len())
         }
 
         for (i, s) in slice_vectorized_data.iter().enumerate() {
@@ -604,7 +747,7 @@ impl OptimaTensor {
         let mut a = AveragingFloat::new();
 
         for i in 0..l1 {
-            a.add_new_value( (self_vectorized_data[i] - other_vectorized_data[i]) )
+            a.add_new_value( self_vectorized_data[i] - other_vectorized_data[i] )
         }
 
         a.value()
@@ -1020,7 +1163,6 @@ pub struct OptimaTensorND {
 }
 impl OptimaTensorND {
     pub fn new_zeros(dimensions: Vec<usize>) -> Self {
-        if dimensions.len() > 6 { panic!("cannot support greater than 6 dimensions.") }
         let tensor = Array::<f64, _>::zeros(dimensions);
         return Self::new(tensor);
     }
@@ -1084,7 +1226,7 @@ impl OptimaTensorND {
         } else if l == 6 {
             self.cell_mut_ref6(indices)
         } else {
-            unreachable!()
+            self.cell_mut_refn(indices)
         };
 
         *mut_val = value;
@@ -1109,7 +1251,7 @@ impl OptimaTensorND {
         } else if l == 6 {
             self.cell_ref6(indices)
         } else {
-            unreachable!()
+            self.cell_refn(indices)
         };
 
         return *val;
@@ -1206,6 +1348,11 @@ impl OptimaTensorND {
     fn cell_mut_ref6(&mut self, indices: Vec<usize>) -> &mut f64 {
         return &mut self.tensor[[indices[0], indices[1], indices[2], indices[3], indices[4], indices[5]]]
     }
+    fn cell_mut_refn(&mut self, indices: Vec<usize>) -> &mut f64 {
+        let vectorized_idx = self.indices_to_vectorized_idx(indices);
+        let vectorized_data = self.vectorized_data_mut();
+        &mut vectorized_data[vectorized_idx]
+    }
 
     fn cell_ref1(&self, indices: Vec<usize>) -> &f64 {
         return &self.tensor[[indices[0]]]
@@ -1224,6 +1371,11 @@ impl OptimaTensorND {
     }
     fn cell_ref6(&self, indices: Vec<usize>) -> &f64 {
         return &self.tensor[[indices[0], indices[1], indices[2], indices[3], indices[4], indices[5]]]
+    }
+    fn cell_refn(&self, indices: Vec<usize>) -> &f64 {
+        let vectorized_idx = self.indices_to_vectorized_idx(indices);
+        let vectorized_data = self.vectorized_data();
+        &vectorized_data[vectorized_idx]
     }
 }
 
@@ -1566,15 +1718,12 @@ struct OTFMutVarsSessionBlock {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub mod robotics_functions;
 pub mod standard_functions;
-
 /*
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_optima_tensor_functions::{OptimaTensor_, OptimaTensorFunction_, OTFImmutVars, OTFMutVars, OTFMutVarsSessionKey, OTFResult};

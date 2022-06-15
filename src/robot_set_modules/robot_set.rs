@@ -176,6 +176,7 @@ impl RobotSetPy {
         self.phantom_robot_set.generate_robot_set_geometric_shape_module().expect("error")
     }
 }
+#[cfg(not(target_arch = "wasm32"))]
 impl RobotSetPy {
     pub fn get_robot_set(&self) -> &RobotSet {
         &self.phantom_robot_set

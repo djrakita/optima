@@ -48,6 +48,7 @@ wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }
 pyo3 = { version = "0.16.2", features = ["extension-module"] }
 termion = "1.5.6"
 pbr = "1.0.4"
+nlopt = "0.5.4"
 
 [features]
 default = [ "do_not_embed_assets" ] # NOTE!  To turn off, must include --no-default-features.
