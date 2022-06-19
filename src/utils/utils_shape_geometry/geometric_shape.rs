@@ -45,6 +45,8 @@ pub struct GeometricShape {
     shape: Box<Arc<dyn Shape>>,
     signature: GeometricShapeSignature,
     initial_pose_of_shape: Option<OptimaSE3PoseAll>,
+    /// The farthest distance from any point on the shape to the shape's local origin point
+    f: f64,
     spawner: GeometricShapeSpawner
 }
 impl GeometricShape {
@@ -61,11 +63,16 @@ impl GeometricShape {
             initial_pose_of_shape: initial_pose_of_shape.clone()
         };
         let cube = Cuboid::new(Vector3::new(half_extent_x,half_extent_y,half_extent_z));
+        let mut f = Vector3::new(half_extent_x, half_extent_y, half_extent_z).norm();
+        if let Some(initial_pose_of_shape) = &initial_pose_of_shape {
+            f += initial_pose_of_shape.unwrap_implicit_dual_quaternion().expect("error").translation().norm();
+        }
 
         Self {
             shape: Box::new(Arc::new(cube)),
             signature,
             initial_pose_of_shape: Self::recover_initial_pose_all_of_shape_from_option(initial_pose_of_shape),
+            f,
             spawner
         }
     }
@@ -76,11 +83,16 @@ impl GeometricShape {
             initial_pose_of_shape: initial_pose_of_shape.clone()
         };
         let sphere = Ball::new(radius);
+        let mut f = sphere.radius;
+        if let Some(initial_pose_of_shape) = &initial_pose_of_shape {
+            f += initial_pose_of_shape.unwrap_implicit_dual_quaternion().expect("error").translation().norm();
+        }
 
         Self {
             shape: Box::new(Arc::new(sphere)),
             signature,
             initial_pose_of_shape: Self::recover_initial_pose_all_of_shape_from_option(initial_pose_of_shape),
+            f,
             spawner
         }
     }
@@ -101,11 +113,13 @@ impl GeometricShape {
 
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let convex_shape = ConvexPolyhedron::from_convex_hull(&points).expect("error");
+        let f = trimesh_engine.compute_f();
 
         Self {
             shape: Box::new(Arc::new(convex_shape)),
             signature,
             initial_pose_of_shape: None,
+            f,
             spawner
         }
     }
@@ -118,6 +132,7 @@ impl GeometricShape {
 
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let indices: Vec<[u32; 3]> = trimesh_engine.indices().iter().map(|i| [i[0] as u32, i[1] as u32, i[2] as u32] ).collect();
+        let f = trimesh_engine.compute_f();
 
         let tri_mesh = TriMesh::new(points, indices);
 
@@ -125,6 +140,7 @@ impl GeometricShape {
             shape: Box::new(Arc::new(tri_mesh)),
             signature,
             initial_pose_of_shape: None,
+            f,
             spawner
         }
     }
@@ -187,6 +203,9 @@ impl GeometricShape {
     }
     pub fn spawner(&self) -> &GeometricShapeSpawner {
         &self.spawner
+    }
+    pub fn f(&self) -> f64 {
+        self.f
     }
     pub fn set_signature(&mut self, signature: GeometricShapeSignature) {
         self.spawner.set_signature(signature.clone());
@@ -306,11 +325,7 @@ impl GeometricShapeQueries {
                 GeometricShapeQueryRawOutput::ClosestPoints(ClosestPointsWrapper::new(&Self::closest_points(object1, object1_pose, object2, object2_pose, *max_dis)))
             }
             GeometricShapeQuery::Contact { object1, object1_pose, object2, object2_pose, prediction } => {
-                let res = Self::contact(object1, object1_pose, object2, object2_pose, *prediction);
-                let out = match &res {
-                    None => { None }
-                    Some(res) => { Some(ContactWrapper::new(res)) }
-                };
+                let out = Self::contact(object1, object1_pose, object2, object2_pose, *prediction);
                 GeometricShapeQueryRawOutput::Contact(out)
             }
             GeometricShapeQuery::CCD { object1, object1_pose_t1, object1_pose_t2, object2, object2_pose_t1, object2_pose_t2 } => {
@@ -361,11 +376,15 @@ impl GeometricShapeQueries {
                    object1_pose: &OptimaSE3Pose,
                    object2: &GeometricShape,
                    object2_pose: &OptimaSE3Pose,
-                   prediction: f64) -> Option<Contact> {
+                   prediction: f64) -> Option<ContactWrapper> {
         let pos1 = object1.recover_transformed_pose_wrt_initial_pose(object1_pose).to_nalgebra_isometry();
         let pos2 = object2.recover_transformed_pose_wrt_initial_pose(object2_pose).to_nalgebra_isometry();
 
-        parry3d_f64::query::contact(&pos1, &**object1.shape, &pos2, &**object2.shape, prediction).expect("error")
+        let contact = parry3d_f64::query::contact(&pos1, &**object1.shape, &pos2, &**object2.shape, prediction).expect("error");
+        return match &contact {
+            None => { None }
+            Some(contact) => { Some(ContactWrapper::new(contact)) }
+        }
     }
     /// Continuous collision detection.
     /// Returns None if the objects will never collide.  The CCDResult collision point is provided
@@ -740,6 +759,17 @@ impl ContactWrapper {
             normal2: Vector3::new(n2[0], n2[1], n2[2]),
             point1: Vector3::new(p1[0], p1[1], p1[2]),
             point2: Vector3::new(p2[0], p2[1], p2[2])
+        }
+    }
+}
+impl Default for ContactWrapper {
+    fn default() -> Self {
+        Self {
+            dist: 0.0,
+            normal1: Default::default(),
+            normal2: Default::default(),
+            point1: Default::default(),
+            point2: Default::default()
         }
     }
 }

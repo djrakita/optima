@@ -90,6 +90,16 @@ impl TrimeshEngine {
     pub fn path_string_components(&self) -> &Vec<String> {
         &self.path_string_components
     }
+    /// `f' is the farthest distance from any point on the shape to the shape's local origin.
+    /// (in the case of a TrimeshEngine, the local origin is going to be \[0,0,0\] by default).
+    pub fn compute_f(&self) -> f64 {
+        let mut farthest_distance = 0.0;
+        for v in &self.vertices {
+            let n = v.norm();
+            if n > farthest_distance { farthest_distance = n; }
+        }
+        farthest_distance
+    }
 }
 
 /// Used to control the how coarse or fine the `compute_convex_decomposition` function is in

@@ -33,7 +33,7 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self,
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic(self,
                                                                                   Self::call,
                                                                                   1,
                                                                                   input,
@@ -60,7 +60,7 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative2_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self,
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic(self,
                                                                                   Self::derivative_none_mode,
                                                                                   2,
                                                                                   input,
@@ -87,7 +87,7 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative3_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self,
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic(self,
                                                                                   Self::derivative2_none_mode,
                                                                                   3,
                                                                                   input,
@@ -114,7 +114,7 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         Ok(OTFResult::Unimplemented)
     }
     fn derivative4_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic2(self, Self::derivative3_none_mode,
+        return OptimaTensorFunctionGenerics::derivative_finite_difference_generic(self, Self::derivative3_none_mode,
                                                                                   4,
                                                                                   input,
                                                                                   immut_vars,
@@ -230,39 +230,7 @@ impl OptimaTensorFunctionGenerics {
             }
         }
     }
-    fn derivative_finite_difference_generic<S: ?Sized, F>(s: &S, caller: F, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
-        where S: OptimaTensorFunction,
-              F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-
-        let input_vectorized_data = input.vectorized_data();
-        let mut output = input.spawn_new_with_new_dimensions( input.dimensions() );
-
-        let f_0_res = caller(s, input, immut_vars, mut_vars)?;
-        let f_0 = f_0_res.unwrap_tensor();
-
-        let mut slice_scope = vec![];
-        let output_ndim = output.dimensions().len();
-        for _ in 0..output_ndim { slice_scope.push(OptimaTensorSliceScope::Free) }
-        if output_ndim != 0 { slice_scope[output_ndim - 1] = OptimaTensorSliceScope::Fixed(0); }
-
-        for (vectorized_input_idx, _) in input_vectorized_data.iter().enumerate() {
-            if output_ndim != 0 { slice_scope[output_ndim - 1] = OptimaTensorSliceScope::Fixed(vectorized_input_idx); }
-
-            let mut input_clone = input.clone();
-            input_clone.vectorized_data_mut()[vectorized_input_idx] += FD_PERTURBATION;
-
-            let f_h_result = caller(s, &input_clone, immut_vars, mut_vars)?;
-            let f_h = f_h_result.unwrap_tensor();
-
-            let mut f_d = f_h.elementwise_subtraction(&f_0);
-            f_d.scalar_division(FD_PERTURBATION);
-
-            output.insert_slice(slice_scope.clone(), f_d);
-        }
-
-        return Ok(OTFResult::Complete(output));
-    }
-    fn derivative_finite_difference_generic2<S: ?Sized, F>(s: &S, caller: F, derivative_order: usize, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
+    fn derivative_finite_difference_generic<S: ?Sized, F>(s: &S, caller: F, derivative_order: usize, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
         where S: OptimaTensorFunction,
               F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         assert!(derivative_order > 0);
@@ -776,6 +744,7 @@ impl OptimaTensor {
             OptimaTensor::TensorND(t) => { t.vectorized_idx_to_indices(vectorized_idx) }
         }
     }
+    #[allow(dead_code)]
     fn indices_to_vectorized_idx(&self, indices: Vec<usize>) -> usize {
         return match self {
             OptimaTensor::Scalar(t) => { t.indices_to_vectorized_idx(indices) }

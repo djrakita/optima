@@ -538,6 +538,22 @@ impl OptimaSE3Pose {
             OptimaSE3Pose::EulerAnglesAndTranslation { euler_angles: _, translation: _, phantom_data: _, pose_type } => { pose_type }
         }
     }
+    pub fn translation(&self) -> Vector3<f64> {
+        return match self {
+            OptimaSE3Pose::ImplicitDualQuaternion { data, .. } => { data.translation().clone() }
+            OptimaSE3Pose::HomogeneousMatrix { data, ..} => { data.translation().clone() }
+            OptimaSE3Pose::RotationAndTranslation { data, ..} => { data.translation().clone() }
+            OptimaSE3Pose::EulerAnglesAndTranslation { translation, .. } => { translation.clone() }
+        }
+    }
+    pub fn rotation(&self) -> OptimaRotation {
+        return match self {
+            OptimaSE3Pose::ImplicitDualQuaternion { data, .. } => { OptimaRotation::new_unit_quaternion(data.rotation().clone()) }
+            OptimaSE3Pose::HomogeneousMatrix { data, ..} => { OptimaRotation::new_rotation_matrix(data.rotation()) }
+            OptimaSE3Pose::RotationAndTranslation { data, ..} => { data.rotation().clone() }
+            OptimaSE3Pose::EulerAnglesAndTranslation { phantom_data, .. } => { OptimaRotation::new_unit_quaternion(phantom_data.rotation().clone()) }
+        }
+    }
     fn are_types_compatible(a: &OptimaSE3Pose, b: &OptimaSE3Pose) -> bool {
         return if a.map_to_pose_type() == b.map_to_pose_type() { true } else { false }
     }

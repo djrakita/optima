@@ -239,6 +239,14 @@ impl <T> SquareArray2D <T> where T: Clone + Debug + Serialize + DeserializeOwned
 
         Ok(&self.array[row_idx][col_idx])
     }
+    pub fn data_cell_mut(&mut self, row_idx: usize, col_idx: usize) -> Result<&mut T, OptimaError> {
+        assert!(!self.symmetric, "cannot get mutable data cell on symmetric grid.  To change cells in this situation, you must use the `adjust_data` function");
+
+        OptimaError::new_check_for_idx_out_of_bound_error(row_idx, self.side_length, file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(col_idx, self.side_length, file!(), line!())?;
+
+        Ok(&mut self.array[row_idx][col_idx])
+    }
     pub fn side_length(&self) -> usize {
         self.side_length
     }
@@ -387,6 +395,19 @@ impl <T> Mixable for Vec<T>  where T: Clone {
 impl <T> Mixable for MemoryCell<T> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
     fn mix(&self, other: &Self) -> Self {
         MemoryCell::new(self.curr_value.mix(&other.curr_value))
+    }
+}
+impl <T> Mixable for Option<T> where T: Clone + Debug + Serialize + DeserializeOwned + Default + Mixable {
+    fn mix(&self, other: &Self) -> Self {
+        return match self {
+            None => { None }
+            Some(s1) => {
+                match other {
+                    None => { None }
+                    Some(s2) => { Some(s1.mix(s2)) }
+                }
+            }
+        }
     }
 }
 

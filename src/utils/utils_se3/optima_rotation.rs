@@ -20,6 +20,12 @@ impl OptimaRotation {
     pub fn new_unit_quaternion(data: UnitQuaternion<f64>) -> OptimaRotation {
         OptimaRotation::UnitQuaternion { data, rotation_type: OptimaRotationType::UnitQuaternion }
     }
+    pub fn new_unit_quaternion_identity() -> OptimaRotation {
+        OptimaRotation::UnitQuaternion { data: Default::default(), rotation_type: OptimaRotationType::UnitQuaternion }
+    }
+    pub fn new_rotation_matrix_identity() -> OptimaRotation {
+        OptimaRotation::RotationMatrix { data: Default::default(), rotation_type: OptimaRotationType::RotationMatrix }
+    }
     pub fn new_rotation_matrix_from_euler_angles(rx: f64, ry: f64, rz: f64) -> OptimaRotation {
         let data = Rotation3::from_euler_angles(rx, ry, rz);
         return Self::new_rotation_matrix(data);

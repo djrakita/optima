@@ -21,21 +21,43 @@ impl NonlinearOptimizer {
         return match t {
             NonlinearOptimizerType::OpEn => { Self::OpEn(OpEnNonlinearOptimizer::new(cost, problem_size)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptSLSQP => { Self::Nlopt(NLoptNonlinearOptimizer::new_slsqp(cost, problem_size)) }
+            NonlinearOptimizerType::NloptGlobalNonderivativeDirect => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::DIRECT)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptGlobalNonderivativeDIRECTL => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::DIRECTL)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptGlobalNonderivativeCRS => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::CRS)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptGlobalDerivativeSTOGO => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::STOGO)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptGlobalDerivativeSTOGORAND => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::STOGORAND)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptGlobalNonderivativeISRES => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::ISRES)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptGlobalNonderivativeESCH => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::ESCH)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptLocalNonderivativeCOBYLA => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::COBYLA)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptLocalNonderivativeBOBYQA => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::BOBYQA)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptLocalDerivativeSLSQP => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::SLSQP)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptLocalDerivataiveMMA => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::MMA)) }
+            #[cfg(not(target_arch = "wasm32"))]
+            NonlinearOptimizerType::NloptLocalDerivataiveCCSAQ => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::CCSAQ)) }
         }
     }
     pub fn add_equality_constraint<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F) {
         match self {
             NonlinearOptimizer::OpEn(n) => { n.add_equality_constraint(f); }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizer::Nlopt(_) => {}
+            NonlinearOptimizer::Nlopt(n) => { n.add_equality_constraint(f); }
         }
     }
     pub fn add_less_than_zero_inequality_constraint<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F) {
         match self {
             NonlinearOptimizer::OpEn(n) => { n.add_less_than_zero_inequality_constraint(f); }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizer::Nlopt(_) => {}
+            NonlinearOptimizer::Nlopt(n) => { n.add_less_than_zero_inequality_constraint(f); }
         }
     }
     pub fn set_bounds(&mut self, bounds: Vec<(f64, f64)>) {
@@ -49,7 +71,7 @@ impl NonlinearOptimizer {
         return match self {
             NonlinearOptimizer::OpEn(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizer::Nlopt(_) => { todo!() }
+            NonlinearOptimizer::Nlopt(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters) }
         }
     }
 }
@@ -58,7 +80,131 @@ impl NonlinearOptimizer {
 pub enum NonlinearOptimizerType {
     OpEn,
     #[cfg(not(target_arch = "wasm32"))]
-    NloptSLSQP
+    NloptGlobalNonderivativeDirect,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptGlobalNonderivativeDIRECTL,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptGlobalNonderivativeCRS,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptGlobalDerivativeSTOGO,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptGlobalDerivativeSTOGORAND,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptGlobalNonderivativeISRES,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptGlobalNonderivativeESCH,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptLocalNonderivativeCOBYLA,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptLocalNonderivativeBOBYQA,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptLocalDerivativeSLSQP,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptLocalDerivataiveMMA,
+    #[cfg(not(target_arch = "wasm32"))]
+    NloptLocalDerivataiveCCSAQ
+}
+impl Default for NonlinearOptimizerType {
+    fn default() -> Self {
+        Self::OpEn
+    }
+}
+
+#[derive(Clone, Debug)]
+#[allow(unused_must_use)]
+#[cfg(not(target_arch = "wasm32"))]
+pub enum NloptAlgorithmWrapper {
+    /// Global, Non-derivative
+    DIRECT,
+    /// Global, Non-derivative
+    DIRECTL,
+    /// Global, Non-derivative
+    CRS,
+    /// Global, derivative
+    STOGO,
+    /// Global, derivative
+    STOGORAND,
+    /// Global, non-derivative
+    ISRES,
+    /// Global, non-derivative
+    ESCH,
+    /// Local, non-derivative
+    COBYLA,
+    /// Local, non-derivative
+    BOBYQA,
+    /// Local, derivative
+    SLSQP,
+    /// Local, derivative
+    MMA,
+    /// Local, derivative
+    CCSAQ,
+}
+#[cfg(not(target_arch = "wasm32"))]
+impl NloptAlgorithmWrapper {
+    fn map_to_algorithm(&self) -> Algorithm {
+        match self {
+            NloptAlgorithmWrapper::DIRECT => { Algorithm::Direct }
+            NloptAlgorithmWrapper::DIRECTL => { Algorithm::DirectL }
+            NloptAlgorithmWrapper::CRS => { Algorithm::Crs2Lm }
+            NloptAlgorithmWrapper::STOGO => { Algorithm::StoGo }
+            NloptAlgorithmWrapper::STOGORAND => { Algorithm::StoGoRand }
+            NloptAlgorithmWrapper::ISRES => { Algorithm::Isres }
+            NloptAlgorithmWrapper::ESCH => { Algorithm::Esch }
+            NloptAlgorithmWrapper::COBYLA => { Algorithm::Cobyla }
+            NloptAlgorithmWrapper::BOBYQA => { Algorithm::Bobyqa }
+            NloptAlgorithmWrapper::SLSQP => { Algorithm::Slsqp }
+            NloptAlgorithmWrapper::MMA => { Algorithm::Mma }
+            NloptAlgorithmWrapper::CCSAQ => { Algorithm::Ccsaq }
+        }
+    }
+    fn handles_equality_constraints(&self) -> bool {
+        match self {
+            NloptAlgorithmWrapper::DIRECT => { false  }
+            NloptAlgorithmWrapper::DIRECTL => { false }
+            NloptAlgorithmWrapper::CRS => { false }
+            NloptAlgorithmWrapper::STOGO => { false }
+            NloptAlgorithmWrapper::STOGORAND => { false }
+            NloptAlgorithmWrapper::ISRES => { true }
+            NloptAlgorithmWrapper::ESCH => { false }
+            NloptAlgorithmWrapper::COBYLA => { false }
+            NloptAlgorithmWrapper::BOBYQA => { false }
+            NloptAlgorithmWrapper::SLSQP => { true }
+            NloptAlgorithmWrapper::MMA => { false }
+            NloptAlgorithmWrapper::CCSAQ => { false }
+        }
+    }
+    fn handles_inequality_constraints(&self) -> bool {
+        match self {
+            NloptAlgorithmWrapper::DIRECT => { false  }
+            NloptAlgorithmWrapper::DIRECTL => { false }
+            NloptAlgorithmWrapper::CRS => { false }
+            NloptAlgorithmWrapper::STOGO => { false }
+            NloptAlgorithmWrapper::STOGORAND => { false }
+            NloptAlgorithmWrapper::ISRES => { true }
+            NloptAlgorithmWrapper::ESCH => { false }
+            NloptAlgorithmWrapper::COBYLA => { true }
+            NloptAlgorithmWrapper::BOBYQA => { false }
+            NloptAlgorithmWrapper::SLSQP => { true }
+            NloptAlgorithmWrapper::MMA => { true }
+            NloptAlgorithmWrapper::CCSAQ => { true }
+        }
+    }
+    fn is_global(&self) -> bool {
+        match self {
+            NloptAlgorithmWrapper::DIRECT => { true }
+            NloptAlgorithmWrapper::DIRECTL => { true }
+            NloptAlgorithmWrapper::CRS => { true }
+            NloptAlgorithmWrapper::STOGO => { true }
+            NloptAlgorithmWrapper::STOGORAND => { true }
+            NloptAlgorithmWrapper::ISRES => { true }
+            NloptAlgorithmWrapper::ESCH => { true }
+            NloptAlgorithmWrapper::COBYLA => { false }
+            NloptAlgorithmWrapper::BOBYQA => { false }
+            NloptAlgorithmWrapper::SLSQP => { false }
+            NloptAlgorithmWrapper::MMA => { false }
+            NloptAlgorithmWrapper::CCSAQ => { false }
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -286,6 +432,7 @@ impl OpEnNonlinearOptimizer {
 #[derive(Clone)]
 pub struct NLoptNonlinearOptimizer {
     algorithm: Algorithm,
+    algorithm_wrapper: NloptAlgorithmWrapper,
     cost_function: Box<dyn OptimaTensorFunction>,
     equality_constraints: Vec<Box<dyn OptimaTensorFunction>>,
     inequality_constraints: Vec<Box<dyn OptimaTensorFunction>>,
@@ -294,18 +441,16 @@ pub struct NLoptNonlinearOptimizer {
 }
 #[cfg(not(target_arch = "wasm32"))]
 impl NLoptNonlinearOptimizer {
-    pub fn new<F: OptimaTensorFunction + 'static>(cost: F, problem_size: usize, algorithm: Algorithm) -> Self {
+    pub fn new<F: OptimaTensorFunction + 'static>(cost: F, problem_size: usize, algorithm: NloptAlgorithmWrapper) -> Self {
         Self {
-            algorithm,
+            algorithm: algorithm.map_to_algorithm(),
+            algorithm_wrapper: algorithm,
             cost_function: Box::new(cost),
             equality_constraints: vec![],
             inequality_constraints: vec![],
             problem_size,
             bounds: None
         }
-    }
-    pub fn new_slsqp<F: OptimaTensorFunction + 'static>(cost: F, problem_size: usize) -> Self {
-        Self::new(cost, problem_size, Algorithm::Slsqp)
     }
     pub fn add_equality_constraint<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F) {
         self.equality_constraints.push(Box::new(f));
@@ -345,7 +490,23 @@ impl NLoptNonlinearOptimizer {
 
             return val;
         };
-        let mut nlopt = Nlopt::new(self.algorithm.clone(), self.problem_size, obj_f, Target::Minimize, ());
+
+        let mut used_outerloop = false;
+        let algorithm = if !self.equality_constraints.is_empty() && !self.algorithm_wrapper.handles_equality_constraints() {
+            used_outerloop = true;
+            Algorithm::Auglag
+        } else if !self.inequality_constraints.is_empty() && !self.algorithm_wrapper.handles_inequality_constraints()  && self.algorithm_wrapper.handles_equality_constraints() {
+            used_outerloop = true;
+            Algorithm::AuglagEq
+        } else if !self.inequality_constraints.is_empty() && !self.algorithm_wrapper.handles_inequality_constraints() && !self.algorithm_wrapper.handles_equality_constraints() {
+            used_outerloop = true;
+            Algorithm::Auglag
+        } else {
+            self.algorithm.clone()
+        };
+
+        let mut nlopt = Nlopt::new(algorithm, self.problem_size, obj_f, Target::Minimize, ());
+
         for c in &self.equality_constraints {
             let eq_con = |x: &[f64], _gradient: Option<&mut [f64]>, _params: &mut ()| -> f64 {
                 let mut mut_vars = mut_vars_mutex.lock().unwrap();
@@ -385,12 +546,21 @@ impl NLoptNonlinearOptimizer {
             nlopt.add_inequality_constraint(ineq_con, (), 0.000001).expect("error");
         }
 
-        let l = nlopt.get_local_optimizer(Algorithm::Slsqp);
-        nlopt.set_local_optimizer(l);
+        if used_outerloop {
+            let mut l = nlopt.get_local_optimizer(self.algorithm.clone());
+            l.set_ftol_rel(0.0001).expect("error");
+            l.set_ftol_abs(0.0001).expect("error");
+            l.set_xtol_rel(0.0001).expect("error");
+            nlopt.set_local_optimizer(l).expect("error");
+        }
 
         if let Some(bounds) = &self.bounds {
             nlopt.set_lower_bounds(&bounds.0).expect("error");
             nlopt.set_upper_bounds(&bounds.1).expect("error");
+        }
+        if self.bounds.is_none() && self.algorithm_wrapper.is_global() {
+            nlopt.set_lower_bounds(&vec![-10000.0; self.problem_size]).expect("error");
+            nlopt.set_upper_bounds(&vec![10000.0; self.problem_size]).expect("error");
         }
         if let Some(a) = &parameters.max_time { nlopt.set_maxtime(a.as_secs_f64()).expect("error"); }
         if let Some(a) = &parameters.max_iterations { nlopt.set_maxeval(*a as u32).expect("error"); }
