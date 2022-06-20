@@ -11,6 +11,7 @@ use parry3d_f64::shape::{Ball, ConvexPolyhedron, Cuboid, Shape, TriMesh};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaStemCellPath};
+use crate::utils::utils_generic_data_structures::EnumMapToType;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
 use crate::utils::utils_shape_geometry::trimesh_engine::TrimeshEngine;
@@ -445,6 +446,24 @@ pub enum GeometricShapeSignature {
     RobotLink { link_idx: usize, shape_idx_in_link: usize },
     RobotSetLink { robot_idx_in_set: usize, link_idx_in_robot: usize, shape_idx_in_link: usize },
     EnvironmentObject { environment_object_idx: usize, shape_idx_in_object: usize }
+}
+impl EnumMapToType<GeometricShapeSignatureType> for GeometricShapeSignature {
+    fn map_to_type(&self) -> GeometricShapeSignatureType {
+        match self {
+            GeometricShapeSignature::None => { GeometricShapeSignatureType::None }
+            GeometricShapeSignature::RobotLink { .. } => { GeometricShapeSignatureType::RobotLink }
+            GeometricShapeSignature::RobotSetLink { .. } => { GeometricShapeSignatureType::RobotSetLink }
+            GeometricShapeSignature::EnvironmentObject { .. } => { GeometricShapeSignatureType::EnvironmentObject }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
+pub enum GeometricShapeSignatureType {
+    None,
+    RobotLink,
+    RobotSetLink,
+    EnvironmentObject
 }
 
 /// A `GeometricShapeSpawner` is the main object that allows a `GeometricShape` to be serializable
@@ -921,4 +940,86 @@ pub enum LogCondition {
     Intersection,
     /// Only logs the output when it is below the given distance.
     BelowMinDistance(f64)
+}
+
+
+pub trait BVHCombinableShape where Self: Sized {
+    fn volume(&self) -> f64;
+    fn volume_if_combined(shapes: Vec<&Self>) -> f64;
+    fn combine(shapes: Vec<&Self>) -> Self;
+    fn intersects(&self, other: &Self) -> bool;
+    fn distance(&self, other: &Self) -> f64;
+}
+
+pub struct BVHCombinableShapeAABB {
+    cuboid: Cuboid,
+    maxs: Vector3<f64>,
+    mins: Vector3<f64>,
+    half_extents: Vector3<f64>,
+    center: Vector3<f64>
+}
+impl BVHCombinableShapeAABB {
+    pub fn new(maxs: Vector3<f64>, mins: Vector3<f64>) -> Self {
+        for i in 0..3 { assert!(maxs[i] > mins[i]); }
+
+        let mut half_extents = Vector3::default();
+        let mut center = Vector3::default();
+        for i in 0..3 {
+            half_extents[i] = (maxs[i] - mins[i]) / 2.0;
+            center[i] = (maxs[i] + mins[i]) / 2.0;
+        }
+
+        let cuboid = Cuboid::new(half_extents.clone());
+
+        Self {
+            cuboid,
+            maxs,
+            mins,
+            half_extents,
+            center
+        }
+    }
+    fn vector3_min(vs: Vec<&Vector3<f64>>) -> Vector3<f64> {
+        assert!(vs.len() > 0);
+        let mut out = Vector3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+        for i in 0..3 {
+            for v in &vs {
+                out[i] = v[i].min(out[i]);
+            }
+        }
+        out
+    }
+    fn vector3_max(vs: Vec<&Vector3<f64>>) -> Vector3<f64> {
+        assert!(vs.len() > 0);
+        let mut out = Vector3::new(-f64::INFINITY, -f64::INFINITY, -f64::INFINITY);
+        for i in 0..3 {
+            for v in &vs {
+                out[i] = v[i].max(out[i]);
+            }
+        }
+        out
+    }
+}
+impl BVHCombinableShape for BVHCombinableShapeAABB {
+    fn volume(&self) -> f64 {
+        let mut volume = 0.0;
+        for h in self.half_extents.iter() { volume *= 2.0 * *h; }
+        return volume;
+    }
+
+    fn volume_if_combined(shapes: Vec<&Self>) -> f64 {
+        todo!()
+    }
+
+    fn combine(shapes: Vec<&Self>) -> Self {
+        todo!()
+    }
+
+    fn intersects(&self, other: &Self) -> bool {
+        todo!()
+    }
+
+    fn distance(&self, other: &Self) -> f64 {
+        todo!()
+    }
 }

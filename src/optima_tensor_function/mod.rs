@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 use crate::robot_set_modules::GetRobotSet;
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchSignatureContainer, EnumHashMapSignatureContainer, EnumMapToSignature, EnumSignatureContainer, EnumSignatureContainerType};
+use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType};
 use crate::utils::utils_sampling::SimpleSamplers;
 
 pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
@@ -754,8 +754,8 @@ impl OptimaTensor {
         }
     }
 }
-impl EnumMapToSignature<OptimaTensorSignature> for OptimaTensor {
-    fn map_to_signature(&self) -> OptimaTensorSignature {
+impl EnumMapToType<OptimaTensorSignature> for OptimaTensor {
+    fn map_to_type(&self) -> OptimaTensorSignature {
         match self {
             OptimaTensor::Scalar(_) => { OptimaTensorSignature::Scalar }
             OptimaTensor::Vector(_) => { OptimaTensorSignature::Vector }
@@ -830,7 +830,7 @@ impl OptimaTensor0D {
                 OptimaTensor::new_from_scalar(val)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -842,7 +842,7 @@ impl OptimaTensor0D {
                 OptimaTensor::new_from_scalar(out_val)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -854,7 +854,7 @@ impl OptimaTensor0D {
                 OptimaTensor::new_from_scalar(out_val)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -933,7 +933,7 @@ impl OptimaTensor1D {
                 OptimaTensor::new_from_scalar(out_sum)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -945,7 +945,7 @@ impl OptimaTensor1D {
                 OptimaTensor::new_from_vector(out_vec)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -957,7 +957,7 @@ impl OptimaTensor1D {
                 OptimaTensor::new_from_vector(out_vec)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -1052,7 +1052,7 @@ impl OptimaTensor2D {
                 OptimaTensor::new_from_matrix(out_mat)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -1064,7 +1064,7 @@ impl OptimaTensor2D {
                 OptimaTensor::new_from_matrix(out_mat)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -1076,7 +1076,7 @@ impl OptimaTensor2D {
                 OptimaTensor::new_from_matrix(out_mat)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -1232,7 +1232,7 @@ impl OptimaTensorND {
                 // For reference: let res = tensordot(&arr, &arr2, &vec![Axis(1)], &vec![Axis(0)]);
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -1244,7 +1244,7 @@ impl OptimaTensorND {
                 OptimaTensor::new_from_tensor(out_tensor)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -1256,7 +1256,7 @@ impl OptimaTensorND {
                 OptimaTensor::new_from_tensor(out_tensor)
             }
             _ => {
-                let c = self.convert(&other.map_to_signature());
+                let c = self.convert(&other.map_to_type());
                 c.dot(other)
             }
         }
@@ -1371,17 +1371,17 @@ pub enum OptimaTensorSliceScope {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct OTFImmutVars {
-    c: Box<dyn EnumSignatureContainer<OTFImmutVarsObject, OTFImmutVarsObjectSignature>>
+    c: Box<dyn EnumTypeContainer<OTFImmutVarsObject, OTFImmutVarsObjectSignature>>
 }
 impl OTFImmutVars {
     pub fn new() -> Self {
-        Self::new_with_enum_signature_container_type(EnumSignatureContainerType::default())
+        Self::new_with_enum_signature_container_type(EnumTypeContainerType::default())
     }
-    pub fn new_with_enum_signature_container_type(enum_signature_container_type: EnumSignatureContainerType) -> Self {
+    pub fn new_with_enum_signature_container_type(enum_signature_container_type: EnumTypeContainerType) -> Self {
         Self {
             c: match enum_signature_container_type {
-                EnumSignatureContainerType::BinarySearch => { Box::new(EnumBinarySearchSignatureContainer::new()) }
-                EnumSignatureContainerType::HashMap => { Box::new(EnumHashMapSignatureContainer::new()) }
+                EnumTypeContainerType::BinarySearch => { Box::new(EnumBinarySearchTypeContainer::new()) }
+                EnumTypeContainerType::HashMap => { Box::new(EnumHashMapTypeContainer::new()) }
             }
         }
     }
@@ -1400,8 +1400,8 @@ pub enum OTFImmutVarsObject {
     Test,
     GetRobotSet(Box<dyn GetRobotSet>)
 }
-impl EnumMapToSignature<OTFImmutVarsObjectSignature> for OTFImmutVarsObject {
-    fn map_to_signature(&self) -> OTFImmutVarsObjectSignature {
+impl EnumMapToType<OTFImmutVarsObjectSignature> for OTFImmutVarsObject {
+    fn map_to_type(&self) -> OTFImmutVarsObjectSignature {
         match self {
             OTFImmutVarsObject::Test => { OTFImmutVarsObjectSignature::Test }
             OTFImmutVarsObject::GetRobotSet(_) => { OTFImmutVarsObjectSignature::GetRobotSet }
@@ -1478,7 +1478,7 @@ impl OTFMutVars {
             panic!("Cannot insert a variable in a session that has already given out var keys.");
         }
 
-        let signature = object.map_to_signature();
+        let signature = object.map_to_type();
         let binary_search_res = self.signatures.binary_search_by(|x| x.partial_cmp(&signature).unwrap());
         match binary_search_res {
             Ok(idx) => {
@@ -1635,8 +1635,8 @@ impl RecomputeVarIf {
 pub enum OTFMutVarsObject {
     Test
 }
-impl EnumMapToSignature<OTFMutVarsObjectSignature> for OTFMutVarsObject {
-    fn map_to_signature(&self) -> OTFMutVarsObjectSignature {
+impl EnumMapToType<OTFMutVarsObjectSignature> for OTFMutVarsObject {
+    fn map_to_type(&self) -> OTFMutVarsObjectSignature {
         match self {
             OTFMutVarsObject::Test => { OTFMutVarsObjectSignature::Test }
         }

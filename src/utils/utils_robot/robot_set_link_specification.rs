@@ -1,6 +1,6 @@
 use nalgebra::Vector3;
 use serde::{Serialize, Deserialize};
-use crate::utils::utils_generic_data_structures::{EnumBinarySearchSignatureContainer, EnumMapToSignature, EnumSignatureContainer};
+use crate::utils::utils_generic_data_structures::{EnumBinarySearchTypeContainer, EnumMapToType, EnumTypeContainer};
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
 use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 
@@ -10,8 +10,8 @@ pub enum RobotSetLinkSpecification {
     LinkPositionGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: Vector3<f64> },
     LinkRotationGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: OptimaRotation }
 }
-impl EnumMapToSignature<RobotSetLinkSpecificationSignature> for RobotSetLinkSpecification {
-    fn map_to_signature(&self) -> RobotSetLinkSpecificationSignature {
+impl EnumMapToType<RobotSetLinkSpecificationSignature> for RobotSetLinkSpecification {
+    fn map_to_type(&self) -> RobotSetLinkSpecificationSignature {
         return match self {
             RobotSetLinkSpecification::LinkSE3PoseGoal { robot_idx_in_set, link_idx_in_robot, goal: _} => {
                 RobotSetLinkSpecificationSignature {
@@ -56,12 +56,12 @@ impl RobotSetLinkSpecificationSignature {
 }
 
 pub struct RobotLinkSpecificationCollection {
-    c: EnumBinarySearchSignatureContainer<RobotSetLinkSpecification, RobotSetLinkSpecificationSignature>
+    c: EnumBinarySearchTypeContainer<RobotSetLinkSpecification, RobotSetLinkSpecificationSignature>
 }
 impl RobotLinkSpecificationCollection {
     pub fn new() -> Self {
         Self {
-            c: EnumBinarySearchSignatureContainer::new()
+            c: EnumBinarySearchTypeContainer::new()
         }
     }
     pub fn insert_or_replace(&mut self, r: RobotSetLinkSpecification) {

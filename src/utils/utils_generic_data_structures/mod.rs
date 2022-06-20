@@ -438,7 +438,11 @@ impl Default for AveragingFloat {
     }
 }
 
-pub trait EnumSignatureContainer<T, S> where T: EnumMapToSignature<S> {
+pub trait EnumMapToType<S> {
+    fn map_to_type(&self) -> S;
+}
+
+pub trait EnumTypeContainer<T, S> where T: EnumMapToType<S> {
     fn insert_or_replace_object(&mut self, object: T);
     fn object_ref(&self, signature: &S) -> Option<&T>;
     fn object_mut_ref(&mut self, signature: &S) -> Option<&mut T>;
@@ -446,14 +450,14 @@ pub trait EnumSignatureContainer<T, S> where T: EnumMapToSignature<S> {
     fn contains_object(&self, signature: &S) -> bool;
 }
 
-pub struct EnumBinarySearchSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
+pub struct EnumBinarySearchTypeContainer<T, S>
+    where T: EnumMapToType<S>,
           S: PartialEq + PartialOrd {
     enum_objects: Vec<T>,
     signatures: Vec<S>
 }
-impl <T, S> EnumBinarySearchSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
+impl <T, S> EnumBinarySearchTypeContainer<T, S>
+    where T: EnumMapToType<S>,
           S: PartialEq + PartialOrd {
     pub fn new() -> Self {
         Self {
@@ -472,7 +476,7 @@ impl <T, S> EnumBinarySearchSignatureContainer<T, S>
         }
     }
     pub fn insert_or_replace_object_with_idx(&mut self, object: T) -> usize {
-        let signature = object.map_to_signature();
+        let signature = object.map_to_type();
         let binary_search_res = self.binary_search_res(&signature);
         return match binary_search_res {
             Ok(idx) => {
@@ -521,8 +525,8 @@ impl <T, S> EnumBinarySearchSignatureContainer<T, S>
         &self.enum_objects
     }
 }
-impl <T, S> EnumSignatureContainer<T, S> for EnumBinarySearchSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
+impl <T, S> EnumTypeContainer<T, S> for EnumBinarySearchTypeContainer<T, S>
+    where T: EnumMapToType<S>,
           S: PartialEq + PartialOrd {
     fn insert_or_replace_object(&mut self, object: T) {
         self.insert_or_replace_object_with_idx(object);
@@ -550,17 +554,13 @@ impl <T, S> EnumSignatureContainer<T, S> for EnumBinarySearchSignatureContainer<
     }
 }
 
-pub trait EnumMapToSignature<S> {
-    fn map_to_signature(&self) -> S;
-}
-
-pub struct EnumHashMapSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
+pub struct EnumHashMapTypeContainer<T, S>
+    where T: EnumMapToType<S>,
           S: Hash + Eq {
     hashmap: HashMap<S, T>
 }
-impl <T, S> EnumHashMapSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
+impl <T, S> EnumHashMapTypeContainer<T, S>
+    where T: EnumMapToType<S>,
           S: Hash + Eq {
     pub fn new() -> Self {
         Self {
@@ -568,11 +568,11 @@ impl <T, S> EnumHashMapSignatureContainer<T, S>
         }
     }
 }
-impl <T, S> EnumSignatureContainer<T, S> for EnumHashMapSignatureContainer<T, S>
-    where T: EnumMapToSignature<S>,
+impl <T, S> EnumTypeContainer<T, S> for EnumHashMapTypeContainer<T, S>
+    where T: EnumMapToType<S>,
           S: Hash + Eq {
     fn insert_or_replace_object(&mut self, object: T) {
-        let signature = object.map_to_signature();
+        let signature = object.map_to_type();
         self.hashmap.insert(signature, object);
     }
 
@@ -593,10 +593,10 @@ impl <T, S> EnumSignatureContainer<T, S> for EnumHashMapSignatureContainer<T, S>
     }
 }
 
-pub enum EnumSignatureContainerType {
+pub enum EnumTypeContainerType {
     BinarySearch, HashMap
 }
-impl Default for EnumSignatureContainerType {
+impl Default for EnumTypeContainerType {
     fn default() -> Self {
         Self::BinarySearch
     }

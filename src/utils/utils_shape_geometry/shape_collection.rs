@@ -1,10 +1,10 @@
-use nalgebra::{UnitQuaternion, Vector3};
+use nalgebra::{Vector3};
 use parry3d_f64::query::{Ray};
 use serde::{Serialize, Deserialize};
-use instant::{Duration, Instant};
+use instant::{Duration};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
-use crate::utils::utils_generic_data_structures::{Array1D, MemoryCell, Mixable, SquareArray2D};
+use crate::utils::utils_generic_data_structures::{MemoryCell, Mixable, SquareArray2D};
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
@@ -194,33 +194,102 @@ impl ShapeCollection {
         }
     }
 
-    pub fn proxima_query(&self,
-                     poses: &ShapeCollectionInputPoses,
-                     proxima_engine: &mut ProximaEngine,
-                     d_max: f64,
-                     a_max: f64,
-                     loss_function: SignedDistanceLossFunction,
-                     r: f64,
-                     proxima_budget: ProximaBudget,
-                     inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaOutput, OptimaError> {
+    pub fn proxima_proximity_query(&self,
+                                   poses: &ShapeCollectionInputPoses,
+                                   proxima_engine: &mut ProximaEngine,
+                                   d_max: f64,
+                                   a_max: f64,
+                                   loss_function: SignedDistanceLossFunction,
+                                   r: f64,
+                                   proxima_budget: ProximaBudget,
+                                   inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaProximityOutput, OptimaError> {
         assert_eq!(self.id, proxima_engine.id);
         assert!(0.0 <= r && r <= 1.0);
 
         let start = instant::Instant::now();
 
-        let mut output = ProximaOutput {
+        let mut output = ProximaProximityOutput {
+            output_sum: 0.0,
+            maximum_possible_error: 0.0,
+            ground_truth_check_signatures: vec![],
+            single_comparison_outputs: vec![],
+            duration: Default::default(),
+            query_pairs_list: self.spawn_query_pairs_list(false)
+        };
+
+        let filter_output = self.proxima_scene_filter(poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list).expect("error");
+        let mut output_sum = filter_output.output_sum;
+        let mut maximum_possible_error = filter_output.maximum_possible_error;
+        let mut single_comparison_outputs = filter_output.single_comparison_outputs.clone();
+        for s in &filter_output.ground_truth_check_signatures {
+            output.ground_truth_check_signatures.push(s.clone());
+        }
+
+        let grid = proxima_engine.grid_mut_ref();
+        let poses = &poses.poses;
+
+        'f: for single_comparison_output in &mut single_comparison_outputs {
+            match proxima_budget {
+                ProximaBudget::Accuracy(budget) => {
+                    if maximum_possible_error < budget { break 'f; }
+                }
+                ProximaBudget::Time(budget) => {
+                    let duration = start.elapsed();
+                    if duration > budget { break 'f; }
+                }
+            }
+
+            if single_comparison_output.ground_truth_check { continue; }
+
+            let shape_idx1 = single_comparison_output.shape_idxs.0;
+            let shape_idx2 = single_comparison_output.shape_idxs.1;
+            let shape1 = &self.shapes[shape_idx1];
+            let shape2 = &self.shapes[shape_idx2];
+            let pose1 = poses[shape_idx1].as_ref().unwrap();
+            let pose2 = poses[shape_idx2].as_ref().unwrap();
+            let shape_average_distance = self.average_distances.data_cell(shape_idx1, shape_idx2)?.curr_value();
+
+            let data_cell_mut = grid.data_cell_mut(shape_idx1, shape_idx2)?.as_mut().unwrap();
+
+            ProximaFunctions::proxima_ground_truth_check_and_update_block(data_cell_mut, shape1, pose1, shape2, pose2)?;
+            single_comparison_output.ground_truth_check = true;
+            output.ground_truth_check_signatures.push((shape1.signature().clone(), shape2.signature().clone()));
+            let d_c = ProximaFunctions::proxima_loss_with_cutoff(data_cell_mut.contact_j.dist, d_max, a_max, *shape_average_distance, &loss_function);
+
+            maximum_possible_error -= single_comparison_output.max_possible_error;
+            output_sum -= single_comparison_output.d_c;
+            output_sum += d_c;
+        }
+
+        output.output_sum = output_sum;
+        output.maximum_possible_error = maximum_possible_error;
+        output.duration = start.elapsed();
+        output.single_comparison_outputs = single_comparison_outputs;
+        output.query_pairs_list = filter_output.query_pairs_list;
+
+        Ok(output)
+    }
+    pub fn proxima_scene_filter(&self,
+                                poses: &ShapeCollectionInputPoses,
+                                proxima_engine: &mut ProximaEngine,
+                                d_max: f64,
+                                a_max: f64,
+                                loss_function: &SignedDistanceLossFunction,
+                                r: f64,
+                                inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaSceneFilterOutput, OptimaError> {
+        let start = instant::Instant::now();
+
+        let grid = proxima_engine.grid_mut_ref();
+        let poses = &poses.poses;
+
+        let mut filter_output = ProximaSceneFilterOutput {
+            single_comparison_outputs: vec![],
+            query_pairs_list: self.spawn_query_pairs_list(false),
             output_sum: 0.0,
             maximum_possible_error: 0.0,
             ground_truth_check_signatures: vec![],
             duration: Default::default()
         };
-
-        let grid = proxima_engine.grid_mut_ref();
-        let poses = &poses.poses;
-
-        let mut maximum_possible_error = 0.0;
-        let mut output_sum = 0.0;
-        let mut proxima_outputs = vec![];
 
         if let Some(inclusion_list) = inclusion_list {
             for pair in &inclusion_list.pairs {
@@ -235,11 +304,13 @@ impl ShapeCollection {
                                 let shape1 = &self.shapes[i];
                                 let shape2 = &self.shapes[j];
                                 let shape_average_distance = self.average_distances.data_cell(i, j)?.curr_value();
-                                let proxima_result = ProximaFunctions::proxima_single_comparison(data_cell_mut, shape1, shape2, *shape_average_distance, i, j, pose1, pose2, d_max, a_max, r, &loss_function, &mut output)?;
-                                if let Some(proxima_result) = proxima_result {
-                                    maximum_possible_error += proxima_result.max_possible_error;
-                                    output_sum += proxima_result.d_c;
-                                    proxima_outputs.push(proxima_result);
+                                let proxima_single_comparison_output = ProximaFunctions::proxima_single_comparison(data_cell_mut, shape1, shape2, *shape_average_distance, i, j, pose1, pose2, d_max, a_max, r, &loss_function)?;
+                                if let Some(p) = &proxima_single_comparison_output {
+                                    filter_output.maximum_possible_error += p.max_possible_error;
+                                    filter_output.output_sum += p.d_c;
+                                    filter_output.single_comparison_outputs.push(p.clone());
+                                    filter_output.query_pairs_list.add_pair((i,j));
+                                    if p.ground_truth_check { filter_output.ground_truth_check_signatures.push((shape1.signature().clone(), shape2.signature().clone())) }
                                 }
                             }
                         }
@@ -260,11 +331,13 @@ impl ShapeCollection {
                                         let shape1 = &self.shapes[i];
                                         let shape2 = &self.shapes[j];
                                         let shape_average_distance = self.average_distances.data_cell(i, j)?.curr_value();
-                                        let proxima_result = ProximaFunctions::proxima_single_comparison(data_cell_mut, shape1, shape2, *shape_average_distance, i, j, pose1, pose2, d_max, a_max, r, &loss_function, &mut output)?;
-                                        if let Some(proxima_result) = proxima_result {
-                                            maximum_possible_error += proxima_result.max_possible_error;
-                                            output_sum += proxima_result.d_c;
-                                            proxima_outputs.push(proxima_result);
+                                        let proxima_single_comparision_output = ProximaFunctions::proxima_single_comparison(data_cell_mut, shape1, shape2, *shape_average_distance, i, j, pose1, pose2, d_max, a_max, r, &loss_function)?;
+                                        if let Some(p) = &proxima_single_comparision_output {
+                                            filter_output.maximum_possible_error += p.max_possible_error;
+                                            filter_output.output_sum += p.d_c;
+                                            filter_output.single_comparison_outputs.push(p.clone());
+                                            filter_output.query_pairs_list.add_pair((i,j));
+                                            if p.ground_truth_check { filter_output.ground_truth_check_signatures.push((shape1.signature().clone(), shape2.signature().clone())) }
                                         }
                                     }
                                 }
@@ -275,42 +348,10 @@ impl ShapeCollection {
             }
         }
 
-        proxima_outputs.sort_by(|x, y| y.max_possible_error.partial_cmp(&x.max_possible_error).unwrap());
+        filter_output.single_comparison_outputs.sort_by(|x, y| y.max_possible_error.partial_cmp(&x.max_possible_error).unwrap());
+        filter_output.duration = start.elapsed();
 
-        'f: for proxima_output in &proxima_outputs {
-            match proxima_budget {
-                ProximaBudget::Accuracy(budget) => {
-                    if maximum_possible_error < budget { break 'f; }
-                }
-                ProximaBudget::Time(budget) => {
-                    let duration = start.elapsed();
-                    if duration > budget { break 'f; }
-                }
-            }
-
-            let shape_idx1 = proxima_output.shape_idxs.0;
-            let shape_idx2 = proxima_output.shape_idxs.1;
-            let shape1 = &self.shapes[shape_idx1];
-            let shape2 = &self.shapes[shape_idx2];
-            let pose1 = poses[shape_idx1].as_ref().unwrap();
-            let pose2 = poses[shape_idx2].as_ref().unwrap();
-            let shape_average_distance = self.average_distances.data_cell(shape_idx1, shape_idx2)?.curr_value();
-
-            let data_cell_mut = grid.data_cell_mut(shape_idx1, shape_idx2)?.as_mut().unwrap();
-
-            ProximaFunctions::proxima_ground_truth_check_and_update_block(data_cell_mut, shape1, pose1, shape2, pose2, &mut output)?;
-            let d_c = ProximaFunctions::proxima_loss_with_cutoff(data_cell_mut.contact_j.dist, d_max, a_max, *shape_average_distance, &loss_function);
-
-            maximum_possible_error -= proxima_output.max_possible_error;
-            output_sum -= proxima_output.d_c;
-            output_sum += d_c;
-        }
-
-        output.output_sum = output_sum;
-        output.maximum_possible_error = maximum_possible_error;
-        output.duration = start.elapsed();
-
-        Ok(output)
+        Ok(filter_output)
     }
 
     fn get_single_object_geometric_shape_query_input_vec<'a>(&'a self, input: &'a ShapeCollectionQuery) -> Result<Vec<GeometricShapeQuery<'a>>, OptimaError> {
@@ -764,6 +805,140 @@ impl ShapeCollectionQueryPairsList {
             self.add_pair(pair);
         }
     }
+    pub fn set_override_all_skips(&mut self, b: bool) {
+        self.override_all_skips = b;
+    }
+}
+
+pub struct ProximaFunctions;
+impl ProximaFunctions {
+    pub fn proxima_single_comparison(data_cell_mut: &mut ProximaPairwiseBlock,
+                                     shape1: &GeometricShape,
+                                     shape2: &GeometricShape,
+                                     shape_average_distance: f64,
+                                     shape1_idx: usize,
+                                     shape2_idx: usize,
+                                     pose1: &OptimaSE3Pose,
+                                     pose2: &OptimaSE3Pose,
+                                     d_max: f64,
+                                     a_max: f64,
+                                     r: f64,
+                                     loss_function: &SignedDistanceLossFunction) -> Result<Option<ProximaSingleComparisonOutput>, OptimaError> {
+        return if data_cell_mut.initialized {
+            let bounds_result = Self::proxima_compute_bounds(data_cell_mut, shape_average_distance, pose1, pose2, d_max, a_max)?;
+            match bounds_result {
+                ProximaSignedDistanceBoundsResult::ComputedBothLowerAndUpperBound { lower_bound, upper_bound, modified_upper_bound_points } => {
+                    let d_hat = (1.0 - r) * lower_bound + r * upper_bound;
+                    let l_c = Self::proxima_loss_with_cutoff(lower_bound, d_max, a_max, shape_average_distance, loss_function);
+                    let u_c = Self::proxima_loss_with_cutoff(upper_bound, d_max, a_max, shape_average_distance, loss_function);
+                    let d_c = Self::proxima_loss_with_cutoff(d_hat, d_max, a_max, shape_average_distance, loss_function);
+
+                    let max_possible_error = (l_c - d_c).max(d_c - u_c);
+
+                    Ok(Some(ProximaSingleComparisonOutput {
+                        max_possible_error,
+                        d_c,
+                        shape_idxs: (shape1_idx, shape2_idx),
+                        lower_bound_signed_distance: lower_bound,
+                        upper_bound_signed_distance: upper_bound,
+                        modified_upper_bound_points,
+                        ground_truth_check: false
+                    }))
+                }
+                _ => { Ok(None) }
+            }
+        } else {
+            Self::proxima_ground_truth_check_and_update_block(data_cell_mut, shape1, pose1, shape2, pose2)?;
+            let d_c = Self::proxima_loss_with_cutoff(data_cell_mut.contact_j.dist, d_max, a_max, shape_average_distance, loss_function);
+
+            let modified_upper_bound_points = (data_cell_mut.contact_j.point1, data_cell_mut.contact_j.point2);
+            
+            Ok(Some(ProximaSingleComparisonOutput {
+                max_possible_error: 0.0,
+                d_c,
+                shape_idxs: (shape1_idx, shape2_idx),
+                lower_bound_signed_distance: data_cell_mut.contact_j.dist,
+                upper_bound_signed_distance: data_cell_mut.contact_j.dist,
+                modified_upper_bound_points,
+                ground_truth_check: true
+            }))
+        }
+    }
+    pub fn proxima_compute_bounds(data_cell_mut: &mut ProximaPairwiseBlock,
+                                  shape_average_distance: f64,
+                                  pose1: &OptimaSE3Pose,
+                                  pose2: &OptimaSE3Pose,
+                                  d_max: f64,
+                                  a_max: f64) -> Result<ProximaSignedDistanceBoundsResult, OptimaError> {
+        let a_translation_k = pose1.translation();
+        let b_translation_k = pose2.translation();
+        let translation_disp_k = (a_translation_k - b_translation_k).norm();
+        let delta_m = data_cell_mut.translation_disp_j - translation_disp_k;
+
+        let a_rotation_k = pose1.rotation();
+        let b_rotation_k = pose2.rotation();
+        let rotation_disp_k = a_rotation_k.displacement(&b_rotation_k, false).expect("error");
+        let delta_r = data_cell_mut.rotation_disp_j.displacement(&rotation_disp_k, false).expect("error").angle();
+
+        let l = data_cell_mut.contact_j.dist - delta_m - Self::proxima_phi(data_cell_mut.f, delta_r);
+        let l_wrt_average = l / shape_average_distance;
+
+        if l > d_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l }); }
+        if l_wrt_average > a_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l_wrt_average });  }
+
+        let a_transform_j = &data_cell_mut.a_transform_j;
+        let b_transform_j = &data_cell_mut.b_transform_j;
+
+        let a_rotation_j = a_transform_j.rotation();
+        let b_rotation_j = b_transform_j.rotation();
+
+        let a_translation_j = a_transform_j.translation();
+        let b_translation_j = b_transform_j.translation();
+
+        let a_c_j = &data_cell_mut.contact_j.point1;
+        let b_c_j = &data_cell_mut.contact_j.point2;
+
+        let a_c_k = a_rotation_k.multiply_by_point(&(&a_rotation_j.inverse().multiply_by_point(&((a_c_j - a_translation_j) + a_translation_k))));
+        let b_c_k = b_rotation_k.multiply_by_point(&(&b_rotation_j.inverse().multiply_by_point(&((b_c_j - b_translation_j) + b_translation_k))));
+
+        let u = (&a_c_k - &b_c_k).norm();
+
+        return Ok(ProximaSignedDistanceBoundsResult::ComputedBothLowerAndUpperBound { lower_bound: l, upper_bound: u, modified_upper_bound_points: (a_c_k, b_c_k) });
+    }
+    pub fn proxima_phi(h: f64, theta: f64) -> f64 {
+        (2.0*h*h*(1.0 - theta.cos())).sqrt()
+    }
+    pub fn proxima_loss_with_cutoff(d_hat: f64,
+                                    d_max: f64,
+                                    a_max: f64,
+                                    shape_average_distance: f64,
+                                    loss_function: &SignedDistanceLossFunction) -> f64 {
+        return if d_hat >= d_max || (d_hat / shape_average_distance) >= a_max { 0.0 } else { loss_function.loss(d_hat / shape_average_distance, a_max) }
+    }
+    pub fn proxima_ground_truth_check_and_update_block(data_cell_mut: &mut ProximaPairwiseBlock,
+                                                       shape1: &GeometricShape,
+                                                       pose1: &OptimaSE3Pose,
+                                                       shape2: &GeometricShape,
+                                                       pose2: &OptimaSE3Pose) -> Result<(), OptimaError> {
+        let contact_wrapper = GeometricShapeQueries::contact(shape1, pose1, shape2, pose2, f64::INFINITY).unwrap();
+
+        let a_translation_k = pose1.translation();
+        let b_translation_k = pose2.translation();
+        let translation_disp = (a_translation_k - b_translation_k).norm();
+
+        let a_rotation_k = pose1.rotation();
+        let b_rotation_k = pose2.rotation();
+        let rotation_disp = a_rotation_k.displacement(&b_rotation_k, false).expect("error");
+
+        data_cell_mut.contact_j = contact_wrapper;
+        data_cell_mut.a_transform_j = pose1.clone();
+        data_cell_mut.b_transform_j = pose2.clone();
+        data_cell_mut.translation_disp_j = translation_disp;
+        data_cell_mut.rotation_disp_j = rotation_disp;
+        data_cell_mut.initialized = true;
+
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -834,152 +1009,41 @@ impl Default for ProximaPairwiseBlock {
     }
 }
 
-pub struct ProximaFunctions;
-impl ProximaFunctions {
-    pub fn proxima_single_comparison(data_cell_mut: &mut ProximaPairwiseBlock,
-                                     shape1: &GeometricShape,
-                                     shape2: &GeometricShape,
-                                     shape_average_distance: f64,
-                                     shape1_idx: usize,
-                                     shape2_idx: usize,
-                                     pose1: &OptimaSE3Pose,
-                                     pose2: &OptimaSE3Pose,
-                                     d_max: f64,
-                                     a_max: f64,
-                                     r: f64,
-                                     loss_function: &SignedDistanceLossFunction,
-                                     output: &mut ProximaOutput) -> Result<Option<ProximaSingleComparisonOutput>, OptimaError> {
-        return if data_cell_mut.initialized {
-            let bounds = Self::proxima_compute_bounds(data_cell_mut, shape1_idx, shape2_idx, shape_average_distance, pose1, pose2, d_max, a_max)?;
-            match bounds {
-                ProximaSignedDistanceBoundsResult::Completed { lower_bound, upper_bound } => {
-                    let d_hat = (1.0 - r) * lower_bound + r * upper_bound;
-                    let l_c = Self::proxima_loss_with_cutoff(lower_bound, d_max, a_max, shape_average_distance, loss_function);
-                    let u_c = Self::proxima_loss_with_cutoff(upper_bound, d_max, a_max, shape_average_distance, loss_function);
-                    let d_c = Self::proxima_loss_with_cutoff(d_hat, d_max, a_max, shape_average_distance, loss_function);
-
-                    let max_possible_error = (l_c - d_c).max(d_c - u_c);
-
-                    Ok(Some(ProximaSingleComparisonOutput {
-                        max_possible_error,
-                        d_c,
-                        shape_idxs: (shape1_idx, shape2_idx)
-                    }))
-                }
-                _ => { Ok(None) }
-            }
-        } else {
-            Self::proxima_ground_truth_check_and_update_block(data_cell_mut, shape1, pose1, shape2, pose2, output)?;
-            let d_c = Self::proxima_loss_with_cutoff(data_cell_mut.contact_j.dist, d_max, a_max, shape_average_distance, loss_function);
-
-            Ok(Some(ProximaSingleComparisonOutput {
-                max_possible_error: 0.0,
-                d_c,
-                shape_idxs: (shape1_idx, shape2_idx)
-            }))
-        }
-    }
-    pub fn proxima_compute_bounds(data_cell_mut: &mut ProximaPairwiseBlock,
-                                  _shape1_idx: usize,
-                                  _shape2_idx: usize,
-                                  shape_average_distance: f64,
-                                  pose1: &OptimaSE3Pose,
-                                  pose2: &OptimaSE3Pose,
-                                  d_max: f64,
-                                  a_max: f64,) -> Result<ProximaSignedDistanceBoundsResult, OptimaError> {
-        let a_translation_k = pose1.translation();
-        let b_translation_k = pose2.translation();
-        let translation_disp_k = (a_translation_k - b_translation_k).norm();
-        let delta_m = (data_cell_mut.translation_disp_j - translation_disp_k);
-
-        let a_rotation_k = pose1.rotation();
-        let b_rotation_k = pose2.rotation();
-        let rotation_disp_k = a_rotation_k.displacement(&b_rotation_k, false)?;
-        let delta_r = data_cell_mut.rotation_disp_j.displacement(&rotation_disp_k, false)?.angle();
-
-        let l = data_cell_mut.contact_j.dist - delta_m - Self::proxima_phi(data_cell_mut.f, delta_r);
-        let l_wrt_average = l / shape_average_distance;
-
-        if l > d_max { return Ok(ProximaSignedDistanceBoundsResult::Pruned); }
-        if l_wrt_average > a_max { return Ok(ProximaSignedDistanceBoundsResult::Pruned);  }
-
-        let a_transform_j = &data_cell_mut.a_transform_j;
-        let b_transform_j = &data_cell_mut.b_transform_j;
-
-        let a_rotation_j = a_transform_j.rotation();
-        let b_rotation_j = b_transform_j.rotation();
-
-        let a_translation_j = a_transform_j.translation();
-        let b_translation_j = b_transform_j.translation();
-
-        let a_c_j = &data_cell_mut.contact_j.point1;
-        let b_c_j = &data_cell_mut.contact_j.point2;
-
-        let a_c_k = a_rotation_k.multiply_by_point(&(&a_rotation_j.inverse().multiply_by_point(&(a_c_j - a_translation_j)) + a_translation_k));
-        let b_c_k = b_rotation_k.multiply_by_point(&(&b_rotation_j.inverse().multiply_by_point(&(b_c_j - b_translation_j)) + b_translation_k));
-
-        let u = (&a_c_k - &b_c_k).norm();
-
-        return Ok(ProximaSignedDistanceBoundsResult::Completed { lower_bound: l, upper_bound: u });
-    }
-    pub fn proxima_phi(h: f64, theta: f64) -> f64 {
-        (2.0*h*h*(1.0 - theta.cos())).sqrt()
-    }
-    pub fn proxima_loss_with_cutoff(d_hat: f64,
-                                    d_max: f64,
-                                    a_max: f64,
-                                    shape_average_distance: f64,
-                                    loss_function: &SignedDistanceLossFunction) -> f64 {
-        return if d_hat >= d_max || (d_hat / shape_average_distance) >= a_max { 0.0 } else { loss_function.loss(d_hat / shape_average_distance, a_max) }
-    }
-    pub fn proxima_ground_truth_check_and_update_block(data_cell_mut: &mut ProximaPairwiseBlock,
-                                                       shape1: &GeometricShape,
-                                                       pose1: &OptimaSE3Pose,
-                                                       shape2: &GeometricShape,
-                                                       pose2: &OptimaSE3Pose,
-                                                       output: &mut ProximaOutput) -> Result<(), OptimaError> {
-        let contact_wrapper = GeometricShapeQueries::contact(shape1, pose1, shape2, pose2, f64::INFINITY).unwrap();
-
-        let a_translation_k = pose1.translation();
-        let b_translation_k = pose2.translation();
-        let translation_disp = (a_translation_k - b_translation_k).norm();
-
-        let a_rotation_k = pose1.rotation();
-        let b_rotation_k = pose2.rotation();
-        let rotation_disp = a_rotation_k.displacement(&b_rotation_k, false)?;
-
-        data_cell_mut.contact_j = contact_wrapper;
-        data_cell_mut.a_transform_j = pose1.clone();
-        data_cell_mut.b_transform_j = pose2.clone();
-        data_cell_mut.translation_disp_j = translation_disp;
-        data_cell_mut.rotation_disp_j = rotation_disp;
-        data_cell_mut.initialized = true;
-
-        output.ground_truth_check_signatures.push( (shape1.signature().clone(), shape2.signature().clone()) );
-
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ProximaSignedDistanceBoundsResult {
-    Pruned,
-    Completed { lower_bound: f64, upper_bound: f64 }
-}
-
-#[derive(Clone, Debug)]
-pub struct ProximaSingleComparisonOutput {
-    max_possible_error: f64,
-    d_c: f64,
-    shape_idxs: (usize, usize)
+    PrunedAfterLowerBound { lower_bound: f64 },
+    ComputedBothLowerAndUpperBound { lower_bound: f64, upper_bound: f64, modified_upper_bound_points: (Vector3<f64>, Vector3<f64>) },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProximaOutput {
+pub struct ProximaSingleComparisonOutput {
+    max_possible_error: f64,
+    d_c: f64,
+    shape_idxs: (usize, usize),
+    lower_bound_signed_distance: f64,
+    upper_bound_signed_distance: f64,
+    modified_upper_bound_points: (Vector3<f64>, Vector3<f64>),
+    ground_truth_check: bool
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProximaProximityOutput {
     output_sum: f64,
     maximum_possible_error: f64,
+    duration: Duration,
     ground_truth_check_signatures: Vec<(GeometricShapeSignature, GeometricShapeSignature)>,
-    duration: Duration
+    single_comparison_outputs: Vec<ProximaSingleComparisonOutput>,
+    query_pairs_list: ShapeCollectionQueryPairsList
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProximaSceneFilterOutput {
+    output_sum: f64,
+    maximum_possible_error: f64,
+    duration: Duration,
+    ground_truth_check_signatures: Vec<(GeometricShapeSignature, GeometricShapeSignature)>,
+    single_comparison_outputs: Vec<ProximaSingleComparisonOutput>,
+    query_pairs_list: ShapeCollectionQueryPairsList
 }
 
 #[derive(Clone, Debug)]

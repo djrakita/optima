@@ -19,7 +19,7 @@ use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryOutput, ShapeCollectionQueryPairsList};
+use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryOutput, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -181,6 +181,52 @@ impl RobotSetGeometricShapeModule {
         }
         unreachable!();
     }
+
+    pub fn spawn_query_list(&self, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> ShapeCollectionQueryList {
+        let robot_set_shape_collection = self.robot_set_shape_collection(robot_link_shape_representation).expect("error");
+        robot_set_shape_collection.shape_collection.spawn_query_list()
+    }
+    pub fn spawn_query_pairs_list(&self, override_all_skips: bool, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> ShapeCollectionQueryPairsList {
+        let robot_set_shape_collection = self.robot_set_shape_collection(robot_link_shape_representation).expect("error");
+        robot_set_shape_collection.shape_collection.spawn_query_pairs_list(override_all_skips)
+    }
+    pub fn spawn_proxima_engine(&self, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> ProximaEngine {
+        let robot_set_shape_collection = self.robot_set_shape_collection(robot_link_shape_representation).expect("error");
+        robot_set_shape_collection.shape_collection.spawn_proxima_engine()
+    }
+
+    pub fn proxima_proximity_query(&self,
+                                   robot_set_joint_state: &RobotSetJointState,
+                                   robot_link_shape_representation: RobotLinkShapeRepresentation,
+                                   proxima_engine: &mut ProximaEngine,
+                                   d_max: f64,
+                                   a_max: f64,
+                                   loss_function: SignedDistanceLossFunction,
+                                   r: f64,
+                                   proxima_budget: ProximaBudget,
+                                   inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaProximityOutput, OptimaError> {
+        let res = self.robot_set_kinematics_module.compute_fk(robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
+        let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
+        let poses = collection.recover_poses(&res)?;
+
+        return collection.shape_collection.proxima_proximity_query(&poses, proxima_engine, d_max, a_max, loss_function, r, proxima_budget, inclusion_list);
+    }
+    pub fn proxima_scene_filter(&self,
+                                   robot_set_joint_state: &RobotSetJointState,
+                                   robot_link_shape_representation: RobotLinkShapeRepresentation,
+                                   proxima_engine: &mut ProximaEngine,
+                                   d_max: f64,
+                                   a_max: f64,
+                                   loss_function: SignedDistanceLossFunction,
+                                   r: f64,
+                                   inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaSceneFilterOutput, OptimaError> {
+        let res = self.robot_set_kinematics_module.compute_fk(robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
+        let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
+        let poses = collection.recover_poses(&res)?;
+
+        return collection.shape_collection.proxima_scene_filter(&poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list);
+    }
+
     fn setup_robot_set_shape_collections(&mut self, robot_set_configuration_module: &RobotSetConfigurationModule) -> Result<(), OptimaError> {
         let mut robot_geometric_shape_modules = vec![];
         for r in robot_set_configuration_module.robot_configuration_modules() {
