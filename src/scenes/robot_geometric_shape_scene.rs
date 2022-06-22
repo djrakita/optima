@@ -18,10 +18,10 @@ use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColo
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PosePy, OptimaSE3PoseType};
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryOutput, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_shape_geometry::trimesh_engine::ConvexDecompositionResolution;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
@@ -464,7 +464,7 @@ impl RobotGeometricShapeScene {
                                       input: &'a RobotGeometricShapeSceneQuery,
                                       stop_condition: StopCondition,
                                       log_condition: LogCondition,
-                                      sort_outputs: bool) -> Result<ShapeCollectionQueryOutput, OptimaError> {
+                                      sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
         return match input {
             RobotGeometricShapeSceneQuery::ProjectPoint { robot_set_joint_state, env_obj_pose_constraint_group_input, point, solid, inclusion_list } => {
                 let poses = self.recover_poses(robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
@@ -635,11 +635,12 @@ impl GetRobotGeometricShapeScene for RobotGeometricShapeScene {
     }
 }
 
+/// (You probably want to use RobotGeometricShapeScenePy instead.)
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
 impl RobotGeometricShapeScene {
     #[new]
-    fn new_py(robot_set_py: RobotSetPy, robot_link_shape_representation: &str) -> Self {
+    pub fn new_py(robot_set_py: RobotSetPy, robot_link_shape_representation: &str) -> Self {
         let robot_set = robot_set_py.get_robot_set().clone();
         let self_res = Self::new(robot_set, RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap(), vec![]);
         return self_res.unwrap();
@@ -710,8 +711,31 @@ impl RobotGeometricShapeScenePy {
             inclusion_list: &None
         };
         let res = self.robot_geometric_shape_scene.shape_collection_query(&input, stop_condition, log_condition, sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         return py_output;
+    }
+
+    pub fn spawn_proxima_engine_py(&self) -> ProximaEngine {
+        self.robot_geometric_shape_scene.spawn_proxima_engine()
+    }
+    pub fn proxima_proximity_query_py(&self,
+                                      robot_set_joint_state: Vec<f64>,
+                                      proxima_engine: &mut ProximaEngine,
+                                      d_max: f64,
+                                      a_max: f64,
+                                      loss_function: &str,
+                                      r: f64,
+                                      proxima_budget: &str) -> ProximaProximityOutput {
+        let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let res = self.robot_geometric_shape_scene.proxima_proximity_query(
+            &robot_set_joint_state,
+            None,
+            proxima_engine,
+            d_max,
+            a_max,
+            SignedDistanceLossFunction::from_ron_string(loss_function).expect("error"), r,
+            ProximaBudget::from_ron_string(proxima_budget).expect("error"), &None).expect("error");
+        return res;
     }
 }
 

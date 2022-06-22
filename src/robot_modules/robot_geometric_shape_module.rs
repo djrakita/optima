@@ -21,10 +21,10 @@ use crate::utils::utils_files::optima_path::{load_object_from_json_string, Optim
 use crate::utils::utils_generic_data_structures::{AveragingFloat, SquareArray2D};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::GeometricShapeQueryGroupOutputPy;
-use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryOutput, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_traits::{AssetSaveAndLoadable, SaveAndLoadable, ToAndFromRonString};
 
 /// Robot module that provides useful functions over geometric shapes.  For example, the module is
@@ -158,7 +158,7 @@ impl RobotGeometricShapeModule {
 
             let res = robot_shape_collection.shape_collection.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false)?;
 
-            let outputs = res.unwrap_geometric_shape_query_group_output().outputs();
+            let outputs = res.outputs();
             for output in outputs {
                 let signatures = output.signatures();
                 let signature1 = &signatures[0];
@@ -263,7 +263,7 @@ impl RobotGeometricShapeModule {
                                       robot_link_shape_representation: RobotLinkShapeRepresentation,
                                       stop_condition: StopCondition,
                                       log_condition: LogCondition,
-                                      sort_outputs: bool) -> Result<ShapeCollectionQueryOutput, OptimaError> {
+                                      sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
         return match input {
             RobotShapeCollectionQuery::ProjectPoint { robot_joint_state, point, solid, inclusion_list } => {
                 let res = self.robot_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
@@ -449,7 +449,7 @@ impl RobotGeometricShapeModule {
 
             let collection = self.robot_geometric_shape_collection_mut(robot_link_shape_representation)?;
 
-            let outputs = res.unwrap_geometric_shape_query_group_output().outputs();
+            let outputs = res.outputs();
             for output in outputs {
                 let signatures = output.signatures();
                 let contact = output.raw_output().unwrap_contact()?;
@@ -559,7 +559,7 @@ impl RobotGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
     #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
@@ -580,7 +580,7 @@ impl RobotGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
     #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
@@ -603,7 +603,7 @@ impl RobotGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
     #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
@@ -628,7 +628,7 @@ impl RobotGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
     pub fn set_robot_joint_state_as_non_collision_py(&mut self, robot_joint_state: Vec<f64>) {

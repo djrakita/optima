@@ -942,13 +942,12 @@ pub enum LogCondition {
     BelowMinDistance(f64)
 }
 
-
 pub trait BVHCombinableShape where Self: Sized {
     fn volume(&self) -> f64;
     fn volume_if_combined(shapes: Vec<&Self>) -> f64;
-    fn combine(shapes: Vec<&Self>) -> Self;
-    fn intersects(&self, other: &Self) -> bool;
-    fn distance(&self, other: &Self) -> f64;
+    fn combine(shapes: Vec<&mut Self>) -> Self;
+    fn intersection_test(a: &Self, b: &Self) -> bool;
+    fn distance(a: &Self, b: &Self) -> f64;
 }
 
 pub struct BVHCombinableShapeAABB {
@@ -979,21 +978,21 @@ impl BVHCombinableShapeAABB {
             center
         }
     }
-    fn vector3_min(vs: Vec<&Vector3<f64>>) -> Vector3<f64> {
+    fn vector3_min(vs: &Vec<&Vector3<f64>>) -> Vector3<f64> {
         assert!(vs.len() > 0);
         let mut out = Vector3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
         for i in 0..3 {
-            for v in &vs {
+            for v in vs {
                 out[i] = v[i].min(out[i]);
             }
         }
         out
     }
-    fn vector3_max(vs: Vec<&Vector3<f64>>) -> Vector3<f64> {
+    fn vector3_max(vs: &Vec<&Vector3<f64>>) -> Vector3<f64> {
         assert!(vs.len() > 0);
         let mut out = Vector3::new(-f64::INFINITY, -f64::INFINITY, -f64::INFINITY);
         for i in 0..3 {
-            for v in &vs {
+            for v in vs {
                 out[i] = v[i].max(out[i]);
             }
         }
@@ -1008,18 +1007,84 @@ impl BVHCombinableShape for BVHCombinableShapeAABB {
     }
 
     fn volume_if_combined(shapes: Vec<&Self>) -> f64 {
+        let all_mins: Vec<&Vector3<f64>> = shapes.iter().map(|x| &x.mins).collect();
+        let all_maxs: Vec<&Vector3<f64>> = shapes.iter().map(|x| &x.maxs).collect();
+
+        let new_mins = Self::vector3_min(&all_mins);
+        let new_maxs = Self::vector3_max(&all_maxs);
+
+        let mut half_extents = Vector3::default();
+        for i in 0..3 {
+            half_extents[i] = (new_maxs[i] - new_mins[i]) / 2.0;
+        }
+
+        let mut volume = 0.0;
+        for h in half_extents.iter() { volume *= 2.0 * *h; }
+
+        return volume;
+    }
+
+    fn combine(shapes: Vec<&mut Self>) -> Self {
+        let all_mins: Vec<&Vector3<f64>> = shapes.iter().map(|x| &x.mins).collect();
+        let all_maxs: Vec<&Vector3<f64>> = shapes.iter().map(|x| &x.maxs).collect();
+
+        let new_mins = Self::vector3_min(&all_mins);
+        let new_maxs = Self::vector3_max(&all_maxs);
+
+        return Self::new(new_maxs, new_mins);
+    }
+
+    fn intersection_test(a: &Self, b: &Self) -> bool {
+        let mut pos1 = Isometry3::identity();
+        pos1.translation = a.center.into();
+        let mut pos2 = Isometry3::identity();
+        pos2.translation = b.center.into();
+
+        return parry3d_f64::query::intersection_test(&pos1, &a.cuboid, &pos2, &b.cuboid).expect("error");
+    }
+
+    fn distance(a: &Self, b: &Self) -> f64 {
+        let mut pos1 = Isometry3::identity();
+        pos1.translation = a.center.into();
+        let mut pos2 = Isometry3::identity();
+        pos2.translation = b.center.into();
+
+        return parry3d_f64::query::distance(&pos1, &a.cuboid, &pos2, &b.cuboid).expect("error");
+    }
+}
+
+pub struct BVHCombinableShapeSphere {
+    ball: Ball,
+    center: Vector3<f64>,
+    radius: f64
+}
+impl BVHCombinableShapeSphere {
+    pub fn new(center: Vector3<f64>, radius: f64) -> Self {
+        Self {
+            ball: Ball::new(radius),
+            center,
+            radius
+        }
+    }
+}
+impl BVHCombinableShape for BVHCombinableShapeSphere {
+    fn volume(&self) -> f64 {
+        (4.0/3.0) * std::f64::consts::PI * self.radius * self.radius * self.radius
+    }
+
+    fn volume_if_combined(shapes: Vec<&Self>) -> f64 {
         todo!()
     }
 
-    fn combine(shapes: Vec<&Self>) -> Self {
+    fn combine(shapes: Vec<&mut Self>) -> Self {
         todo!()
     }
 
-    fn intersects(&self, other: &Self) -> bool {
+    fn intersection_test(a: &Self, b: &Self) -> bool {
         todo!()
     }
 
-    fn distance(&self, other: &Self) -> f64 {
+    fn distance(a: &Self, b: &Self) -> f64 {
         todo!()
     }
 }

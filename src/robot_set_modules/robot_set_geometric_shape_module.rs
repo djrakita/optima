@@ -16,10 +16,10 @@ use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_generic_data_structures::{MemoryCell, SquareArray2D};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryOutput, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -53,7 +53,7 @@ impl RobotSetGeometricShapeModule {
                                       robot_link_shape_representation: RobotLinkShapeRepresentation,
                                       stop_condition: StopCondition,
                                       log_condition: LogCondition,
-                                      sort_outputs: bool) -> Result<ShapeCollectionQueryOutput, OptimaError> {
+                                      sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
         return match input {
             RobotSetShapeCollectionQuery::ProjectPoint { robot_joint_state, point, solid, inclusion_list } => {
                 let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
@@ -461,7 +461,7 @@ impl RobotSetGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
     #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
@@ -482,7 +482,7 @@ impl RobotSetGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
     #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
@@ -505,7 +505,7 @@ impl RobotSetGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
     #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
@@ -530,7 +530,7 @@ impl RobotSetGeometricShapeModule {
                                               StopCondition::from_ron_string(stop_condition).expect("error"),
                                               LogCondition::from_ron_string(log_condition).expect("error"),
                                               sort_outputs).expect("error");
-        let py_output = res.unwrap_geometric_shape_query_group_output().convert_to_py_output(include_full_output_json_string);
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
         py_output
     }
 }

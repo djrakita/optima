@@ -1,3 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use nalgebra::{Vector3};
 use parry3d_f64::query::{Ray};
 use serde::{Serialize, Deserialize};
@@ -9,7 +12,7 @@ use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQuery, GeometricShapeSignature, LogCondition, StopCondition, ContactWrapper};
-use crate::utils::utils_traits::{SaveAndLoadable};
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString};
 
 /// A collection of `GeometricShape` objects.  Contains the vector of shapes as well as information
 /// on the relationship between shapes.  The most important function in this struct is
@@ -180,18 +183,10 @@ impl ShapeCollection {
                                       input: &'a ShapeCollectionQuery,
                                       stop_condition: StopCondition,
                                       log_condition: LogCondition,
-                                      sort_outputs: bool) -> Result<ShapeCollectionQueryOutput, OptimaError> {
-        return match input {
-            _ => {
-                // This is the "standard loop" for shape collection queries.  They all involve the
-                // same strategy: loop through the given shape queries, possibly stopping early if
-                // a stop condition is met, and return the answer.  Any ShapeCollectionQuery that
-                // does not meet this strategy should form a different arm of the match statement.
-                let input_vec = self.get_geometric_shape_query_input_vec(input)?;
-                let g = GeometricShapeQueries::generic_group_query(input_vec, stop_condition, log_condition, sort_outputs);
-                Ok(ShapeCollectionQueryOutput::GeometricShapeQueryGroupOutput(g))
-            }
-        }
+                                      sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
+        let input_vec = self.get_geometric_shape_query_input_vec(input)?;
+        let g = GeometricShapeQueries::generic_group_query(input_vec, stop_condition, log_condition, sort_outputs);
+        Ok(g)
     }
 
     pub fn proxima_proximity_query(&self,
@@ -715,6 +710,7 @@ impl <'a> ShapeCollectionQuery<'a> {
     }
 }
 
+/*
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ShapeCollectionQueryOutput {
     GeometricShapeQueryGroupOutput(GeometricShapeQueryGroupOutput)
@@ -727,6 +723,7 @@ impl ShapeCollectionQueryOutput {
         }
     }
 }
+*/
 
 /// A convenient way to pass SE(3) pose information into a `ShapeCollectionQuery` object.  The length
 /// of the `poses` field vector will be the same length as the `ShapeCollection shapes` field.  If a
@@ -839,6 +836,7 @@ impl ProximaFunctions {
                         max_possible_error,
                         d_c,
                         shape_idxs: (shape1_idx, shape2_idx),
+                        shape_signatures: (shape1.signature().clone(), shape2.signature().clone()),
                         lower_bound_signed_distance: lower_bound,
                         upper_bound_signed_distance: upper_bound,
                         modified_upper_bound_points,
@@ -857,6 +855,7 @@ impl ProximaFunctions {
                 max_possible_error: 0.0,
                 d_c,
                 shape_idxs: (shape1_idx, shape2_idx),
+                shape_signatures: (shape1.signature().clone(), shape2.signature().clone()),
                 lower_bound_signed_distance: data_cell_mut.contact_j.dist,
                 upper_bound_signed_distance: data_cell_mut.contact_j.dist,
                 modified_upper_bound_points,
@@ -941,7 +940,7 @@ impl ProximaFunctions {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct ProximaEngine {
     grid: SquareArray2D<Option<ProximaPairwiseBlock>>,
     id: f64
@@ -1020,13 +1019,14 @@ pub struct ProximaSingleComparisonOutput {
     max_possible_error: f64,
     d_c: f64,
     shape_idxs: (usize, usize),
+    shape_signatures: (GeometricShapeSignature, GeometricShapeSignature),
     lower_bound_signed_distance: f64,
     upper_bound_signed_distance: f64,
     modified_upper_bound_points: (Vector3<f64>, Vector3<f64>),
     ground_truth_check: bool
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct ProximaProximityOutput {
     output_sum: f64,
     maximum_possible_error: f64,
@@ -1035,8 +1035,33 @@ pub struct ProximaProximityOutput {
     single_comparison_outputs: Vec<ProximaSingleComparisonOutput>,
     query_pairs_list: ShapeCollectionQueryPairsList
 }
+impl ProximaProximityOutput {
+    pub fn output_witness_points_collection(&self) -> WitnessPointsCollection {
+        let mut out = WitnessPointsCollection { collection: vec![] };
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+        for s in &self.single_comparison_outputs {
+            out.collection.push(WitnessPoints {
+                witness_points: s.modified_upper_bound_points,
+                shape_signatures: s.shape_signatures.clone(),
+                witness_points_type: match s.ground_truth_check {
+                    true => { WitnessPointsType::GroundTruth }
+                    false => { WitnessPointsType::ProximaUpperBoundApproximations }
+                }
+            });
+        }
+
+        out
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl ProximaProximityOutput {
+    pub fn output_witness_points_collection_py(&self) -> WitnessPointsCollection {
+        self.output_witness_points_collection()
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct ProximaSceneFilterOutput {
     output_sum: f64,
     maximum_possible_error: f64,
@@ -1045,14 +1070,32 @@ pub struct ProximaSceneFilterOutput {
     single_comparison_outputs: Vec<ProximaSingleComparisonOutput>,
     query_pairs_list: ShapeCollectionQueryPairsList
 }
+impl ProximaSceneFilterOutput {
+    pub fn output_witness_points_collection(&self) -> WitnessPointsCollection {
+        let mut out = WitnessPointsCollection { collection: vec![] };
 
-#[derive(Clone, Debug)]
+        for s in &self.single_comparison_outputs {
+            out.collection.push(WitnessPoints {
+                witness_points: s.modified_upper_bound_points,
+                shape_signatures: s.shape_signatures.clone(),
+                witness_points_type: match s.ground_truth_check {
+                    true => { WitnessPointsType::GroundTruth }
+                    false => { WitnessPointsType::ProximaUpperBoundApproximations }
+                }
+            });
+        }
+
+        out
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ProximaBudget {
     Accuracy(f64),
     Time(Duration)
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignedDistanceLossFunction {
     GaussianHinge,
     Hinge
@@ -1070,3 +1113,37 @@ impl SignedDistanceLossFunction {
     }
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+pub struct WitnessPointsCollection {
+    collection: Vec<WitnessPoints>
+}
+impl WitnessPointsCollection {
+    pub fn collection(&self) -> &Vec<WitnessPoints> {
+        &self.collection
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl WitnessPointsCollection {
+    pub fn to_json_string_py(&self) -> String {
+        self.to_json_string()
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+pub struct WitnessPoints {
+    witness_points: ( Vector3<f64>, Vector3<f64> ),
+    shape_signatures: ( GeometricShapeSignature, GeometricShapeSignature ),
+    witness_points_type: WitnessPointsType
+}
+impl WitnessPoints {
+    pub fn witness_points(&self) -> (Vector3<f64>, Vector3<f64>) {
+        self.witness_points
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
+pub enum WitnessPointsType {
+    GroundTruth,
+    ProximaUpperBoundApproximations
+}
