@@ -23,30 +23,30 @@ pub struct Robot {
     robot_kinematics_module: RobotKinematicsModule
 }
 impl Robot {
-    pub fn new_from_names(robot_name: RobotNames) -> Result<Self, OptimaError> {
-        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name.clone())?;
-        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new(robot_configuration_module.robot_model_module())?;
+    pub fn new_from_names(robot_name: RobotNames) -> Self {
+        let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_name.clone()).expect("error");
+        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new(robot_configuration_module.robot_model_module()).expect("error");
         let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_fk_module = RobotKinematicsModule::new(robot_configuration_module.clone());
 
-        Ok(Self {
+        Self {
             robot_configuration_module,
             robot_mesh_file_manager_module,
             robot_joint_state_module,
             robot_kinematics_module: robot_fk_module
-        })
+        }
     }
-    pub fn new_from_robot_configuration_module(robot_configuration_module: RobotConfigurationModule) -> Result<Self, OptimaError> {
-        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new(robot_configuration_module.robot_model_module())?;
+    pub fn new_from_robot_configuration_module(robot_configuration_module: RobotConfigurationModule) -> Self {
+        let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new(robot_configuration_module.robot_model_module()).expect("error");
         let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_fk_module = RobotKinematicsModule::new(robot_configuration_module.clone());
 
-        Ok(Self {
+        Self {
             robot_configuration_module,
             robot_mesh_file_manager_module,
             robot_joint_state_module,
             robot_kinematics_module: robot_fk_module
-        })
+        }
     }
     pub fn robot_configuration_module(&self) -> &RobotConfigurationModule {
         &self.robot_configuration_module
@@ -112,7 +112,7 @@ impl RobotPy {
     #[new]
     pub fn new_from_names(robot_name: &str, configuration_name: Option<&str>, py: Python) -> Self {
         let robot_names = RobotNames::new(robot_name, configuration_name);
-        let r = Robot::new_from_names(robot_names).expect("error");
+        let r = Robot::new_from_names(robot_names);
         
         Self {
             robot_configuration_module: Py::new(py, r.robot_configuration_module.clone()).expect("error"),

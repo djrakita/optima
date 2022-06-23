@@ -287,6 +287,10 @@ pub struct RobotSetFKResult {
     robot_fk_results: Vec<RobotFKResult>
 }
 impl RobotSetFKResult {
+    pub fn get_pose_from_idxs(&self, robot_idx_in_set: usize, link_idx_in_robot: usize) ->&OptimaSE3Pose {
+        let res =  &self.robot_fk_results[robot_idx_in_set].link_entries()[link_idx_in_robot].pose().as_ref().unwrap();
+        return res;
+    }
     pub fn robot_fk_results(&self) -> &Vec<RobotFKResult> {
         &self.robot_fk_results
     }

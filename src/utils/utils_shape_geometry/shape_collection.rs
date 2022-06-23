@@ -5,13 +5,14 @@ use nalgebra::{Vector3};
 use parry3d_f64::query::{Ray};
 use serde::{Serialize, Deserialize};
 use instant::{Duration};
+use crate::utils::utils_combinations::comb;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
 use crate::utils::utils_generic_data_structures::{MemoryCell, Mixable, SquareArray2D};
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQuery, GeometricShapeSignature, LogCondition, StopCondition, ContactWrapper};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQuery, GeometricShapeSignature, LogCondition, StopCondition, ContactWrapper, BVHCombinableShape};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString};
 
 /// A collection of `GeometricShape` objects.  Contains the vector of shapes as well as information
@@ -897,8 +898,8 @@ impl ProximaFunctions {
         let a_c_j = &data_cell_mut.contact_j.point1;
         let b_c_j = &data_cell_mut.contact_j.point2;
 
-        let a_c_k = a_rotation_k.multiply_by_point(&(&a_rotation_j.inverse().multiply_by_point(&((a_c_j - a_translation_j) + a_translation_k))));
-        let b_c_k = b_rotation_k.multiply_by_point(&(&b_rotation_j.inverse().multiply_by_point(&((b_c_j - b_translation_j) + b_translation_k))));
+        let a_c_k = a_rotation_k.multiply_by_point( &(a_rotation_j.inverse().multiply_by_point(&(a_c_j - a_translation_j)))) + a_translation_k;
+        let b_c_k = b_rotation_k.multiply_by_point( &(b_rotation_j.inverse().multiply_by_point(&(b_c_j - b_translation_j)))) + b_translation_k;
 
         let u = (&a_c_k - &b_c_k).norm();
 
@@ -1147,3 +1148,73 @@ pub enum WitnessPointsType {
     GroundTruth,
     ProximaUpperBoundApproximations
 }
+
+#[derive(Clone, Debug)]
+pub struct BVH<T: BVHCombinableShape> {
+    /// layer 0 is the leaf layer of the tree, layer len-1 is the root
+    layers: Vec<Vec<BVHCombinableShapeTreeNode<T>>>
+}
+impl <T: BVHCombinableShape> BVH <T> {
+    pub fn construct_new(shapes: &Vec<GeometricShape>, poses: &ShapeCollectionInputPoses, branch_factor: usize) -> Self {
+        assert!(branch_factor > 1 && branch_factor <= 4);
+        assert_eq!(shapes.len(), poses.poses.len());
+
+        let mut base_layer = vec![];
+        for (s, p) in shapes.iter().zip(&poses.poses) {
+            match p {
+                None => { panic!("All poses must be included as Some for BVH construction.") }
+                Some(pose) => {
+                    let combinable_shape = T::new_from_shape_and_pose(s, pose);
+                    base_layer.push(BVHCombinableShapeTreeNode {
+                        combinable_shape,
+                        layer_idx: 0,
+                        children_idxs_in_child_layer: vec![],
+                        parent_idx_in_parent_layer: None
+                    });
+                }
+            }
+        }
+
+        let mut out_self = Self {
+            layers: vec![ base_layer ]
+        };
+
+        loop {
+            let res = out_self.add_new_layer(branch_factor);
+            if !res { return out_self; }
+        }
+    }
+
+    fn add_new_layer(&mut self, branch_factor: usize) -> bool {
+        let child_layer_idx = self.layers.len() - 1;
+        let num_nodes_in_child_layer = self.layers[child_layer_idx].len();
+        if num_nodes_in_child_layer == 1 { return false; }
+
+        let v = (0..num_nodes_in_child_layer).collect::<Vec<_>>();
+        let combinations = comb(&v, branch_factor);
+
+        let mut child_shape_refs = vec![];
+        for c in combinations {
+            let mut tmp = vec![];
+            for cc in &c {
+                tmp.push(&self.layers[child_layer_idx][*cc].combinable_shape);
+            }
+            let volume_if_combined = T::volume_if_combined(tmp.clone());
+            child_shape_refs.push((tmp, volume_if_combined));
+        }
+        child_shape_refs.sort_by(|x, y| x.1.partial_cmp(&y.1).unwrap());
+
+        // let mut already_done = vec![];
+
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BVHCombinableShapeTreeNode<T: BVHCombinableShape> {
+    combinable_shape: T,
+    layer_idx: usize,
+    children_idxs_in_child_layer: Vec<usize>,
+    parent_idx_in_parent_layer: Option<usize>
+}
+

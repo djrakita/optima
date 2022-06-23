@@ -943,13 +943,15 @@ pub enum LogCondition {
 }
 
 pub trait BVHCombinableShape where Self: Sized {
+    fn new_from_shape_and_pose(shape: &GeometricShape, pose: &OptimaSE3Pose) -> Self;
     fn volume(&self) -> f64;
     fn volume_if_combined(shapes: Vec<&Self>) -> f64;
-    fn combine(shapes: Vec<&mut Self>) -> Self;
+    fn combine(shapes: Vec<&Self>) -> Self;
     fn intersection_test(a: &Self, b: &Self) -> bool;
     fn distance(a: &Self, b: &Self) -> f64;
 }
 
+#[derive(Clone, Debug)]
 pub struct BVHCombinableShapeAABB {
     cuboid: Cuboid,
     maxs: Vector3<f64>,
@@ -1000,6 +1002,14 @@ impl BVHCombinableShapeAABB {
     }
 }
 impl BVHCombinableShape for BVHCombinableShapeAABB {
+    fn new_from_shape_and_pose(shape: &GeometricShape, pose: &OptimaSE3Pose) -> Self {
+        let iso = pose.to_nalgebra_isometry();
+        let bounding_box = shape.shape.compute_aabb(&iso);
+        let maxs = bounding_box.maxs.clone();
+        let mins = bounding_box.mins.clone();
+        Self::new(Vector3::new(maxs[0], maxs[1], maxs[2]),Vector3::new(mins[0], mins[1], mins[2]))
+    }
+
     fn volume(&self) -> f64 {
         let mut volume = 0.0;
         for h in self.half_extents.iter() { volume *= 2.0 * *h; }
@@ -1018,13 +1028,13 @@ impl BVHCombinableShape for BVHCombinableShapeAABB {
             half_extents[i] = (new_maxs[i] - new_mins[i]) / 2.0;
         }
 
-        let mut volume = 0.0;
+        let mut volume = 1.0;
         for h in half_extents.iter() { volume *= 2.0 * *h; }
 
         return volume;
     }
 
-    fn combine(shapes: Vec<&mut Self>) -> Self {
+    fn combine(shapes: Vec<&Self>) -> Self {
         let all_mins: Vec<&Vector3<f64>> = shapes.iter().map(|x| &x.mins).collect();
         let all_maxs: Vec<&Vector3<f64>> = shapes.iter().map(|x| &x.maxs).collect();
 
@@ -1068,6 +1078,10 @@ impl BVHCombinableShapeSphere {
     }
 }
 impl BVHCombinableShape for BVHCombinableShapeSphere {
+    fn new_from_shape_and_pose(shape: &GeometricShape, pose: &OptimaSE3Pose) -> Self {
+        todo!()
+    }
+
     fn volume(&self) -> f64 {
         (4.0/3.0) * std::f64::consts::PI * self.radius * self.radius * self.radius
     }
@@ -1076,7 +1090,7 @@ impl BVHCombinableShape for BVHCombinableShapeSphere {
         todo!()
     }
 
-    fn combine(shapes: Vec<&mut Self>) -> Self {
+    fn combine(shapes: Vec<&Self>) -> Self {
         todo!()
     }
 

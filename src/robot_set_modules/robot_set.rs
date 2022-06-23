@@ -42,27 +42,27 @@ pub struct RobotSet {
     robot_set_kinematics_module: RobotSetKinematicsModule
 }
 impl RobotSet {
-    pub fn new_from_robot_set_configuration_module(r: RobotSetConfigurationModule) -> Result<Self, OptimaError> {
+    pub fn new_from_robot_set_configuration_module(r: RobotSetConfigurationModule) -> Self {
         let robot_set_joint_state_module = RobotSetJointStateModule::new(&r);
-        let robot_set_mesh_file_manager_module = RobotSetMeshFileManagerModule::new(&r)?;
+        let robot_set_mesh_file_manager_module = RobotSetMeshFileManagerModule::new(&r).expect("error");
         let robot_set_kinematics_module = RobotSetKinematicsModule::new(&r);
 
-        Ok(Self {
+        Self {
             robot_set_configuration_module: r,
             robot_set_joint_state_module,
             robot_set_mesh_file_manager_module,
             robot_set_kinematics_module
-        })
+        }
     }
     /// Initializes a `RobotSet` using the set name that is found in the optima_assets/optima_robot_sets/
     /// directory.  `RobotSet` objects can be saved using the `RobotSetConfigurationModule` struct.
-    pub fn new_from_set_name(set_name: &str) -> Result<Self, OptimaError> {
-        let r = RobotSetConfigurationModule::new_from_set_name(set_name)?;
+    pub fn new_from_set_name(set_name: &str) -> Self {
+        let r = RobotSetConfigurationModule::new_from_set_name(set_name).expect("error");
         return Self::new_from_robot_set_configuration_module(r);
     }
-    pub fn new_from_robot_names(robot_names: Vec<RobotNames>) -> Result<Self, OptimaError> {
+    pub fn new_from_robot_names(robot_names: Vec<RobotNames>) -> Self {
         let mut r = RobotSetConfigurationModule::new_empty();
-        for rn in &robot_names { r.add_robot_configuration_from_names(rn.clone())?; }
+        for rn in &robot_names { r.add_robot_configuration_from_names(rn.clone()).expect("error"); }
         return Self::new_from_robot_set_configuration_module(r);
     }
     pub fn robot_set_configuration_module(&self) -> &RobotSetConfigurationModule {
@@ -144,7 +144,7 @@ pub struct RobotSetPy {
 impl RobotSetPy {
     #[new]
     pub fn new_from_set_name(set_name: &str, py: Python) -> Self {
-        let r = RobotSet::new_from_set_name(set_name).expect("error");
+        let r = RobotSet::new_from_set_name(set_name);
 
         Self {
             robot_set_configuration_module: Py::new(py, r.robot_set_configuration_module.clone()).expect("error"),
@@ -156,7 +156,7 @@ impl RobotSetPy {
     }
     #[staticmethod]
     pub fn new(robot_set_configuration_module: &RobotSetConfigurationModule, py: Python) -> Self {
-        let r = RobotSet::new_from_robot_set_configuration_module(robot_set_configuration_module.clone()).expect("error");
+        let r = RobotSet::new_from_robot_set_configuration_module(robot_set_configuration_module.clone());
 
         Self {
             robot_set_configuration_module: Py::new(py, r.robot_set_configuration_module.clone()).expect("error"),

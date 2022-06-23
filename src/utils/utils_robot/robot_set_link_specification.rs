@@ -6,27 +6,27 @@ use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RobotSetLinkSpecification {
-    LinkSE3PoseGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: OptimaSE3Pose },
-    LinkPositionGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: Vector3<f64> },
-    LinkRotationGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: OptimaRotation }
+    LinkSE3PoseGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: OptimaSE3Pose, weight: Option<f64> },
+    LinkPositionGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: Vector3<f64>, weight: Option<f64> },
+    LinkRotationGoal { robot_idx_in_set: usize, link_idx_in_robot: usize, goal: OptimaRotation, weight: Option<f64> }
 }
-impl EnumMapToType<RobotSetLinkSpecificationSignature> for RobotSetLinkSpecification {
-    fn map_to_type(&self) -> RobotSetLinkSpecificationSignature {
+impl EnumMapToType<RobotSetLinkSpecificationType> for RobotSetLinkSpecification {
+    fn map_to_type(&self) -> RobotSetLinkSpecificationType {
         return match self {
-            RobotSetLinkSpecification::LinkSE3PoseGoal { robot_idx_in_set, link_idx_in_robot, goal: _} => {
-                RobotSetLinkSpecificationSignature {
+            RobotSetLinkSpecification::LinkSE3PoseGoal { robot_idx_in_set, link_idx_in_robot, ..} => {
+                RobotSetLinkSpecificationType {
                     robot_idx_in_set: *robot_idx_in_set,
                     link_idx_in_robot: *link_idx_in_robot
                 }
             }
-            RobotSetLinkSpecification::LinkPositionGoal { robot_idx_in_set, link_idx_in_robot, goal: _ } => {
-                RobotSetLinkSpecificationSignature {
+            RobotSetLinkSpecification::LinkPositionGoal { robot_idx_in_set, link_idx_in_robot, ..} => {
+                RobotSetLinkSpecificationType {
                     robot_idx_in_set: *robot_idx_in_set,
                     link_idx_in_robot: *link_idx_in_robot
                 }
             }
-            RobotSetLinkSpecification::LinkRotationGoal { robot_idx_in_set, link_idx_in_robot, goal: _ } => {
-                RobotSetLinkSpecificationSignature {
+            RobotSetLinkSpecification::LinkRotationGoal { robot_idx_in_set, link_idx_in_robot, ..} => {
+                RobotSetLinkSpecificationType {
                     robot_idx_in_set: *robot_idx_in_set,
                     link_idx_in_robot: *link_idx_in_robot
                 }
@@ -36,11 +36,11 @@ impl EnumMapToType<RobotSetLinkSpecificationSignature> for RobotSetLinkSpecifica
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct RobotSetLinkSpecificationSignature {
+pub struct RobotSetLinkSpecificationType {
     robot_idx_in_set: usize,
     link_idx_in_robot: usize
 }
-impl RobotSetLinkSpecificationSignature {
+impl RobotSetLinkSpecificationType {
     pub fn new(robot_idx_in_set: usize, link_idx_in_robot: usize) -> Self {
         Self {
             robot_idx_in_set,
@@ -56,7 +56,7 @@ impl RobotSetLinkSpecificationSignature {
 }
 
 pub struct RobotLinkSpecificationCollection {
-    c: EnumBinarySearchTypeContainer<RobotSetLinkSpecification, RobotSetLinkSpecificationSignature>
+    c: EnumBinarySearchTypeContainer<RobotSetLinkSpecification, RobotSetLinkSpecificationType>
 }
 impl RobotLinkSpecificationCollection {
     pub fn new() -> Self {
@@ -67,10 +67,10 @@ impl RobotLinkSpecificationCollection {
     pub fn insert_or_replace(&mut self, r: RobotSetLinkSpecification) {
         self.c.insert_or_replace_object(r);
     }
-    pub fn robot_set_link_specification_ref(&self, signature: &RobotSetLinkSpecificationSignature) -> Option<&RobotSetLinkSpecification> {
+    pub fn robot_set_link_specification_ref(&self, signature: &RobotSetLinkSpecificationType) -> Option<&RobotSetLinkSpecification> {
         self.c.object_ref(signature)
     }
-    pub fn robot_set_link_specification_mut_ref(&mut self, signature: &RobotSetLinkSpecificationSignature) -> Option<&mut RobotSetLinkSpecification> {
+    pub fn robot_set_link_specification_mut_ref(&mut self, signature: &RobotSetLinkSpecificationType) -> Option<&mut RobotSetLinkSpecification> {
         self.c.object_mut_ref(signature)
     }
     pub fn robot_set_link_specification_refs(&self) -> &Vec<RobotSetLinkSpecification> {

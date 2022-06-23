@@ -2,10 +2,13 @@ use nalgebra::{DMatrix, DVector};
 use ndarray::{Array, ArrayD};
 use serde::{Serialize, Deserialize};
 use crate::robot_set_modules::GetRobotSet;
+use crate::robot_set_modules::robot_set_kinematics_module::RobotSetFKResult;
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType};
+use crate::utils::utils_robot::robot_set_link_specification::RobotLinkSpecificationCollection;
 use crate::utils::utils_sampling::SimpleSamplers;
+use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 
 pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
     fn output_dimensions(&self) -> Vec<usize>;
@@ -137,29 +140,30 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         return combined_dimensions;
     }
 
-    fn diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
+    fn diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
         optima_print_new_line();
         optima_print("Call Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.call_diagnostics(input, immut_vars, mut_vars, 1000);
+        self.call_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 1000);
         optima_print_new_line();
         optima_print("Derivative Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative_diagnostics(input, immut_vars, mut_vars, 1000);
+        self.derivative_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 500);
         optima_print_new_line();
         optima_print("Derivative2 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative2_diagnostics(input, immut_vars, mut_vars, 500);
+        self.derivative2_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 50);
         optima_print_new_line();
         optima_print("Derivative3 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative3_diagnostics(input, immut_vars, mut_vars, 100);
+        self.derivative3_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 5);
         optima_print_new_line();
         optima_print("Derivative4 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative4_diagnostics(input, immut_vars, mut_vars, 50);
+        self.derivative4_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 5);
     }
-    fn call_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize) {
+    fn call_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize) {
         let mut call_time = AveragingFloat::new();
 
         for _ in 0..num_calls {
+            let input = OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone()));
             let start = instant::Instant::now();
-            self.call( input, immut_vars, mut_vars).expect("error");
+            self.call( &input, immut_vars, mut_vars).expect("error");
             let duration = start.elapsed();
             call_time.add_new_value(duration.as_secs_f64());
         }
@@ -171,17 +175,17 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
 
     }
-    fn derivative_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative, input, immut_vars, mut_vars, num_inputs);
+    fn derivative_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative, input_dimensions, immut_vars, mut_vars, num_inputs);
     }
-    fn derivative2_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative2, input, immut_vars, mut_vars, num_inputs);
+    fn derivative2_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative2, input_dimensions, immut_vars, mut_vars, num_inputs);
     }
-    fn derivative3_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative3, input, immut_vars, mut_vars, num_inputs);
+    fn derivative3_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative3, input_dimensions, immut_vars, mut_vars, num_inputs);
     }
-    fn derivative4_diagnostics(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative4, input, immut_vars, mut_vars, num_inputs);
+    fn derivative4_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative4, input_dimensions, immut_vars, mut_vars, num_inputs);
     }
 }
 pub struct OptimaTensorFunctionGenerics;
@@ -211,11 +215,10 @@ impl OptimaTensorFunctionGenerics {
                 {
                     let res = finite_difference(s, input, immut_vars, mut_vars)?;
                     match res {
-                        OTFResult::Unimplemented => {}
+                        OTFResult::Unimplemented => { }
                         OTFResult::Complete(_) => { return Ok(res); }
                     }
                 }
-
 
                 panic!("Called an Unimplemented Derivative on OTF.")
 
@@ -266,15 +269,20 @@ impl OptimaTensorFunctionGenerics {
 
         return Ok(OTFResult::Complete(output));
     }
-    fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
+    fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
         where S: OptimaTensorFunction,
               F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
 
+        let mut rand_inputs = vec![];
+        for _ in 0..num_calls {
+            rand_inputs.push(OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone())));
+        }
+
         let mut finite_difference_time = AveragingFloat::new();
         let mut finite_difference_results = vec![];
-        for _ in 0..num_calls {
+        for i in 0..num_calls {
             let start = instant::Instant::now();
-            let res = derivative_function(s, input, immut_vars, mut_vars, Some(OTFDerivativeMode::FiniteDifference)).expect("error");
+            let res = derivative_function(s, &rand_inputs[i], immut_vars, mut_vars, Some(OTFDerivativeMode::FiniteDifference)).expect("error");
             let duration = start.elapsed();
             finite_difference_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -288,9 +296,9 @@ impl OptimaTensorFunctionGenerics {
         let mut analytical_diffs = AveragingFloat::new();
         let mut analytical_results = vec![];
         let mut analytical_unimplemented = false;
-        for _ in 0..num_calls {
+        for i in 0..num_calls {
             let start = instant::Instant::now();
-            let res = derivative_function(s, input, immut_vars, mut_vars, Some(OTFDerivativeMode::Analytical)).expect("error");
+            let res = derivative_function(s, &rand_inputs[i], immut_vars, mut_vars, Some(OTFDerivativeMode::Analytical)).expect("error");
             let duration = start.elapsed();
             analytical_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -304,9 +312,9 @@ impl OptimaTensorFunctionGenerics {
         let mut test_diffs = AveragingFloat::new();
         let mut test_results = vec![];
         let mut test_unimplemented = false;
-        for _ in 0..num_calls {
+        for i in 0..num_calls {
             let start = instant::Instant::now();
-            let res = derivative_function(s, input, immut_vars, mut_vars, Some(OTFDerivativeMode::Test)).expect("error");
+            let res = derivative_function(s, &rand_inputs[i], immut_vars, mut_vars, Some(OTFDerivativeMode::Test)).expect("error");
             let duration = start.elapsed();
             test_time.add_new_value(duration.as_secs_f64());
             match res {
@@ -1371,7 +1379,7 @@ pub enum OptimaTensorSliceScope {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 pub struct OTFImmutVars {
-    c: Box<dyn EnumTypeContainer<OTFImmutVarsObject, OTFImmutVarsObjectSignature>>
+    c: Box<dyn EnumTypeContainer<OTFImmutVarsObject, OTFImmutVarsObjectType>>
 }
 impl OTFImmutVars {
     pub fn new() -> Self {
@@ -1385,7 +1393,7 @@ impl OTFImmutVars {
             }
         }
     }
-    pub fn object_ref(&self, signature: &OTFImmutVarsObjectSignature) -> Option<&OTFImmutVarsObject> {
+    pub fn object_ref(&self, signature: &OTFImmutVarsObjectType) -> Option<&OTFImmutVarsObject> {
         self.c.object_ref(signature)
     }
     pub fn insert_or_replace(&mut self, object: OTFImmutVarsObject) {
@@ -1398,13 +1406,15 @@ impl OTFImmutVars {
 
 pub enum OTFImmutVarsObject {
     Test,
-    GetRobotSet(Box<dyn GetRobotSet>)
+    GetRobotSet(Box<dyn GetRobotSet>),
+    RobotLinkSpecificationCollection(RobotLinkSpecificationCollection)
 }
-impl EnumMapToType<OTFImmutVarsObjectSignature> for OTFImmutVarsObject {
-    fn map_to_type(&self) -> OTFImmutVarsObjectSignature {
+impl EnumMapToType<OTFImmutVarsObjectType> for OTFImmutVarsObject {
+    fn map_to_type(&self) -> OTFImmutVarsObjectType {
         match self {
-            OTFImmutVarsObject::Test => { OTFImmutVarsObjectSignature::Test }
-            OTFImmutVarsObject::GetRobotSet(_) => { OTFImmutVarsObjectSignature::GetRobotSet }
+            OTFImmutVarsObject::Test => { OTFImmutVarsObjectType::Test }
+            OTFImmutVarsObject::GetRobotSet(_) => { OTFImmutVarsObjectType::GetRobotSet }
+            OTFImmutVarsObject::RobotLinkSpecificationCollection(_) => { OTFImmutVarsObjectType::RobotLinkSpecificationCollection }
         }
     }
 }
@@ -1415,19 +1425,26 @@ impl OTFImmutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
+    pub fn unwrap_robot_link_specification_collection(&self) -> &RobotLinkSpecificationCollection {
+        return match self {
+            OTFImmutVarsObject::RobotLinkSpecificationCollection(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum OTFImmutVarsObjectSignature {
+pub enum OTFImmutVarsObjectType {
     Test,
-    GetRobotSet
+    GetRobotSet,
+    RobotLinkSpecificationCollection
 }
 
 /// var indices must be locked prior to getting keys
 #[derive(Clone, Debug)]
 pub struct OTFMutVars {
     enum_objects: Vec<OTFMutVarsObject>,
-    signatures: Vec<OTFMutVarsObjectSignature>,
+    signatures: Vec<OTFMutVarsObjectType>,
     vectorized_tensors: Vec<Vec<f64>>,
     registered_session_blocks: Vec<OTFMutVarsSessionBlock>,
     session_key_counter: usize
@@ -1441,6 +1458,11 @@ impl OTFMutVars {
             registered_session_blocks: vec![],
             session_key_counter: 0
         }
+    }
+    pub fn get_vars(&mut self, signatures: &Vec<OTFMutVarsObjectType>, recompute_var_ifs: &Vec<RecomputeVarIf>, input: &OptimaTensor, immut_vars: &OTFImmutVars, session_key: &OTFMutVarsSessionKey) -> Vec<&mut OTFMutVarsObject> {
+        self.register_vars(input, immut_vars, recompute_var_ifs, signatures, session_key);
+        let var_keys = self.get_var_keys(signatures, input, session_key);
+        return self.unlock_object_mut_refs(&var_keys, input, session_key);
     }
     pub fn register_session(&mut self, input: &OptimaTensor) -> OTFMutVarsSessionKey {
         let out = OTFMutVarsSessionKey { key_idx: self.session_key_counter };
@@ -1491,7 +1513,7 @@ impl OTFMutVars {
             }
         };
     }
-    pub fn register_vars(&mut self, input: &OptimaTensor, immut_vars: &OTFImmutVars, recompute_var_ifs: &Vec<RecomputeVarIf>, signatures: &Vec<OTFMutVarsObjectSignature>, session_key: &OTFMutVarsSessionKey) {
+    fn register_vars(&mut self, input: &OptimaTensor, immut_vars: &OTFImmutVars, recompute_var_ifs: &Vec<RecomputeVarIf>, signatures: &Vec<OTFMutVarsObjectType>, session_key: &OTFMutVarsSessionKey) {
         if recompute_var_ifs.len() != signatures.len() {
             panic!("recompute_var_ifs len must equal signatures len");
         }
@@ -1517,20 +1539,29 @@ impl OTFMutVars {
                 Ok(_) => { continue; }
                 Err(_) => {
                     let binary_search_res = self.signatures.binary_search_by(|x| x.partial_cmp(signature).unwrap());
-                    let (compute, idx) = match binary_search_res {
+                    let compute= match binary_search_res {
                         Ok(idx) => {
-                            (recompute_var_ifs[i].recompute(input, &self.vectorized_tensors[idx], immut_vars), idx)
+                            recompute_var_ifs[i].recompute(input, &self.vectorized_tensors[idx], immut_vars)
                         }
-                        Err(idx) => {
-                            (true, idx)
+                        Err(_) => {
+                            true
                         }
                     };
 
                     if compute {
-                        let var_object = signature.compute_var(input, immut_vars, self);
-                        self.signatures.insert(idx, signature.clone());
-                        self.enum_objects.insert(idx, var_object);
-                        self.vectorized_tensors.insert(idx, input.vectorized_data().to_vec());
+                        match binary_search_res {
+                            Ok(idx) => {
+                                let var_object = signature.compute_var(input, immut_vars, self);
+                                self.enum_objects[idx] = var_object;
+                                self.vectorized_tensors[idx] = input.vectorized_data().to_vec();
+                            }
+                            Err(idx) => {
+                                let var_object = signature.compute_var(input, immut_vars, self);
+                                self.signatures.insert(idx, signature.clone());
+                                self.enum_objects.insert(idx, var_object);
+                                self.vectorized_tensors.insert(idx, input.vectorized_data().to_vec());
+                            }
+                        }
                     }
                 }
             }
@@ -1538,7 +1569,7 @@ impl OTFMutVars {
             session_block.registered_vars.push(signature.clone());
         }
     }
-    pub fn get_var_keys(&mut self, signatures: &Vec<OTFMutVarsObjectSignature>, input: &OptimaTensor, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsKeyContainer {
+    fn get_var_keys(&mut self, signatures: &Vec<OTFMutVarsObjectType>, input: &OptimaTensor, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsKeyContainer {
         let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
         let session_block_idx = match binary_search_res {
             Ok(idx) => {idx}
@@ -1570,7 +1601,7 @@ impl OTFMutVars {
 
         out_keys
     }
-    pub fn unlock_object_mut_refs(&mut self, keys: &OTFMutVarsKeyContainer, input: &OptimaTensor, session_key: &OTFMutVarsSessionKey) -> Vec<&mut OTFMutVarsObject> {
+    fn unlock_object_mut_refs(&mut self, keys: &OTFMutVarsKeyContainer, input: &OptimaTensor, session_key: &OTFMutVarsSessionKey) -> Vec<&mut OTFMutVarsObject> {
         let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(session_key).unwrap());
         let session_block_idx = match binary_search_res {
             Ok(idx) => {idx}
@@ -1589,6 +1620,9 @@ impl OTFMutVars {
             .collect();
 
         return out;
+    }
+    pub fn print_num_objects(&self) {
+        println!("{:?}", self.enum_objects.len());
     }
 }
 
@@ -1633,21 +1667,32 @@ impl RecomputeVarIf {
 
 #[derive(Clone, Debug)]
 pub enum OTFMutVarsObject {
-    Test
+    Test,
+    RobotSetFKResult(RobotSetFKResult)
 }
-impl EnumMapToType<OTFMutVarsObjectSignature> for OTFMutVarsObject {
-    fn map_to_type(&self) -> OTFMutVarsObjectSignature {
+impl OTFMutVarsObject {
+    pub fn unwrap_robot_set_fk_result(&self) -> &RobotSetFKResult {
+        return match self {
+            OTFMutVarsObject::RobotSetFKResult(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+}
+impl EnumMapToType<OTFMutVarsObjectType> for OTFMutVarsObject {
+    fn map_to_type(&self) -> OTFMutVarsObjectType {
         match self {
-            OTFMutVarsObject::Test => { OTFMutVarsObjectSignature::Test }
+            OTFMutVarsObject::Test => { OTFMutVarsObjectType::Test }
+            OTFMutVarsObject::RobotSetFKResult(_) => { OTFMutVarsObjectType::RobotSetFKResult }
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum OTFMutVarsObjectSignature {
-    Test
+pub enum OTFMutVarsObjectType {
+    Test,
+    RobotSetFKResult
 }
-impl OTFMutVarsObjectSignature {
+impl OTFMutVarsObjectType {
     pub fn compute_var(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> OTFMutVarsObject {
         let session_key = mut_vars.register_session(input);
         let out = self.compute_var_raw(input, immut_vars, mut_vars, &session_key);
@@ -1657,7 +1702,19 @@ impl OTFMutVarsObjectSignature {
     #[allow(unused_variables)]
     fn compute_var_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsObject {
         match self {
-            OTFMutVarsObjectSignature::Test => { return OTFMutVarsObject::Test }
+            OTFMutVarsObjectType::Test => { return OTFMutVarsObject::Test }
+            OTFMutVarsObjectType::RobotSetFKResult => {
+                let robot_set_object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("error");
+                let robot_set = robot_set_object.unwrap_get_robot_set().get_robot_set();
+                let robot_set_link_specification_collection_object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotLinkSpecificationCollection).expect("error");
+                let robot_set_link_specification_collection = robot_set_link_specification_collection_object.unwrap_robot_link_specification_collection();
+
+                let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+
+                let res = robot_set.robot_set_kinematics_module().compute_fk(&robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+
+                OTFMutVarsObject::RobotSetFKResult(res)
+            }
         }
     }
 }
@@ -1680,7 +1737,7 @@ struct OTFMutVarsSessionBlock {
     key: OTFMutVarsSessionKey,
     input_tensor_id: f64,
     already_gave_out_var_keys_this_session: bool,
-    registered_vars: Vec<OTFMutVarsObjectSignature>,
+    registered_vars: Vec<OTFMutVarsObjectType>,
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
