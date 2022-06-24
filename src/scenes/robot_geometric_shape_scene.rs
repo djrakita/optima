@@ -18,10 +18,10 @@ use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColo
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PosePy, OptimaSE3PoseType};
-use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, BVHCombinableShapeAABB, GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{BVH, BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{BVH, BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionBVHAABB, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_shape_geometry::trimesh_engine::ConvexDecompositionResolution;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
@@ -682,7 +682,7 @@ impl RobotGeometricShapeScenePy {
         }
     }
     #[args(scale="1.0", shape_representation="\"CubeSubcomponents\"", decomposition_resolution="\"Medium\"", force_preprocessing="false")]
-    pub fn add_environment_object(&mut self, asset_name: &str, scale: f64, shape_representation: &str, decomposition_resolution: &str, force_preprocessing: bool, pose: Option<OptimaSE3PosePy>) -> usize {
+    pub fn add_environment_object_py(&mut self, asset_name: &str, scale: f64, shape_representation: &str, decomposition_resolution: &str, force_preprocessing: bool, pose: Option<OptimaSE3PosePy>) -> usize {
         let env_obj_spawner = EnvObjSpawner::new(
             asset_name,
             Some(scale),
@@ -697,7 +697,7 @@ impl RobotGeometricShapeScenePy {
 
         return idx;
     }
-    pub fn update_env_obj_pose_constraint(&mut self, env_obj_idx: usize, pose: OptimaSE3PosePy, parent_signature: Option<&str>) {
+    pub fn update_env_obj_pose_constraint_py(&mut self, env_obj_idx: usize, pose: OptimaSE3PosePy, parent_signature: Option<&str>) {
         match parent_signature {
             None => {
                 let pose_constraint = EnvObjPoseConstraint::Absolute(pose.pose().clone());
@@ -710,10 +710,10 @@ impl RobotGeometricShapeScenePy {
             }
         }
     }
-    pub fn print_summary(&self) {
+    pub fn print_summary_py(&self) {
         self.robot_geometric_shape_scene.print_summary();
     }
-    #[args(prediction="0.6", stop_condition="\"None\"", log_condition="\"LogAll\"", sort_outputs="true", include_full_output_json_string="true")]
+    #[args(stop_condition="\"None\"", log_condition="\"LogAll\"", sort_outputs="true", include_full_output_json_string="true")]
     pub fn contact_query_py(&self, robot_set_joint_state: Vec<f64>, prediction: f64, stop_condition: &str, log_condition: &str, sort_outputs: bool, include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
         let stop_condition = StopCondition::from_ron_string(stop_condition).expect("error");
         let log_condition = LogCondition::from_ron_string(log_condition).expect("error");
@@ -751,6 +751,32 @@ impl RobotGeometricShapeScenePy {
             SignedDistanceLossFunction::from_ron_string(loss_function).expect("error"), r,
             ProximaBudget::from_ron_string(proxima_budget).expect("error"), &None).expect("error");
         return res;
+    }
+
+    pub fn spawn_bvh_aabb_py(&self, robot_set_joint_state: Vec<f64>, branch_factor: usize) -> ShapeCollectionBVHAABB {
+        let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let bvh = self.robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, None, branch_factor);
+        ShapeCollectionBVHAABB {
+            bvh
+        }
+    }
+    #[args(stop_condition="\"None\"", log_condition="\"LogAll\"", sort_outputs="true", include_full_output_json_string="true")]
+    pub fn bvh_aabb_contact_query_py(&self, bvh_aabb: &mut ShapeCollectionBVHAABB, robot_set_joint_state: Vec<f64>, prediction: f64, stop_condition: &str, log_condition: &str, sort_outputs: bool, include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+        let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let filter = self.robot_geometric_shape_scene.bvh_scene_filter(&mut bvh_aabb.bvh, &robot_set_joint_state, None, BVHVisit::Distance { margin: prediction });
+        let input = RobotGeometricShapeSceneQuery::Contact {
+            robot_set_joint_state: &robot_set_joint_state,
+            env_obj_pose_constraint_group_input: None,
+            prediction,
+            inclusion_list: &Some(filter.pairs_list())
+        };
+
+        let stop_condition = StopCondition::from_ron_string(stop_condition).expect("error");
+        let log_condition = LogCondition::from_ron_string(log_condition).expect("error");
+
+        let res = self.robot_geometric_shape_scene.shape_collection_query(&input, stop_condition, log_condition, sort_outputs).expect("error");
+        let py_output = res.convert_to_py_output(include_full_output_json_string);
+        return py_output;
     }
 }
 

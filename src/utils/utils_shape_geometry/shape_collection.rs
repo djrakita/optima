@@ -12,7 +12,7 @@ use crate::utils::utils_generic_data_structures::{MemoryCell, Mixable, SquareArr
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQuery, GeometricShapeSignature, LogCondition, StopCondition, ContactWrapper, BVHCombinableShape};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueries, GeometricShapeQueryGroupOutput, GeometricShapeQuery, GeometricShapeSignature, LogCondition, StopCondition, ContactWrapper, BVHCombinableShape, BVHCombinableShapeAABB};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString};
 
 /// A collection of `GeometricShape` objects.  Contains the vector of shapes as well as information
@@ -1147,6 +1147,14 @@ pub struct WitnessPointsCollection {
     collection: Vec<WitnessPoints>
 }
 impl WitnessPointsCollection {
+    pub fn new() -> Self {
+        Self {
+            collection: vec![]
+        }
+    }
+    pub fn insert(&mut self, witness_points: WitnessPoints) {
+        self.collection.push(witness_points);
+    }
     pub fn collection(&self) -> &Vec<WitnessPoints> {
         &self.collection
     }
@@ -1166,6 +1174,13 @@ pub struct WitnessPoints {
     witness_points_type: WitnessPointsType
 }
 impl WitnessPoints {
+    pub fn new(witness_points: ( Vector3<f64>, Vector3<f64> ), shape_signatures: ( GeometricShapeSignature, GeometricShapeSignature ), witness_points_type: WitnessPointsType) -> Self {
+        Self {
+            witness_points,
+            shape_signatures,
+            witness_points_type
+        }
+    }
     pub fn witness_points(&self) -> (Vector3<f64>, Vector3<f64>) {
         self.witness_points
     }
@@ -1457,3 +1472,8 @@ impl <T: BVHCombinableShape> ShapeCollectionBVH<T> {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[pyclass]
+pub struct ShapeCollectionBVHAABB {
+    pub bvh: ShapeCollectionBVH<BVHCombinableShapeAABB>
+}

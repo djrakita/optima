@@ -14,6 +14,7 @@ use crate::utils::utils_files::optima_path::{load_object_from_json_string, Optim
 use crate::utils::utils_generic_data_structures::EnumMapToType;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseAll, OptimaSE3PoseType};
+use crate::utils::utils_shape_geometry::shape_collection::{WitnessPoints, WitnessPointsCollection, WitnessPointsType};
 use crate::utils::utils_shape_geometry::trimesh_engine::TrimeshEngine;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString};
 
@@ -902,8 +903,37 @@ impl GeometricShapeQueryGroupOutput {
             num_queries: self.num_queries,
             intersection_found: self.intersection_found,
             minimum_distance: self.minimum_distance,
+            witness_points_collection: self.output_witness_points_collection(),
             full_output_json_string
         }
+    }
+    pub fn output_witness_points_collection(&self) -> WitnessPointsCollection {
+        let mut witness_points_collection = WitnessPointsCollection::new();
+        for output in &self.outputs {
+            match &output.raw_output {
+                GeometricShapeQueryRawOutput::ProjectPoint(_) => {}
+                GeometricShapeQueryRawOutput::ContainsPoint(_) => {}
+                GeometricShapeQueryRawOutput::DistanceToPoint(_) => {}
+                GeometricShapeQueryRawOutput::IntersectsRay(_) => {}
+                GeometricShapeQueryRawOutput::CastRay(_) => {}
+                GeometricShapeQueryRawOutput::CastRayAndGetNormal(_) => {}
+                GeometricShapeQueryRawOutput::IntersectionTest(_) => {}
+                GeometricShapeQueryRawOutput::Distance(_) => {}
+                GeometricShapeQueryRawOutput::ClosestPoints(c) => {
+                    todo!()
+                }
+                GeometricShapeQueryRawOutput::Contact(c) => {
+                    match c {
+                        None => {}
+                        Some(c) => {
+                            witness_points_collection.insert(WitnessPoints::new((c.point1, c.point2), (output.signatures[0].clone(), output.signatures[1].clone()), WitnessPointsType::GroundTruth));
+                        }
+                    }
+                }
+                GeometricShapeQueryRawOutput::CCD(_) => {}
+            }
+        }
+        witness_points_collection
     }
 }
 
@@ -918,6 +948,8 @@ pub struct GeometricShapeQueryGroupOutputPy {
     intersection_found: bool,
     #[pyo3(get)]
     minimum_distance: f64,
+    #[pyo3(get)]
+    witness_points_collection: WitnessPointsCollection,
     #[pyo3(get)]
     full_output_json_string: String
 }
