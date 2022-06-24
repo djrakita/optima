@@ -16,10 +16,10 @@ use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_generic_data_structures::{MemoryCell, SquareArray2D};
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -194,6 +194,20 @@ impl RobotSetGeometricShapeModule {
         let robot_set_shape_collection = self.robot_set_shape_collection(robot_link_shape_representation).expect("error");
         robot_set_shape_collection.shape_collection.spawn_proxima_engine()
     }
+    pub fn spawn_bvh<T: BVHCombinableShape>(&self, robot_set_joint_state: &RobotSetJointState, robot_link_shape_representation: RobotLinkShapeRepresentation, branch_factor: usize) -> ShapeCollectionBVH<T> {
+        let res = self.robot_set_kinematics_module.compute_fk(robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+        let collection = self.robot_set_shape_collection(&robot_link_shape_representation).expect("error");
+        let poses = collection.recover_poses(&res).expect("error");
+
+        return collection.shape_collection.spawn_bvh(&poses, branch_factor);
+    }
+    pub fn update_bvh<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_joint_state: &RobotSetJointState, robot_link_shape_representation: RobotLinkShapeRepresentation) {
+        let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+        let collection = self.robot_set_shape_collection(&robot_link_shape_representation).expect("error");
+        let poses = collection.recover_poses(&res).expect("error");
+
+        collection.shape_collection.update_bvh(bvh, &poses);
+    }
 
     pub fn proxima_proximity_query(&self,
                                    robot_set_joint_state: &RobotSetJointState,
@@ -225,6 +239,13 @@ impl RobotSetGeometricShapeModule {
         let poses = collection.recover_poses(&res)?;
 
         return collection.shape_collection.proxima_scene_filter(&poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list);
+    }
+    pub fn bvh_scene_filter<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_joint_state: &RobotSetJointState, robot_link_shape_representation: RobotLinkShapeRepresentation, visit: BVHVisit) -> BVHSceneFilterOutput {
+        let res = self.robot_set_kinematics_module.compute_fk(robot_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+        let collection = self.robot_set_shape_collection(&robot_link_shape_representation).expect("error");
+        let poses = collection.recover_poses(&res).expect("error");
+
+        return collection.shape_collection.bvh_scene_filter(bvh, &poses, visit);
     }
 
     fn setup_robot_set_shape_collections(&mut self, robot_set_configuration_module: &RobotSetConfigurationModule) -> Result<(), OptimaError> {

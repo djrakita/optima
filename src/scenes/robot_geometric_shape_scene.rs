@@ -18,10 +18,10 @@ use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColo
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PosePy, OptimaSE3PoseType};
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{BVH, BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_shape_geometry::trimesh_engine::ConvexDecompositionResolution;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
@@ -572,6 +572,16 @@ impl RobotGeometricShapeScene {
     pub fn spawn_proxima_engine(&self) -> ProximaEngine {
         return self.shape_collection.spawn_proxima_engine();
     }
+    pub fn spawn_bvh<T: BVHCombinableShape>(&self, robot_set_joint_state: &RobotSetJointState, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroupInput>, branch_factor: usize) -> ShapeCollectionBVH<T> {
+        let poses = self.recover_poses(robot_set_joint_state, env_obj_pose_constraint_group_input).expect("error");
+
+        return self.shape_collection.spawn_bvh(&poses, branch_factor);
+    }
+    pub fn update_bvh<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_set_joint_state: &RobotSetJointState, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroupInput>) {
+        let poses = self.recover_poses(robot_set_joint_state, env_obj_pose_constraint_group_input).expect("error");
+
+        self.shape_collection.update_bvh(bvh, &poses);
+    }
 
     pub fn proxima_proximity_query(&self,
                                    robot_set_joint_state: &RobotSetJointState,
@@ -597,6 +607,11 @@ impl RobotGeometricShapeScene {
                                    inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaSceneFilterOutput, OptimaError> {
         let poses = self.recover_poses(robot_set_joint_state, env_obj_pose_constraint_group_input)?;
         return self.shape_collection.proxima_scene_filter(&poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list);
+    }
+    pub fn bvh_scene_filter<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_set_joint_state: &RobotSetJointState, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroupInput>, visit: BVHVisit) -> BVHSceneFilterOutput {
+        let poses = self.recover_poses(robot_set_joint_state, env_obj_pose_constraint_group_input).expect("error");
+
+        return self.shape_collection.bvh_scene_filter(bvh, &poses, visit);
     }
 
     pub fn print_summary(&self) {

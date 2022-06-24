@@ -177,6 +177,17 @@ impl ShapeCollection {
             id: self.id
         }
     }
+    pub fn spawn_bvh<T: BVHCombinableShape>(&self, poses: &ShapeCollectionInputPoses, branch_factor: usize) -> ShapeCollectionBVH<T> {
+        let out_bvh = BVH::construct_new(&self.shapes, &poses, branch_factor);
+        return ShapeCollectionBVH {
+            bvh: out_bvh,
+            id: self.id
+        };
+    }
+    pub fn update_bvh<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, poses: &ShapeCollectionInputPoses) {
+        assert_eq!(self.id, bvh.id);
+        bvh.bvh_mut().update(&self.shapes, poses);
+    }
 
     /// This is the workhorse function of this struct.  It does lots of kinds of geometric shape queries
     /// over collections of shapes.
@@ -348,6 +359,20 @@ impl ShapeCollection {
         filter_output.duration = start.elapsed();
 
         Ok(filter_output)
+    }
+    pub fn bvh_scene_filter<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, poses: &ShapeCollectionInputPoses, visit: BVHVisit) -> BVHSceneFilterOutput {
+        assert_eq!(self.id, bvh.id);
+        self.update_bvh(bvh, poses);
+        let res = BVH::filter(&bvh.bvh, &bvh.bvh, visit, true);
+
+        let mut pairs_list = self.spawn_query_pairs_list(false);
+        pairs_list.add_pairs(res.idxs);
+
+        return BVHSceneFilterOutput {
+            pairs_list,
+            num_visits: res.num_visits,
+            duration: res.duration
+        }
     }
 
     fn get_single_object_geometric_shape_query_input_vec<'a>(&'a self, input: &'a ShapeCollectionQuery) -> Result<Vec<GeometricShapeQuery<'a>>, OptimaError> {
@@ -806,6 +831,9 @@ impl ShapeCollectionQueryPairsList {
     pub fn set_override_all_skips(&mut self, b: bool) {
         self.override_all_skips = b;
     }
+    pub fn pairs(&self) -> &Vec<(usize, usize)> {
+        &self.pairs
+    }
 }
 
 pub struct ProximaFunctions;
@@ -1179,34 +1207,231 @@ impl <T: BVHCombinableShape> BVH <T> {
             layers: vec![ base_layer ]
         };
 
+        let mut layer_idx = 1;
         loop {
-            let res = out_self.add_new_layer(branch_factor);
+            let res = out_self.add_new_layer(branch_factor, layer_idx);
             if !res { return out_self; }
+            layer_idx += 1;
         }
     }
+    pub fn update(&mut self, shapes: &Vec<GeometricShape>, poses: &ShapeCollectionInputPoses) {
+        assert_eq!(shapes.len(), poses.poses.len());
 
-    fn add_new_layer(&mut self, branch_factor: usize) -> bool {
+        let poses = &poses.poses;
+
+        // update leaf layer
+        for (i, pose) in poses.iter().enumerate() {
+            match pose {
+                None => { panic!("poses must all be Some in BVH.") }
+                Some(pose) => {
+                    self.layers[0][i].combinable_shape = T::new_from_shape_and_pose(&shapes[i], pose);
+                }
+            }
+        }
+
+        let num_layers = self.layers.len();
+
+        for layer_idx in 1..num_layers {
+            self.update_layer(layer_idx);
+        }
+    }
+    /// Returns usize tuples of shape idxs from BVH a and b, respectively, that cannot be
+    /// culled by the BVH and should be further inspected.
+    pub fn filter(a: &Self, b: &Self, visit: BVHVisit, a_and_b_are_the_same: bool) -> BVHFilterOutput {
+        let start = instant::Instant::now();
+
+        let num_layers_a = a.layers.len();
+        let num_layers_b = b.layers.len();
+
+        assert!(num_layers_a >= 1);
+        assert!(num_layers_b >= 1);
+
+        let mut curr_layer_idx_a = num_layers_a - 1;
+        let mut curr_layer_idx_b = num_layers_b - 1;
+
+        let mut out_vec = vec![];
+        let mut num_visits = 0;
+
+        let mut queue = vec![ ((curr_layer_idx_a, 0), (curr_layer_idx_b, 0)) ];
+
+        loop {
+            let pop = queue.pop();
+            if pop.is_none() {
+                return BVHFilterOutput {
+                    idxs: out_vec,
+                    num_visits,
+                    duration: start.elapsed()
+                };
+            }
+            let pop = pop.unwrap();
+
+            let (layer_idx_a, node_idx_a) = pop.0;
+            let (layer_idx_b, node_idx_b) = pop.1;
+
+            let node_a = &a.layers[layer_idx_a][node_idx_a];
+            let node_b = &b.layers[layer_idx_b][node_idx_b];
+
+            let cull = match &visit {
+                BVHVisit::Intersection => {
+                    let intersection = T::intersection_test(&node_a.combinable_shape, &node_b.combinable_shape);
+                    !intersection
+                }
+                BVHVisit::Distance { margin } => {
+                    let distance = T::distance(&node_a.combinable_shape, &node_b.combinable_shape);
+                    distance > *margin
+                }
+            };
+            num_visits += 1;
+
+            if !cull {
+                if layer_idx_a == 0 && layer_idx_b == 0 {
+                    if node_idx_a < node_idx_b || !a_and_b_are_the_same {
+                        out_vec.push((node_idx_a, node_idx_b));
+                    }
+                }
+                else if layer_idx_a == 0 {
+                    let children_idxs_b = &node_b.children_idxs_in_child_layer;
+                    for c in children_idxs_b {
+                        queue.push(( (layer_idx_a, node_idx_a), (layer_idx_b-1, *c) ) );
+                    }
+                }
+                else if layer_idx_b == 0 {
+                    let children_idxs_a = &node_a.children_idxs_in_child_layer;
+                    for c in children_idxs_a {
+                        queue.push(( (layer_idx_a-1, *c), (layer_idx_b, node_idx_b) ) );
+                    }
+                }
+                else {
+                    let children_idxs_a = &node_a.children_idxs_in_child_layer;
+                    let children_idxs_b = &node_b.children_idxs_in_child_layer;
+
+                    for c_a in children_idxs_a {
+                        for c_b in children_idxs_b {
+                            queue.push(( (layer_idx_a-1, *c_a), (layer_idx_b-1, *c_b) ) );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    fn add_new_layer(&mut self, branch_factor: usize, layer_idx: usize) -> bool {
+        let mut new_layer = vec![];
+
         let child_layer_idx = self.layers.len() - 1;
         let num_nodes_in_child_layer = self.layers[child_layer_idx].len();
         if num_nodes_in_child_layer == 1 { return false; }
 
         let v = (0..num_nodes_in_child_layer).collect::<Vec<_>>();
-        let combinations = comb(&v, branch_factor);
+        let combinations = comb(&v, branch_factor.min(num_nodes_in_child_layer));
 
-        let mut child_shape_refs = vec![];
+        let mut volume_pack = vec![];
         for c in combinations {
             let mut tmp = vec![];
             for cc in &c {
                 tmp.push(&self.layers[child_layer_idx][*cc].combinable_shape);
             }
-            let volume_if_combined = T::volume_if_combined(tmp.clone());
-            child_shape_refs.push((tmp, volume_if_combined));
+            let volume_if_combined = T::volume_if_combined(tmp);
+            volume_pack.push((c.clone(), volume_if_combined));
         }
-        child_shape_refs.sort_by(|x, y| x.1.partial_cmp(&y.1).unwrap());
+        volume_pack.sort_by(|x, y| x.1.partial_cmp(&y.1).unwrap());
 
-        // let mut already_done = vec![];
+        let mut already_done_idxs = vec![];
+        let mut remaining_idxs = vec![];
+        for _ in 0..num_nodes_in_child_layer { already_done_idxs.push(false); }
+        for i in 0..num_nodes_in_child_layer { remaining_idxs.push(i); }
 
-        todo!()
+        'f: for v in &volume_pack {
+            for vv in &v.0 { if already_done_idxs[*vv] { continue 'f; } }
+
+            let mut shapes = vec![];
+            for vv in &v.0 { shapes.push(&self.layers[child_layer_idx][*vv].combinable_shape); }
+
+            let new_node_idx = new_layer.len();
+            let new_combinable_shape = T::combine(shapes);
+            let mut new_node = BVHCombinableShapeTreeNode {
+                combinable_shape: new_combinable_shape,
+                layer_idx,
+                children_idxs_in_child_layer: v.0.clone(),
+                parent_idx_in_parent_layer: None
+            };
+            new_layer.push(new_node);
+
+            for vv in &v.0 {
+                self.layers[child_layer_idx][*vv].parent_idx_in_parent_layer = Some(new_node_idx);
+
+                already_done_idxs[*vv] = true;
+                let binary_search_res = remaining_idxs.binary_search(vv);
+                match binary_search_res {
+                    Ok(idx) => { remaining_idxs.remove(idx); }
+                    Err(_) => { unreachable!() }
+                }
+            }
+        }
+
+        if remaining_idxs.len() > 0 {
+            let mut shapes = vec![];
+            for r in &remaining_idxs { shapes.push(&self.layers[child_layer_idx][*r].combinable_shape) }
+            let new_combinable_shape = T::combine(shapes);
+            let new_node_idx = new_layer.len();
+            let mut new_node = BVHCombinableShapeTreeNode {
+                combinable_shape: new_combinable_shape,
+                layer_idx,
+                children_idxs_in_child_layer: remaining_idxs.clone(),
+                parent_idx_in_parent_layer: None
+            };
+            new_layer.push(new_node);
+
+            for r in remaining_idxs {
+                self.layers[child_layer_idx][r].parent_idx_in_parent_layer = Some(new_node_idx);
+            }
+        }
+
+        self.layers.push(new_layer);
+
+        return true;
+    }
+    fn update_layer(&mut self, layer_idx: usize) {
+        let num_nodes_in_layer = self.layers[layer_idx].len();
+        for node_idx in 0..num_nodes_in_layer {
+            let children_idxs = &self.layers[layer_idx][node_idx].children_idxs_in_child_layer;
+            let mut children_shapes = vec![];
+            for c in children_idxs {
+                children_shapes.push(&self.layers[layer_idx-1][*c].combinable_shape);
+            }
+            let updated_shape = T::combine(children_shapes);
+            self.layers[layer_idx][node_idx].combinable_shape = updated_shape;
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BVHVisit {
+    Intersection,
+    Distance { margin: f64 }
+}
+
+#[derive(Clone, Debug)]
+pub struct BVHFilterOutput {
+    idxs: Vec<(usize, usize)>,
+    num_visits: usize,
+    duration: Duration
+}
+
+#[derive(Clone, Debug)]
+pub struct BVHSceneFilterOutput {
+    pairs_list: ShapeCollectionQueryPairsList,
+    num_visits: usize,
+    duration: Duration
+}
+impl BVHSceneFilterOutput {
+    pub fn pairs_list(&self) -> &ShapeCollectionQueryPairsList {
+        &self.pairs_list
+    }
+    pub fn num_visits(&self) -> usize {
+        self.num_visits
+    }
+    pub fn duration(&self) -> Duration {
+        self.duration
     }
 }
 
@@ -1216,5 +1441,19 @@ pub struct BVHCombinableShapeTreeNode<T: BVHCombinableShape> {
     layer_idx: usize,
     children_idxs_in_child_layer: Vec<usize>,
     parent_idx_in_parent_layer: Option<usize>
+}
+
+#[derive(Clone, Debug)]
+pub struct ShapeCollectionBVH<T: BVHCombinableShape> {
+    bvh: BVH<T>,
+    id: f64
+}
+impl <T: BVHCombinableShape> ShapeCollectionBVH<T> {
+    pub fn bvh(&self) -> &BVH<T> {
+        &self.bvh
+    }
+    pub fn bvh_mut(&mut self) -> &mut BVH<T> {
+        &mut self.bvh
+    }
 }
 
