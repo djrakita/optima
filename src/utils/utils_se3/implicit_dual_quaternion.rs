@@ -70,7 +70,7 @@ impl ImplicitDualQuaternion {
 
         let translation = 2.0 * mu_r * (&h_v.cross(&v)) + c*(2.0*mu_r)*v + mu_d*gamma*w;
 
-        return ImplicitDualQuaternion::new(rotation, translation);
+        return Self::new(rotation, translation);
     }
     fn decide_if_identity(&mut self) {
         if (self.rotation.w.abs() - 1.0).abs() < 0.000001 && self.rotation.i.abs() < 0.000001 && self.rotation.j.abs() < 0.000001 && self.rotation.k.abs() < 0.000001 {
@@ -79,7 +79,7 @@ impl ImplicitDualQuaternion {
             self.rot_is_identity = false;
         }
 
-        if self.translation[0].abs() < 0.000001 && self.translation[1].abs() < 0.000001 && self.translation[2] < 0.000001 {
+        if self.translation[0].abs() < 0.000001 && self.translation[1].abs() < 0.000001 && self.translation[2].abs() < 0.000001 {
             self.translation_is_zeros = true;
         } else {
             self.translation_is_zeros = false;

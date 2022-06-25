@@ -752,6 +752,11 @@ impl RobotGeometricShapeScenePy {
             ProximaBudget::from_ron_string(proxima_budget).expect("error"), &None).expect("error");
         return res;
     }
+    pub fn update_aabb_bvh(&self, bvh_aabb: &mut ShapeCollectionBVHAABB, robot_set_joint_state: Vec<f64>) {
+        let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
+        let poses = self.robot_geometric_shape_scene.recover_poses(&robot_set_joint_state, None).expect("error");
+        bvh_aabb.bvh.bvh_mut().update(&self.robot_geometric_shape_scene.shape_collection.shapes(), &poses);
+    }
 
     pub fn spawn_bvh_aabb_py(&self, robot_set_joint_state: Vec<f64>, branch_factor: usize) -> ShapeCollectionBVHAABB {
         let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");

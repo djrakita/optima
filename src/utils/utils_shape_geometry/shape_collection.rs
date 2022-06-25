@@ -1477,3 +1477,36 @@ impl <T: BVHCombinableShape> ShapeCollectionBVH<T> {
 pub struct ShapeCollectionBVHAABB {
     pub bvh: ShapeCollectionBVH<BVHCombinableShapeAABB>
 }
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl ShapeCollectionBVHAABB {
+    pub fn output_blender_drawing_util(&self) -> ShapeCollectionBVHAABBBlenderDrawingUtil {
+        let mut entries = vec![];
+
+        for layer in &self.bvh.bvh.layers {
+            for node in layer {
+                let shape = &node.combinable_shape;
+                entries.push( ( shape.center(), shape.half_extents()) )
+            }
+        }
+
+        ShapeCollectionBVHAABBBlenderDrawingUtil {
+            entries
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[cfg(not(target_arch = "wasm32"))]
+#[pyclass]
+pub struct ShapeCollectionBVHAABBBlenderDrawingUtil {
+    /// centers and half extents (all euler angles will be (0,0,0) in blender for AABB).
+    entries: Vec<(Vector3<f64>, Vector3<f64>)>
+}
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl ShapeCollectionBVHAABBBlenderDrawingUtil {
+    pub fn to_json_string_py(&self) -> String {
+        self.to_json_string()
+    }
+}

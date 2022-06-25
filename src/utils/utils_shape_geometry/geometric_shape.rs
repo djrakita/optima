@@ -1032,10 +1032,23 @@ impl BVHCombinableShapeAABB {
         }
         out
     }
+    pub fn maxs(&self) -> Vector3<f64> {
+        self.maxs
+    }
+    pub fn mins(&self) -> Vector3<f64> {
+        self.mins
+    }
+    pub fn half_extents(&self) -> Vector3<f64> {
+        self.half_extents
+    }
+    pub fn center(&self) -> Vector3<f64> {
+        self.center
+    }
 }
 impl BVHCombinableShape for BVHCombinableShapeAABB {
     fn new_from_shape_and_pose(shape: &GeometricShape, pose: &OptimaSE3Pose) -> Self {
-        let iso = pose.to_nalgebra_isometry();
+        let recovered_pose = shape.recover_transformed_pose_wrt_initial_pose(pose);
+        let iso = recovered_pose.to_nalgebra_isometry();
         let bounding_box = shape.shape.compute_aabb(&iso);
         let maxs = bounding_box.maxs.clone();
         let mins = bounding_box.mins.clone();
