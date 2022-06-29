@@ -240,9 +240,9 @@ impl ShapeCollection {
                 ProximaBudget::Accuracy(budget) => {
                     if maximum_possible_error < budget { break 'f; }
                 }
-                ProximaBudget::Time(budget) => {
+                ProximaBudget::TimeInMicroseconds(budget) => {
                     let duration = start.elapsed();
-                    if duration > budget { break 'f; }
+                    if duration.as_micros() > budget { break 'f; }
                 }
             }
 
@@ -1121,7 +1121,7 @@ impl ProximaSceneFilterOutput {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ProximaBudget {
     Accuracy(f64),
-    Time(Duration)
+    TimeInMicroseconds(u128)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

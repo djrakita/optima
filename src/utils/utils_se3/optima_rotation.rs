@@ -43,6 +43,8 @@ impl OptimaRotation {
         return Self::new_unit_quaternion(data);
     }
     pub fn new_rotation_matrix_from_lookat(lookat_direction: Vector3<f64>, lookat_axis: LookatAxis) -> OptimaRotation {
+        assert!(lookat_direction.norm() > 0.0);
+
         let mut mat = Matrix3::identity();
 
         let lookat_column = match lookat_axis {
@@ -85,7 +87,11 @@ impl OptimaRotation {
         mat[(1, column_b)] = c_b[1];
         mat[(2, column_b)] = c_b[2];
 
-        let data = Rotation3::from_matrix(&mat);
+        let data = Rotation3::from_matrix_eps(&mat, 0.0001, 1000, Rotation3::identity());
+        let e = data.euler_angles();
+        if e.0 == 0.0 && e.1 == 0.0 && e.2 == 0.0 {
+            return Self::new_rotation_matrix_from_lookat(lookat_direction + Vector3::new(0.00001, 0.00001, 0.00001), lookat_axis);
+        }
         return Self::new_rotation_matrix(data);
     }
     pub fn new_quaternion_from_lookat(lookat_direction: Vector3<f64>, lookat_axis: LookatAxis) -> OptimaRotation {
