@@ -11,6 +11,7 @@ use crate::robot_modules::robot_joint_state_module::{RobotJointState, RobotJoint
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
+use crate::utils::utils_robot::robot_generic_structures::GenericRobotJointState;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 /// RobotSet analogue of the `RobotJointStateModule`.  The same concepts apply, just on a set of possibly
@@ -331,6 +332,11 @@ impl RobotSetJointState {
         &self.concatenated_state
     }
 }
+impl GenericRobotJointState for RobotSetJointState {
+    fn joint_state(&self) -> &DVector<f64> {
+        &self.concatenated_state
+    }
+}
 impl Add for RobotSetJointState {
     type Output = Result<RobotSetJointState, OptimaError>;
     fn add(self, rhs: Self) -> Self::Output {
@@ -385,3 +391,4 @@ impl RobotSetJointStateType {
         }
     }
 }
+

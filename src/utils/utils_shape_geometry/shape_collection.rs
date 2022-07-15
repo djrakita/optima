@@ -71,14 +71,24 @@ impl ShapeCollection {
     pub fn skips(&self) -> &SquareArray2D<MemoryCell<bool>> {
         &self.skips
     }
-    pub fn average_distances(&self) -> &SquareArray2D<MemoryCell<f64>> {
-        &self.average_distances
-    }
     pub fn skips_mut(&mut self) -> &mut SquareArray2D<MemoryCell<bool>> {
         &mut self.skips
     }
+    pub fn average_distances(&self) -> &SquareArray2D<MemoryCell<f64>> {
+        &self.average_distances
+    }
     pub fn average_distances_mut(&mut self) -> &mut SquareArray2D<MemoryCell<f64>> {
         &mut self.average_distances
+    }
+    pub fn average_distance_from_signatures(&self, signatures: &(GeometricShapeSignature, GeometricShapeSignature)) -> f64 {
+        let idx0 = self.get_shape_idx_from_signature(&signatures.0).expect("error");
+        let idx1 = self.get_shape_idx_from_signature(&signatures.1).expect("error");
+
+        return self.average_distance_from_idxs(idx0, idx1);
+    }
+    pub fn average_distance_from_idxs(&self, idx0: usize, idx1: usize) -> f64 {
+        let average_dis = self.average_distances.data_cell(idx0, idx1).expect("error").curr_value();
+        return *average_dis;
     }
 
     pub fn set_base_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
@@ -155,17 +165,42 @@ impl ShapeCollection {
     pub fn spawn_query_pairs_list(&self, override_all_skips: bool) -> ShapeCollectionQueryPairsList {
         return ShapeCollectionQueryPairsList { pairs: vec![], override_all_skips, id: self.id };
     }
-    pub fn spawn_proxima_engine(&self) -> ProximaEngine {
+    pub fn spawn_proxima_engine(&self, pairwise_mode: Option<ProximaPairwiseMode>) -> ProximaEngine {
         let num_shapes = self.shapes.len();
 
         let mut grid: SquareArray2D<Option<ProximaPairwiseBlock>> = SquareArray2D::new(num_shapes, false, Some(None));
         for i in 0..num_shapes {
             for j in 0..num_shapes {
                 if i < j {
-                    let proxima_pairwise_block = ProximaPairwiseBlock {
-                        object_1_signature: self.shapes[i].signature().clone(),
-                        object_2_signature: self.shapes[j].signature().clone(),
-                        ..Default::default()
+                    let proxima_pairwise_block = match &pairwise_mode {
+                        None => {
+                            ProximaPairwiseBlock::SE3Displacement(ProximaPairwiseBlockB {
+                                object_1_signature: self.shapes[i].signature().clone(),
+                                object_2_signature: self.shapes[j].signature().clone(),
+                                f: self.shapes[i].f().max(self.shapes[j].f()),
+                                ..Default::default()
+                            })
+                        }
+                        Some(p) => {
+                            match p {
+                                ProximaPairwiseMode::R3AndSO3Displacements => {
+                                    ProximaPairwiseBlock::R3AndSO3Displacements(ProximaPairwiseBlockA {
+                                        object_1_signature: self.shapes[i].signature().clone(),
+                                        object_2_signature: self.shapes[j].signature().clone(),
+                                        f: self.shapes[i].f().max(self.shapes[j].f()),
+                                        ..Default::default()
+                                    })
+                                }
+                                ProximaPairwiseMode::SE3Displacement => {
+                                    ProximaPairwiseBlock::SE3Displacement(ProximaPairwiseBlockB {
+                                        object_1_signature: self.shapes[i].signature().clone(),
+                                        object_2_signature: self.shapes[j].signature().clone(),
+                                        f: self.shapes[i].f().max(self.shapes[j].f()),
+                                        ..Default::default()
+                                    })
+                                }
+                            }
+                        }
                     };
                     grid.replace_data(Some(proxima_pairwise_block), i, j).expect("error");
                 }
@@ -218,10 +253,11 @@ impl ShapeCollection {
         let mut output = ProximaProximityOutput {
             output_sum: 0.0,
             maximum_possible_error: 0.0,
+            r,
             ground_truth_check_signatures: vec![],
-            single_comparison_outputs: vec![],
+            proxima_single_comparison_outputs: vec![],
             duration: Default::default(),
-            query_pairs_list: self.spawn_query_pairs_list(false)
+            query_pairs_list: self.spawn_query_pairs_list(false),
         };
 
         let filter_output = self.proxima_scene_filter(poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list).expect("error");
@@ -261,7 +297,24 @@ impl ShapeCollection {
             ProximaFunctions::proxima_ground_truth_check_and_update_block(data_cell_mut, shape1, pose1, shape2, pose2)?;
             single_comparison_output.ground_truth_check = true;
             output.ground_truth_check_signatures.push((shape1.signature().clone(), shape2.signature().clone()));
-            let d_c = ProximaFunctions::proxima_loss_with_cutoff(data_cell_mut.contact_j.dist, d_max, a_max, *shape_average_distance, &loss_function);
+            let ground_truth_dis = match data_cell_mut {
+                ProximaPairwiseBlock::R3AndSO3Displacements(data_cell_mut) => { data_cell_mut.contact_j.dist }
+                ProximaPairwiseBlock::SE3Displacement(data_cell_mut) => { data_cell_mut.contact_j.dist }
+            };
+            single_comparison_output.ground_truth_distance = Some(ground_truth_dis);
+
+
+            /*
+            let lower_bound_diff = dis - single_comparison_output.lower_bound_signed_distance;
+            let upper_bound_diff = single_comparison_output.upper_bound_signed_distance - dis;
+
+            assert!(lower_bound_diff > -0.000001
+                        && upper_bound_diff > -0.000001,
+                    "Just a sanity check to make sure proofs are correct.  {}",
+                    format!("lower bound: {:?}, dis: {:?}, upper bound: {:?}", single_comparison_output.lower_bound_signed_distance, dis, single_comparison_output.upper_bound_signed_distance));
+            */
+
+            let d_c = ProximaFunctions::proxima_loss_with_cutoff(ground_truth_dis, d_max, a_max, *shape_average_distance, &loss_function);
 
             maximum_possible_error -= single_comparison_output.max_possible_error;
             output_sum -= single_comparison_output.d_c;
@@ -271,7 +324,7 @@ impl ShapeCollection {
         output.output_sum = output_sum;
         output.maximum_possible_error = maximum_possible_error;
         output.duration = start.elapsed();
-        output.single_comparison_outputs = single_comparison_outputs;
+        output.proxima_single_comparison_outputs = single_comparison_outputs;
         output.query_pairs_list = filter_output.query_pairs_list;
 
         Ok(output)
@@ -850,7 +903,7 @@ impl ProximaFunctions {
                                      a_max: f64,
                                      r: f64,
                                      loss_function: &SignedDistanceLossFunction) -> Result<Option<ProximaSingleComparisonOutput>, OptimaError> {
-        return if data_cell_mut.initialized {
+        return if data_cell_mut.initialized() {
             let bounds_result = Self::proxima_compute_bounds(data_cell_mut, shape_average_distance, pose1, pose2, d_max, a_max)?;
             match bounds_result {
                 ProximaSignedDistanceBoundsResult::ComputedBothLowerAndUpperBound { lower_bound, upper_bound, modified_upper_bound_points } => {
@@ -869,6 +922,7 @@ impl ProximaFunctions {
                         lower_bound_signed_distance: lower_bound,
                         upper_bound_signed_distance: upper_bound,
                         modified_upper_bound_points,
+                        ground_truth_distance: None,
                         ground_truth_check: false
                     }))
                 }
@@ -876,18 +930,30 @@ impl ProximaFunctions {
             }
         } else {
             Self::proxima_ground_truth_check_and_update_block(data_cell_mut, shape1, pose1, shape2, pose2)?;
-            let d_c = Self::proxima_loss_with_cutoff(data_cell_mut.contact_j.dist, d_max, a_max, shape_average_distance, loss_function);
+            let ground_truth_dis = match data_cell_mut {
+                ProximaPairwiseBlock::R3AndSO3Displacements(data_cell_mut) => { data_cell_mut.contact_j.dist }
+                ProximaPairwiseBlock::SE3Displacement(data_cell_mut) => { data_cell_mut.contact_j.dist }
+            };
+            let d_c = Self::proxima_loss_with_cutoff(ground_truth_dis, d_max, a_max, shape_average_distance, loss_function);
 
-            let modified_upper_bound_points = (data_cell_mut.contact_j.point1, data_cell_mut.contact_j.point2);
+            let modified_upper_bound_points = match data_cell_mut {
+                ProximaPairwiseBlock::R3AndSO3Displacements(data_cell_mut) => {
+                    (data_cell_mut.contact_j.point1, data_cell_mut.contact_j.point2)
+                }
+                ProximaPairwiseBlock::SE3Displacement(data_cell_mut) => {
+                    (data_cell_mut.contact_j.point1, data_cell_mut.contact_j.point2)
+                }
+            };
             
             Ok(Some(ProximaSingleComparisonOutput {
                 max_possible_error: 0.0,
                 d_c,
                 shape_idxs: (shape1_idx, shape2_idx),
                 shape_signatures: (shape1.signature().clone(), shape2.signature().clone()),
-                lower_bound_signed_distance: data_cell_mut.contact_j.dist,
-                upper_bound_signed_distance: data_cell_mut.contact_j.dist,
+                lower_bound_signed_distance: ground_truth_dis,
+                upper_bound_signed_distance: ground_truth_dis,
                 modified_upper_bound_points,
+                ground_truth_distance: Some(ground_truth_dis),
                 ground_truth_check: true
             }))
         }
@@ -898,40 +964,103 @@ impl ProximaFunctions {
                                   pose2: &OptimaSE3Pose,
                                   d_max: f64,
                                   a_max: f64) -> Result<ProximaSignedDistanceBoundsResult, OptimaError> {
-        let a_translation_k = pose1.translation();
-        let b_translation_k = pose2.translation();
-        let translation_disp_k = (a_translation_k - b_translation_k).norm();
-        let delta_m = data_cell_mut.translation_disp_j - translation_disp_k;
+        return match data_cell_mut {
+            ProximaPairwiseBlock::R3AndSO3Displacements(data_cell_mut) => {
+                let a_translation_k = pose1.translation();
+                let b_translation_k = pose2.translation();
+                let translation_disp_k = (a_translation_k - b_translation_k).norm();
+                let delta_m = (data_cell_mut.translation_disp_j - translation_disp_k).abs();
 
-        let a_rotation_k = pose1.rotation();
-        let b_rotation_k = pose2.rotation();
-        let rotation_disp_k = a_rotation_k.displacement(&b_rotation_k, false).expect("error");
-        let delta_r = data_cell_mut.rotation_disp_j.displacement(&rotation_disp_k, false).expect("error").angle();
+                let a_rotation_k = pose1.rotation();
+                let b_rotation_k = pose2.rotation();
+                let rotation_disp_k = a_rotation_k.displacement(&b_rotation_k, false).expect("error");
+                let delta_r = data_cell_mut.rotation_disp_j.displacement(&rotation_disp_k, false).expect("error").angle();
 
-        let l = data_cell_mut.contact_j.dist - delta_m - Self::proxima_phi(data_cell_mut.f, delta_r);
-        let l_wrt_average = l / shape_average_distance;
+                let l = data_cell_mut.contact_j.dist - delta_m - Self::proxima_phi(data_cell_mut.f, delta_r);
+                let l_wrt_average = l / shape_average_distance;
 
-        if l > d_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l }); }
-        if l_wrt_average > a_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l_wrt_average });  }
+                if l > d_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l }); }
+                if l_wrt_average > a_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l_wrt_average }); }
 
-        let a_transform_j = &data_cell_mut.a_transform_j;
-        let b_transform_j = &data_cell_mut.b_transform_j;
+                let a_transform_j = &data_cell_mut.a_transform_j;
+                let b_transform_j = &data_cell_mut.b_transform_j;
 
-        let a_rotation_j = a_transform_j.rotation();
-        let b_rotation_j = b_transform_j.rotation();
+                let a_rotation_j = a_transform_j.rotation();
+                let b_rotation_j = b_transform_j.rotation();
 
-        let a_translation_j = a_transform_j.translation();
-        let b_translation_j = b_transform_j.translation();
+                let a_translation_j = a_transform_j.translation();
+                let b_translation_j = b_transform_j.translation();
 
-        let a_c_j = &data_cell_mut.contact_j.point1;
-        let b_c_j = &data_cell_mut.contact_j.point2;
+                let a_c_j = &data_cell_mut.contact_j.point1;
+                let b_c_j = &data_cell_mut.contact_j.point2;
 
-        let a_c_k = a_rotation_k.multiply_by_point( &(a_rotation_j.inverse().multiply_by_point(&(a_c_j - a_translation_j)))) + a_translation_k;
-        let b_c_k = b_rotation_k.multiply_by_point( &(b_rotation_j.inverse().multiply_by_point(&(b_c_j - b_translation_j)))) + b_translation_k;
+                let a_c_k = a_rotation_k.multiply_by_point(&(a_rotation_j.inverse().multiply_by_point(&(a_c_j - a_translation_j)))) + a_translation_k;
+                let b_c_k = b_rotation_k.multiply_by_point(&(b_rotation_j.inverse().multiply_by_point(&(b_c_j - b_translation_j)))) + b_translation_k;
 
-        let u = (&a_c_k - &b_c_k).norm();
+                let u = (&a_c_k - &b_c_k).norm();
 
-        return Ok(ProximaSignedDistanceBoundsResult::ComputedBothLowerAndUpperBound { lower_bound: l, upper_bound: u, modified_upper_bound_points: (a_c_k, b_c_k) });
+                /*
+                if u - l < -0.00001 {
+                    println!("u, l: {:?}, {:?}", u, l);
+                    println!("pose1: {:?}", pose1);
+                    println!("pose2: {:?}", pose2);
+                    println!("contact_j: {:?}", data_cell_mut.contact_j);
+                    println!("delta_m: {:?}", delta_m);
+                    println!("delta_r: {:?}", delta_r);
+                    println!("f: {:?}", data_cell_mut.f);
+                    println!("signatures: {:?}", (&data_cell_mut.object_1_signature, &data_cell_mut.object_2_signature));
+                    println!("a_c_j: {:?}", a_c_j);
+                    println!("b_c_j: {:?}", b_c_j);
+                    println!("a_c_k: {:?}", a_c_k);
+                    println!("b_c_k: {:?}", b_c_k);
+                    println!("! {:?}", data_cell_mut);
+                    panic!("upper bound is less than lower bound");
+                }
+                */
+                // assert!(l <= u, "lower bound must be lower than upper bound");
+
+                Ok(ProximaSignedDistanceBoundsResult::ComputedBothLowerAndUpperBound { lower_bound: l, upper_bound: u, modified_upper_bound_points: (a_c_k, b_c_k) })
+            }
+            ProximaPairwiseBlock::SE3Displacement(data_cell_mut) => {
+                let a_translation_k = pose1.translation();
+                let b_translation_k = pose2.translation();
+
+                let a_rotation_k = pose1.rotation();
+                let b_rotation_k = pose2.rotation();
+
+                let transform_disp_k = pose1.displacement(&pose2, false).expect("error");
+                let transform_disp = data_cell_mut.transform_disp_j.displacement(&transform_disp_k, false).expect("error");
+                let delta_m = transform_disp.translation().norm();
+                let delta_r = transform_disp.rotation().angle();
+
+                let l = data_cell_mut.contact_j.dist - delta_m - Self::proxima_phi(data_cell_mut.f, delta_r);
+                let l_wrt_average = l / shape_average_distance;
+
+                if l > d_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l }); }
+                if l_wrt_average > a_max { return Ok(ProximaSignedDistanceBoundsResult::PrunedAfterLowerBound { lower_bound: l_wrt_average }); }
+
+                let a_transform_j = &data_cell_mut.a_transform_j;
+                let b_transform_j = &data_cell_mut.b_transform_j;
+
+                let a_rotation_j = a_transform_j.rotation();
+                let b_rotation_j = b_transform_j.rotation();
+
+                let a_translation_j = a_transform_j.translation();
+                let b_translation_j = b_transform_j.translation();
+
+                let a_c_j = &data_cell_mut.contact_j.point1;
+                let b_c_j = &data_cell_mut.contact_j.point2;
+
+                let a_c_k = a_rotation_k.multiply_by_point(&(a_rotation_j.inverse().multiply_by_point(&(a_c_j - a_translation_j)))) + a_translation_k;
+                let b_c_k = b_rotation_k.multiply_by_point(&(b_rotation_j.inverse().multiply_by_point(&(b_c_j - b_translation_j)))) + b_translation_k;
+
+                let u = (&a_c_k - &b_c_k).norm();
+
+                // assert!(l <= u, "lower bound must be lower than upper bound. l: {}, u: {}", l, u);
+
+                Ok(ProximaSignedDistanceBoundsResult::ComputedBothLowerAndUpperBound { lower_bound: l, upper_bound: u, modified_upper_bound_points: (a_c_k, b_c_k) })
+            }
+        }
     }
     pub fn proxima_phi(h: f64, theta: f64) -> f64 {
         (2.0*h*h*(1.0 - theta.cos())).sqrt()
@@ -950,20 +1079,33 @@ impl ProximaFunctions {
                                                        pose2: &OptimaSE3Pose) -> Result<(), OptimaError> {
         let contact_wrapper = GeometricShapeQueries::contact(shape1, pose1, shape2, pose2, f64::INFINITY).unwrap();
 
-        let a_translation_k = pose1.translation();
-        let b_translation_k = pose2.translation();
-        let translation_disp = (a_translation_k - b_translation_k).norm();
+        match data_cell_mut {
+            ProximaPairwiseBlock::R3AndSO3Displacements(data_cell_mut) => {
+                let a_translation_k = pose1.translation();
+                let b_translation_k = pose2.translation();
+                let translation_disp = (a_translation_k - b_translation_k).norm();
 
-        let a_rotation_k = pose1.rotation();
-        let b_rotation_k = pose2.rotation();
-        let rotation_disp = a_rotation_k.displacement(&b_rotation_k, false).expect("error");
+                let a_rotation_k = pose1.rotation();
+                let b_rotation_k = pose2.rotation();
+                let rotation_disp = a_rotation_k.displacement(&b_rotation_k, false).expect("error");
 
-        data_cell_mut.contact_j = contact_wrapper;
-        data_cell_mut.a_transform_j = pose1.clone();
-        data_cell_mut.b_transform_j = pose2.clone();
-        data_cell_mut.translation_disp_j = translation_disp;
-        data_cell_mut.rotation_disp_j = rotation_disp;
-        data_cell_mut.initialized = true;
+                data_cell_mut.contact_j = contact_wrapper;
+                data_cell_mut.a_transform_j = pose1.clone();
+                data_cell_mut.b_transform_j = pose2.clone();
+                data_cell_mut.translation_disp_j = translation_disp;
+                data_cell_mut.rotation_disp_j = rotation_disp;
+                data_cell_mut.initialized = true;
+            }
+            ProximaPairwiseBlock::SE3Displacement(data_cell_mut) => {
+                let transform_disp_j = pose1.displacement(pose2, false).expect("error");
+
+                data_cell_mut.contact_j = contact_wrapper;
+                data_cell_mut.a_transform_j = pose1.clone();
+                data_cell_mut.b_transform_j = pose2.clone();
+                data_cell_mut.transform_disp_j = transform_disp_j;
+                data_cell_mut.initialized = true;
+            }
+        }
 
         Ok(())
     }
@@ -1002,8 +1144,43 @@ impl Default for ProximaSingleObjectBlock {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ProximaPairwiseMode {
+    SE3Displacement,
+    R3AndSO3Displacements,
+}
+impl Default for ProximaPairwiseMode {
+    fn default() -> Self {
+        Self::SE3Displacement
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ProximaPairwiseBlock {
+pub enum ProximaPairwiseBlock {
+    R3AndSO3Displacements(ProximaPairwiseBlockA),
+    SE3Displacement(ProximaPairwiseBlockB)
+}
+impl ProximaPairwiseBlock {
+    fn initialized(&self) -> bool {
+        match self {
+            ProximaPairwiseBlock::R3AndSO3Displacements(block) => { block.initialized }
+            ProximaPairwiseBlock::SE3Displacement(block) => { block.initialized }
+        }
+    }
+}
+impl Mixable for ProximaPairwiseBlock {
+    fn mix(&self, _other: &Self) -> Self {
+        return self.clone()
+    }
+}
+impl Default for ProximaPairwiseBlock {
+    fn default() -> Self {
+        Self::R3AndSO3Displacements(ProximaPairwiseBlockA::default())
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProximaPairwiseBlockA {
     initialized: bool,
     object_1_signature: GeometricShapeSignature,
     object_2_signature: GeometricShapeSignature,
@@ -1014,14 +1191,14 @@ pub struct ProximaPairwiseBlock {
     contact_j: ContactWrapper,
     f: f64
 }
-impl Mixable for ProximaPairwiseBlock {
+impl Mixable for ProximaPairwiseBlockA {
     /// Mixing doesn't really make sense for a ProximaPairwiseBlock, so this is just a dummy implementation
     /// so that it can be used in a `SquareArray2D`.
     fn mix(&self, _other: &Self) -> Self {
         self.clone()
     }
 }
-impl Default for ProximaPairwiseBlock {
+impl Default for ProximaPairwiseBlockA {
     fn default() -> Self {
         Self {
             initialized: false,
@@ -1031,6 +1208,39 @@ impl Default for ProximaPairwiseBlock {
             b_transform_j: Default::default(),
             rotation_disp_j: OptimaRotation::new_unit_quaternion_identity(),
             translation_disp_j: 0.0,
+            contact_j: ContactWrapper::default(),
+            f: 0.0
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProximaPairwiseBlockB {
+    initialized: bool,
+    object_1_signature: GeometricShapeSignature,
+    object_2_signature: GeometricShapeSignature,
+    a_transform_j: OptimaSE3Pose,
+    b_transform_j: OptimaSE3Pose,
+    transform_disp_j: OptimaSE3Pose,
+    contact_j: ContactWrapper,
+    f: f64
+}
+impl Mixable for ProximaPairwiseBlockB {
+    /// Mixing doesn't really make sense for a ProximaPairwiseBlock, so this is just a dummy implementation
+    /// so that it can be used in a `SquareArray2D`.
+    fn mix(&self, _other: &Self) -> Self {
+        self.clone()
+    }
+}
+impl Default for ProximaPairwiseBlockB {
+    fn default() -> Self {
+        Self {
+            initialized: false,
+            object_1_signature: GeometricShapeSignature::None,
+            object_2_signature: GeometricShapeSignature::None,
+            a_transform_j: Default::default(),
+            b_transform_j: Default::default(),
+            transform_disp_j: Default::default(),
             contact_j: ContactWrapper::default(),
             f: 0.0
         }
@@ -1052,6 +1262,7 @@ pub struct ProximaSingleComparisonOutput {
     lower_bound_signed_distance: f64,
     upper_bound_signed_distance: f64,
     modified_upper_bound_points: (Vector3<f64>, Vector3<f64>),
+    ground_truth_distance: Option<f64>,
     ground_truth_check: bool
 }
 
@@ -1059,17 +1270,22 @@ pub struct ProximaSingleComparisonOutput {
 pub struct ProximaProximityOutput {
     output_sum: f64,
     maximum_possible_error: f64,
+    r: f64,
     duration: Duration,
     ground_truth_check_signatures: Vec<(GeometricShapeSignature, GeometricShapeSignature)>,
-    single_comparison_outputs: Vec<ProximaSingleComparisonOutput>,
+    proxima_single_comparison_outputs: Vec<ProximaSingleComparisonOutput>,
     query_pairs_list: ShapeCollectionQueryPairsList
 }
 impl ProximaProximityOutput {
     pub fn output_witness_points_collection(&self) -> WitnessPointsCollection {
         let mut out = WitnessPointsCollection { collection: vec![] };
 
-        for s in &self.single_comparison_outputs {
+        for s in &self.proxima_single_comparison_outputs {
             out.collection.push(WitnessPoints {
+                signed_distance: match s.ground_truth_distance {
+                    Some(dis) => { dis }
+                    None => { ((1.0 - self.r) * s.lower_bound_signed_distance) + (self.r * s.upper_bound_signed_distance) }
+                },
                 witness_points: s.modified_upper_bound_points,
                 shape_signatures: s.shape_signatures.clone(),
                 witness_points_type: match s.ground_truth_check {
@@ -1105,6 +1321,7 @@ impl ProximaSceneFilterOutput {
 
         for s in &self.single_comparison_outputs {
             out.collection.push(WitnessPoints {
+                signed_distance: s.upper_bound_signed_distance,
                 witness_points: s.modified_upper_bound_points,
                 shape_signatures: s.shape_signatures.clone(),
                 witness_points_type: match s.ground_truth_check {
@@ -1158,6 +1375,23 @@ impl WitnessPointsCollection {
     pub fn collection(&self) -> &Vec<WitnessPoints> {
         &self.collection
     }
+    pub fn compute_proximity_output_sum(&self, mode: &ProximityOutputSumMode, loss: &SignedDistanceLossFunction) -> f64 {
+        let mut out_sum = 0.0;
+        match mode {
+            ProximityOutputSumMode::RawSignedDistance { d_max } => {
+                for wp in &self.collection {
+                    out_sum += loss.loss(wp.signed_distance, *d_max);
+                }
+            }
+            ProximityOutputSumMode::AverageSignedDistance { a_max, shape_collection } => {
+                for wp in &self.collection {
+                    let average_distance = shape_collection.average_distance_from_signatures(&wp.shape_signatures);
+                    out_sum += loss.loss(wp.signed_distance / average_distance, *a_max);
+                }
+            }
+        }
+        out_sum
+    }
 }
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
@@ -1169,13 +1403,15 @@ impl WitnessPointsCollection {
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct WitnessPoints {
+    signed_distance: f64,
     witness_points: ( Vector3<f64>, Vector3<f64> ),
     shape_signatures: ( GeometricShapeSignature, GeometricShapeSignature ),
     witness_points_type: WitnessPointsType
 }
 impl WitnessPoints {
-    pub fn new(witness_points: ( Vector3<f64>, Vector3<f64> ), shape_signatures: ( GeometricShapeSignature, GeometricShapeSignature ), witness_points_type: WitnessPointsType) -> Self {
+    pub fn new(signed_distance: f64, witness_points: ( Vector3<f64>, Vector3<f64> ), shape_signatures: ( GeometricShapeSignature, GeometricShapeSignature ), witness_points_type: WitnessPointsType) -> Self {
         Self {
+            signed_distance,
             witness_points,
             shape_signatures,
             witness_points_type
@@ -1184,6 +1420,15 @@ impl WitnessPoints {
     pub fn witness_points(&self) -> (Vector3<f64>, Vector3<f64>) {
         self.witness_points
     }
+    pub fn shape_signatures(&self) -> &(GeometricShapeSignature, GeometricShapeSignature) {
+        &self.shape_signatures
+    }
+    pub fn witness_points_type(&self) -> &WitnessPointsType {
+        &self.witness_points_type
+    }
+    pub fn signed_distance(&self) -> f64 {
+        self.signed_distance
+    }
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -1191,6 +1436,14 @@ pub enum WitnessPointsType {
     GroundTruth,
     ProximaUpperBoundApproximations
 }
+
+#[derive(Clone, Debug)]
+pub enum ProximityOutputSumMode<'a> {
+    RawSignedDistance { d_max: f64 },
+    AverageSignedDistance { a_max: f64, shape_collection: &'a ShapeCollection }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug)]
 pub struct BVH<T: BVHCombinableShape> {

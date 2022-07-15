@@ -115,7 +115,8 @@ impl GeometricShape {
 
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let convex_shape = ConvexPolyhedron::from_convex_hull(&points).expect("error");
-        let f = trimesh_engine.compute_f();
+        let mut f = trimesh_engine.compute_f();
+        // let f = convex_shape.bounding_sphere(&Isometry3::identity()).radius * 2.0;
 
         Self {
             shape: Box::new(Arc::new(convex_shape)),
@@ -137,6 +138,7 @@ impl GeometricShape {
         let f = trimesh_engine.compute_f();
 
         let tri_mesh = TriMesh::new(points, indices);
+        // let f = tri_mesh.bounding_sphere(&Isometry3::identity()).radius * 2.0;
 
         Self {
             shape: Box::new(Arc::new(tri_mesh)),
@@ -919,14 +921,14 @@ impl GeometricShapeQueryGroupOutput {
                 GeometricShapeQueryRawOutput::CastRayAndGetNormal(_) => {}
                 GeometricShapeQueryRawOutput::IntersectionTest(_) => {}
                 GeometricShapeQueryRawOutput::Distance(_) => {}
-                GeometricShapeQueryRawOutput::ClosestPoints(c) => {
+                GeometricShapeQueryRawOutput::ClosestPoints(_) => {
                     todo!()
                 }
                 GeometricShapeQueryRawOutput::Contact(c) => {
                     match c {
                         None => {}
                         Some(c) => {
-                            witness_points_collection.insert(WitnessPoints::new((c.point1, c.point2), (output.signatures[0].clone(), output.signatures[1].clone()), WitnessPointsType::GroundTruth));
+                            witness_points_collection.insert(WitnessPoints::new(c.dist,(c.point1, c.point2), (output.signatures[0].clone(), output.signatures[1].clone()), WitnessPointsType::GroundTruth));
                         }
                     }
                 }

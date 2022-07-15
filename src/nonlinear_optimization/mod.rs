@@ -312,7 +312,7 @@ impl OpEnNonlinearOptimizer {
         let panoc_cache = PANOCCache::new(self.problem_size, 1e-5, 3);
         let mut alm_cache = AlmCache::new(panoc_cache, 0, match self.constraint_function {
             None => { 0 }
-            Some(_) => { 1 }
+            Some(_) => { self.problem_size }
         });
 
         let mut_vars_mutex = Mutex::new(mut_vars);
@@ -350,6 +350,7 @@ impl OpEnNonlinearOptimizer {
             }
             Ok(())
         };
+        // d is output from f2
         let f2_jacobian_product = |u: &[f64], d: &[f64], res: &mut [f64]| -> Result<(), SolverError> {
             if let Some(constraint_function) = &self.constraint_function {
                 let mut mut_vars = mut_vars_mutex.lock().unwrap();
@@ -358,7 +359,7 @@ impl OpEnNonlinearOptimizer {
                 let output = result.unwrap_tensor();
                 let vectorized_data = output.vectorized_data();
                 for (i, v) in vectorized_data.iter().enumerate() {
-                    res[i] = *v * d[i];
+                    res[i] = *v * d[0];
                 }
             }
             Ok(())
@@ -565,9 +566,9 @@ impl NLoptNonlinearOptimizer {
         if let Some(a) = &parameters.max_time { nlopt.set_maxtime(a.as_secs_f64()).expect("error"); }
         if let Some(a) = &parameters.max_iterations { nlopt.set_maxeval(*a as u32).expect("error"); }
 
-        nlopt.set_ftol_rel(0.0001).expect("error");
-        nlopt.set_ftol_abs(0.0001).expect("error");
-        nlopt.set_xtol_rel(0.0001).expect("error");
+        nlopt.set_ftol_rel(parameters.nlopt_ftol_rel).expect("error");
+        nlopt.set_ftol_abs(parameters.nlopt_ftol_abs).expect("error");
+        nlopt.set_xtol_rel(parameters.nlopt_xtol_rel).expect("error");
 
         let mut x = init_condition.vectorized_data().to_vec();
         let res = nlopt.optimize(&mut x);
@@ -665,7 +666,10 @@ impl NloptResult {
 pub struct OptimizerParameters {
     max_time: Option<Duration>,
     max_iterations: Option<usize>,
-    max_outer_iterations: Option<usize>
+    max_outer_iterations: Option<usize>,
+    nlopt_ftol_rel: f64,
+    nlopt_ftol_abs: f64,
+    nlopt_xtol_rel: f64
 }
 impl OptimizerParameters {
     pub fn new_empty() -> Self {
@@ -680,13 +684,25 @@ impl OptimizerParameters {
     pub fn set_max_outer_iterations(&mut self, max_outer_iterations: usize) {
         self.max_outer_iterations = Some(max_outer_iterations)
     }
+    pub fn set_ftol_rel(&mut self, val: f64) {
+        self.nlopt_ftol_rel = val;
+    }
+    pub fn set_ftol_abs(&mut self, val: f64) {
+        self.nlopt_ftol_abs = val;
+    }
+    pub fn set_xtol_rel(&mut self, val: f64) {
+        self.nlopt_xtol_rel = val;
+    }
 }
 impl Default for OptimizerParameters {
     fn default() -> Self {
         Self {
             max_time: None,
             max_iterations: None,
-            max_outer_iterations: None
+            max_outer_iterations: None,
+            nlopt_ftol_rel: 0.00001,
+            nlopt_ftol_abs: 0.00001,
+            nlopt_xtol_rel: 0.00001
         }
     }
 }

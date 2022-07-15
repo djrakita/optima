@@ -336,3 +336,14 @@ pub struct RobotSetFKDOFPerturbationsResult {
     central_fk_result: RobotSetFKResult,
     fk_dof_perturbation_results: Vec<RobotSetFKResult>
 }
+impl RobotSetFKDOFPerturbationsResult {
+    pub fn perturbation(&self) -> f64 {
+        self.perturbation
+    }
+    pub fn central_fk_result(&self) -> &RobotSetFKResult {
+        &self.central_fk_result
+    }
+    pub fn fk_dof_perturbation_results(&self) -> &Vec<RobotSetFKResult> {
+        &self.fk_dof_perturbation_results
+    }
+}

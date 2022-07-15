@@ -1,3 +1,4 @@
+use nalgebra::DVector;
 use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OTFImmutVars, OTFMutVars, OTFMutVarsSessionKey, OTFResult};
 use crate::utils::utils_errors::OptimaError;
 
@@ -335,6 +336,133 @@ impl OptimaTensorFunction for OTFTensorL2NormSquared {
     }
 }
 
+#[derive(Clone)]
+pub struct OTFTensorAveragedL2NormSquared;
+impl OptimaTensorFunction for OTFTensorAveragedL2NormSquared {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let o = OTFTensorL2NormSquared;
+        let mut out_res = o.call(input, immut_vars, mut_vars).expect("error");
+        let mut out = out_res.unwrap_tensor_mut();
+        out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
+        return Ok(out_res);
+    }
+
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let o = OTFTensorL2NormSquared;
+        let mut out_res = o.derivative(input, immut_vars, mut_vars, None).expect("error");
+        let mut out = out_res.unwrap_tensor_mut();
+        out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
+        return Ok(out_res);
+    }
+
+    fn derivative2_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let o = OTFTensorL2NormSquared;
+        let mut out_res = o.derivative2(input, immut_vars, mut_vars, None).expect("error");
+        let mut out = out_res.unwrap_tensor_mut();
+        out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
+        return Ok(out_res);
+    }
+
+    fn derivative3_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let o = OTFTensorL2NormSquared;
+        let mut out_res = o.derivative3(input, immut_vars, mut_vars, None).expect("error");
+        let mut out = out_res.unwrap_tensor_mut();
+        out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
+        return Ok(out_res);
+    }
+
+    fn derivative4_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let o = OTFTensorL2NormSquared;
+        let mut out_res = o.derivative4(input, immut_vars, mut_vars, None).expect("error");
+        let mut out = out_res.unwrap_tensor_mut();
+        out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
+        return Ok(out_res);
+    }
+}
+
+#[derive(Clone)]
+pub struct OTFTensorL1Norm;
+impl OptimaTensorFunction for OTFTensorL1Norm {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let mut out_sum = 0.0;
+        for v in input.vectorized_data() { out_sum += v.abs(); }
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(out_sum)));
+    }
+
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let mut out_tensor = input.clone();
+        let input_vectorized_data = input.vectorized_data();
+        for (idx, v) in out_tensor.vectorized_data_mut().iter_mut().enumerate() {
+            let s = input_vectorized_data[idx];
+            *v = if s.is_sign_positive() { 1.0 } else if s.is_sign_negative() { -1.0 } else { 0.0 }
+        }
+        return Ok(OTFResult::Complete(out_tensor));
+    }
+}
+
+#[derive(Clone)]
+pub struct OTFTensorAveragedL1Norm;
+impl OptimaTensorFunction for OTFTensorAveragedL1Norm {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let o = OTFTensorL1Norm;
+        let mut out_res = o.call(input, immut_vars, mut_vars).expect("error");
+        let mut out = out_res.unwrap_tensor_mut();
+        out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
+        return Ok(out_res);
+    }
+
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let o = OTFTensorL1Norm;
+        let mut out_res = o.derivative(input, immut_vars, mut_vars, None).expect("error");
+        let mut out = out_res.unwrap_tensor_mut();
+        out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
+        return Ok(out_res);
+    }
+}
+
+#[derive(Clone)]
+pub struct OTFTensorLinfNorm;
+impl OptimaTensorFunction for OTFTensorLinfNorm {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let mut max = -f64::INFINITY;
+        for v in input.vectorized_data() {
+            let a = v.abs();
+            if a > max { max = a; }
+        }
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(max)));
+    }
+
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let mut max = -f64::INFINITY;
+        let mut max_idx = usize::MAX;
+        for (idx, v) in input.vectorized_data().iter().enumerate() {
+            let a = v.abs();
+            if a > max { max = a; max_idx = idx; }
+        }
+        let mut out = OptimaTensor::new_zeros(input.dimensions());
+        let val = input.vectorized_data()[max_idx];
+        out.vectorized_data_mut()[max_idx] = if val > 0.0 { 1.0 } else if val < 0.0 { -1.0 } else { 0.0 };
+
+        return Ok(OTFResult::Complete(out));
+    }
+}
+
 /// coefficient*(x - horizontal_shift)^2
 #[derive(Clone)]
 pub struct OTFQuadraticLoss {
@@ -433,5 +561,62 @@ impl OptimaTensorFunction for OTFMultiplyByScalar {
 
     fn derivative4_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
         return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(0.0)))
+    }
+}
+
+/// When an objective term is added to a larger optimization model (e.g., a weighted sum),
+/// it is often useful to consider each term on a normalized scale (e.g., roughly 0 - 1) such that
+/// meaninful tradeoffs can be made between the terms in the model.  This `OTFNormalizer` functions
+/// helps meet this goal as the normalization value serves as the new "1" value for the function.
+#[derive(Clone)]
+pub struct OTFNormalizer {
+    normalization_value: f64,
+    f: OTFMultiplyByScalar
+}
+impl OTFNormalizer {
+    pub fn new(normalization_value: f64) -> Self {
+        Self {
+            normalization_value,
+            f: OTFMultiplyByScalar { scalar: 1.0/ normalization_value }
+        }
+    }
+}
+impl OptimaTensorFunction for OTFNormalizer {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return self.f.call_raw(input, _immut_vars, _mut_vars, _session_key);
+    }
+
+    fn derivative_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return self.f.derivative_analytical_raw(_input, _immut_vars, _mut_vars, _session_key);
+    }
+
+    fn derivative2_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return self.f.derivative2_analytical_raw(_input, _immut_vars, _mut_vars, _session_key);
+    }
+
+    fn derivative3_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return self.f.derivative3_analytical_raw(_input, _immut_vars, _mut_vars, _session_key);
+    }
+
+    fn derivative4_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return self.f.derivative4_analytical_raw(_input, _immut_vars, _mut_vars, _session_key);
+    }
+}
+
+/// Function that just returns 0.  This is useful for optimization problems that only has constraints
+/// and no cost.
+#[derive(Clone)]
+pub struct ZeroFunction;
+impl OptimaTensorFunction for ZeroFunction {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(0.0)));
     }
 }

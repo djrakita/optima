@@ -19,7 +19,7 @@ use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaPairwiseMode, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -190,9 +190,9 @@ impl RobotSetGeometricShapeModule {
         let robot_set_shape_collection = self.robot_set_shape_collection(robot_link_shape_representation).expect("error");
         robot_set_shape_collection.shape_collection.spawn_query_pairs_list(override_all_skips)
     }
-    pub fn spawn_proxima_engine(&self, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> ProximaEngine {
+    pub fn spawn_proxima_engine(&self, robot_link_shape_representation: &RobotLinkShapeRepresentation, pairwise_mode: Option<ProximaPairwiseMode>) -> ProximaEngine {
         let robot_set_shape_collection = self.robot_set_shape_collection(robot_link_shape_representation).expect("error");
-        robot_set_shape_collection.shape_collection.spawn_proxima_engine()
+        robot_set_shape_collection.shape_collection.spawn_proxima_engine(pairwise_mode)
     }
     pub fn spawn_bvh<T: BVHCombinableShape>(&self, robot_set_joint_state: &RobotSetJointState, robot_link_shape_representation: RobotLinkShapeRepresentation, branch_factor: usize) -> ShapeCollectionBVH<T> {
         let res = self.robot_set_kinematics_module.compute_fk(robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");

@@ -65,6 +65,9 @@ impl RobotSet {
         for rn in &robot_names { r.add_robot_configuration_from_names(rn.clone()).expect("error"); }
         return Self::new_from_robot_set_configuration_module(r);
     }
+    pub fn new_single_robot(robot_name: &str, configuration_name: Option<&str>) -> Self {
+        Self::new_from_robot_names(vec![RobotNames::new(robot_name, configuration_name)])
+    }
     pub fn robot_set_configuration_module(&self) -> &RobotSetConfigurationModule {
         &self.robot_set_configuration_module
     }

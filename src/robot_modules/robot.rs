@@ -66,6 +66,11 @@ impl Robot {
     pub fn spawn_robot_joint_state(&self, v: DVector<f64>) -> Result<RobotJointState, OptimaError> {
         self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(v)
     }
+    pub fn set_state_as_non_collision(&self, v: DVector<f64>) {
+        let mut robot_geometric_shape_module = self.generate_robot_geometric_shape_module().expect("error");
+        let robot_joint_state = self.spawn_robot_joint_state(v).expect("error");
+        robot_geometric_shape_module.set_robot_joint_state_as_non_collision(&robot_joint_state).expect("error");
+    }
 }
 impl SaveAndLoadable for Robot {
     type SaveType = (String, String, String, String);

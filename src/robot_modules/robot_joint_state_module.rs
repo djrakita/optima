@@ -13,6 +13,7 @@ use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 use crate::utils::utils_robot::joint::{JointAxis, JointAxisPrimitiveType};
+use crate::utils::utils_robot::robot_generic_structures::GenericRobotJointState;
 use crate::utils::utils_robot::robot_module_utils::RobotNames;
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
@@ -495,6 +496,11 @@ impl RobotJointState {
     }
     pub fn len(&self) -> usize {
         return self.joint_state.len();
+    }
+}
+impl GenericRobotJointState for RobotJointState {
+    fn joint_state(&self) -> &DVector<f64> {
+        self.joint_state()
     }
 }
 impl Add for RobotJointState {

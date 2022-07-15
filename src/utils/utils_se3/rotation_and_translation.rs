@@ -35,7 +35,6 @@ impl RotationAndTranslation {
 
         return Self::new(rotation, Vector3::new(x, y, z));
     }
-
     /// Returns the rotation component of the object.
     pub fn rotation(&self) -> &OptimaRotation {
         &self.rotation

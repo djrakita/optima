@@ -602,8 +602,76 @@ impl Default for EnumTypeContainerType {
     }
 }
 
-//// GARBAGE CODE
+#[derive(Clone, Debug)]
+pub struct WindowMemoryContainer<T: Clone + Debug> {
+    window_size: isize,
+    curr_head: isize,
+    v: Vec<T>
+}
+impl<T: Clone + Debug> WindowMemoryContainer<T> {
+    pub fn new(window_size: usize, starter_object: T) -> Self {
+        let mut v = vec![];
+        
+        for _ in 0..window_size { v.push(starter_object.clone()); }
+        
+        Self {
+            window_size: window_size as isize,
+            curr_head: (window_size-1) as isize,
+            v
+        }
+    }
+    pub fn update(&mut self, object: T) {
+        let update_idx = self.get_idx(self.curr_head, 1);
+        self.v[update_idx as usize] = object;
+        self.curr_head = update_idx;
+    }
+    /// if memory_idx is 0, this will return the "current" object.
+    pub fn object_ref(&self, memory_idx: usize) -> &T {
+        assert!(memory_idx < self.window_size as usize);
+        let idx = self.get_idx(self.curr_head, -(memory_idx as isize));
+        &self.v[idx as usize]
+    }
+    fn get_idx(&self, base_idx: isize, offset: isize) -> isize {
+        let out = (base_idx + offset) % self.window_size;
+        return if out < 0 { self.window_size + out } else { out }
+    }
+}
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
+pub enum SimpleDataType {
+    Float(f64),
+    Usize(usize),
+    Int(i32),
+    VecOfData(Vec<SimpleDataType>)
+}
+impl SimpleDataType {
+    pub fn unwrap_float(&self) -> f64 {
+        return match self {
+            SimpleDataType::Float(r) => { *r }
+            _ => { panic!("wrong type") }
+        }
+    }
+    pub fn unwrap_usize(&self) -> usize {
+        return match self {
+            SimpleDataType::Usize(r) => { *r }
+            _ => { panic!("wrong type") }
+        }
+    }
+    pub fn unwrap_int(&self) -> i32 {
+        return match self {
+            SimpleDataType::Int(r) => { *r }
+            _ => { panic!("wrong type") }
+        }
+    }
+    pub fn unwrap_vec(&self) -> &Vec<SimpleDataType> {
+        return match self {
+            SimpleDataType::VecOfData(r) => { r }
+            _ => { panic!("wrong type") }
+        }
+    }
+}
+
+//// GARBAGE CODE
 /*
 pub struct EnumObjectContainer<T, S>
     where T: EnumIndexWrapper + EnumCount,

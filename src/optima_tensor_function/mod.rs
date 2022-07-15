@@ -1,14 +1,21 @@
+use std::ops::{Add, Div, Mul, Sub};
 use nalgebra::{DMatrix, DVector};
 use ndarray::{Array, ArrayD};
 use serde::{Serialize, Deserialize};
+use crate::optima_tensor_function::robotics_functions::RobotSetCollisionProximityOptions;
 use crate::robot_set_modules::GetRobotSet;
-use crate::robot_set_modules::robot_set_kinematics_module::RobotSetFKResult;
+use crate::robot_set_modules::robot_set::RobotSet;
+use crate::robot_set_modules::robot_set_kinematics_module::{RobotSetFKDOFPerturbationsResult, RobotSetFKResult};
+use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, RobotGeometricShapeSceneQuery};
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType};
-use crate::utils::utils_robot::robot_set_link_specification::RobotLinkSpecificationCollection;
+use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType, SimpleDataType, WindowMemoryContainer};
+use crate::utils::utils_robot::robot_generic_structures::{TimedGenericRobotJointStateWindowMemoryContainer};
+use crate::utils::utils_robot::robot_set_link_specification::RobotLinkTransformSpecificationCollection;
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
+use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShapeAABB, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::shape_collection::{BVHVisit, ProximaEngine, ShapeCollectionBVH, WitnessPointsCollection};
 
 pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
     fn output_dimensions(&self) -> Vec<usize>;
@@ -190,7 +197,7 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
 }
 pub struct OptimaTensorFunctionGenerics;
 impl OptimaTensorFunctionGenerics {
-    fn derivative_generic<S: ?Sized, F1, F2, F3>(s: &S,
+    pub fn derivative_generic<S: ?Sized, F1, F2, F3>(s: &S,
                                          analytical: F1,
                                          finite_difference: F2,
                                          test: F3,
@@ -233,7 +240,7 @@ impl OptimaTensorFunctionGenerics {
             }
         }
     }
-    fn derivative_finite_difference_generic<S: ?Sized, F>(s: &S, caller: F, derivative_order: usize, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
+    pub fn derivative_finite_difference_generic<S: ?Sized, F>(s: &S, caller: F, derivative_order: usize, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError>
         where S: OptimaTensorFunction,
               F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         assert!(derivative_order > 0);
@@ -269,7 +276,7 @@ impl OptimaTensorFunctionGenerics {
 
         return Ok(OTFResult::Complete(output));
     }
-    fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
+    pub fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
         where S: OptimaTensorFunction,
               F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
 
@@ -633,6 +640,22 @@ impl OptimaTensor {
             OptimaTensor::TensorND(t) => { t.elementwise_subtraction(other) }
         }
     }
+    pub fn elementwise_multiplication(&self, other: &OptimaTensor) -> OptimaTensor {
+        match self {
+            OptimaTensor::Scalar(t) => { t.elementwise_multiplication(other) }
+            OptimaTensor::Vector(t) => { t.elementwise_multiplication(other) }
+            OptimaTensor::Matrix(t) => { t.elementwise_multiplication(other) }
+            OptimaTensor::TensorND(t) => { t.elementwise_multiplication(other) }
+        }
+    }
+    pub fn elementwise_division(&self, other: &OptimaTensor) -> OptimaTensor {
+        match self {
+            OptimaTensor::Scalar(t) => { t.elementwise_division(other) }
+            OptimaTensor::Vector(t) => { t.elementwise_division(other) }
+            OptimaTensor::Matrix(t) => { t.elementwise_division(other) }
+            OptimaTensor::TensorND(t) => { t.elementwise_division(other) }
+        }
+    }
     pub fn scalar_multiplication(&mut self, value: f64) {
         let v = self.vectorized_data_mut();
         for vv in v { *vv *= value; }
@@ -772,6 +795,126 @@ impl EnumMapToType<OptimaTensorSignature> for OptimaTensor {
         }
     }
 }
+impl Add for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.elementwise_addition(&rhs)
+    }
+}
+impl Add<&OptimaTensor> for &OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn add(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_addition(rhs)
+    }
+}
+impl Add<&OptimaTensor> for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn add(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_addition(rhs)
+    }
+}
+impl Sub for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.elementwise_subtraction(&rhs)
+    }
+}
+impl Sub<&OptimaTensor> for &OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn sub(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_subtraction(rhs)
+    }
+}
+impl Sub<&OptimaTensor> for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn sub(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_subtraction(rhs)
+    }
+}
+impl Mul for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        self.elementwise_multiplication(&rhs)
+    }
+}
+impl Mul<&OptimaTensor> for &OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn mul(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_multiplication(rhs)
+    }
+}
+impl Mul<&OptimaTensor> for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn mul(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_multiplication(rhs)
+    }
+}
+impl Div for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        self.elementwise_division(&rhs)
+    }
+}
+impl Div<&OptimaTensor> for &OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn div(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_division(rhs)
+    }
+}
+impl Div<&OptimaTensor> for OptimaTensor {
+    type Output = OptimaTensor;
+
+    fn div(self, rhs: &OptimaTensor) -> Self::Output {
+        self.elementwise_division(rhs)
+    }
+}
+impl Add<OptimaTensor> for f64 {
+    type Output = OptimaTensor;
+
+    fn add(self, rhs: OptimaTensor) -> Self::Output {
+        let mut out = rhs.clone();
+        out.scalar_addition(self);
+        return out;
+    }
+}
+impl Mul<OptimaTensor> for f64 {
+    type Output = OptimaTensor;
+
+    fn mul(self, rhs: OptimaTensor) -> Self::Output {
+        let mut out = rhs.clone();
+        out.scalar_multiplication(self);
+        return out;
+    }
+}
+impl Add<&OptimaTensor> for f64 {
+    type Output = OptimaTensor;
+
+    fn add(self, rhs: &OptimaTensor) -> Self::Output {
+        let mut out = rhs.clone();
+        out.scalar_addition(self);
+        return out;
+    }
+}
+impl Mul<&OptimaTensor> for f64 {
+    type Output = OptimaTensor;
+
+    fn mul(self, rhs: &OptimaTensor) -> Self::Output {
+        let mut out = rhs.clone();
+        out.scalar_multiplication(self);
+        return out;
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OptimaTensorSignature {
@@ -781,7 +924,7 @@ pub enum OptimaTensorSignature {
     TensorND
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OptimaTensor0D {
     value: [f64; 1],
     id: f64
@@ -837,9 +980,17 @@ impl OptimaTensor0D {
                 let val = self.value[0] * t.value[0];
                 OptimaTensor::new_from_scalar(val)
             }
-            _ => {
-                let c = self.convert(&other.map_to_type());
-                c.dot(other)
+            OptimaTensor::Vector(t) => {
+                let out = t.vector.clone() * self.value[0];
+                OptimaTensor::new_from_vector(out)
+            }
+            OptimaTensor::Matrix(t) => {
+                let out = t.matrix.clone() * self.value[0];
+                OptimaTensor::new_from_matrix(out)
+            }
+            OptimaTensor::TensorND(t) => {
+                let out = t.tensor.clone() * self.value[0];
+                OptimaTensor::new_from_tensor(out)
             }
         }
     }
@@ -851,7 +1002,7 @@ impl OptimaTensor0D {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_addition(other)
             }
         }
     }
@@ -863,7 +1014,31 @@ impl OptimaTensor0D {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_subtraction(other)
+            }
+        }
+    }
+    pub fn elementwise_multiplication(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Scalar(v) => {
+                let out_val = &self.value[0] * &v.value[0];
+                OptimaTensor::new_from_scalar(out_val)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_multiplication(other)
+            }
+        }
+    }
+    pub fn elementwise_division(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Scalar(v) => {
+                let out_val = &self.value[0] / &v.value[0];
+                OptimaTensor::new_from_scalar(out_val)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_division(other)
             }
         }
     }
@@ -882,8 +1057,16 @@ impl OptimaTensor0D {
         return 0;
     }
 }
+impl Clone for OptimaTensor0D {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OptimaTensor1D {
     vector: DVector<f64>,
     id: f64
@@ -940,6 +1123,10 @@ impl OptimaTensor1D {
                 let out_sum = self.vector.dot(&t.vector);
                 OptimaTensor::new_from_scalar(out_sum)
             }
+            OptimaTensor::Scalar(t) => {
+                let out_vector = t.value[0] * self.vector.clone();
+                OptimaTensor::new_from_vector(out_vector)
+            }
             _ => {
                 let c = self.convert(&other.map_to_type());
                 c.dot(other)
@@ -954,7 +1141,7 @@ impl OptimaTensor1D {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_addition(other)
             }
         }
     }
@@ -966,7 +1153,41 @@ impl OptimaTensor1D {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_subtraction(other)
+            }
+        }
+    }
+    pub fn elementwise_multiplication(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Vector(v) => {
+                assert_eq!(self.vectorized_data().len(), other.vectorized_data().len());
+                let out_vec: Vec<f64> = self.vectorized_data()
+                    .iter()
+                    .zip(other.vectorized_data().iter())
+                    .map(|(a, b)| *a * *b)
+                    .collect();
+                OptimaTensor::new_from_vector(DVector::from_vec(out_vec))
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_multiplication(other)
+            }
+        }
+    }
+    pub fn elementwise_division(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Vector(v) => {
+                assert_eq!(self.vectorized_data().len(), other.vectorized_data().len());
+                let out_vec: Vec<f64> = self.vectorized_data()
+                    .iter()
+                    .zip(other.vectorized_data().iter())
+                    .map(|(a, b)| *a / *b)
+                    .collect();
+                OptimaTensor::new_from_vector(DVector::from_vec(out_vec))
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_division(other)
             }
         }
     }
@@ -985,8 +1206,16 @@ impl OptimaTensor1D {
         return indices[0];
     }
 }
+impl Clone for OptimaTensor1D {
+    fn clone(&self) -> Self {
+        Self {
+            vector: self.vector.clone(),
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+}
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OptimaTensor2D {
     matrix: DMatrix<f64>,
     id: f64
@@ -1059,6 +1288,10 @@ impl OptimaTensor2D {
 
                 OptimaTensor::new_from_matrix(out_mat)
             }
+            OptimaTensor::Scalar(t) => {
+                let out = self.matrix.clone() * t.value[0];
+                OptimaTensor::new_from_matrix(out)
+            }
             _ => {
                 let c = self.convert(&other.map_to_type());
                 c.dot(other)
@@ -1073,7 +1306,7 @@ impl OptimaTensor2D {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_addition(other)
             }
         }
     }
@@ -1085,7 +1318,41 @@ impl OptimaTensor2D {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_subtraction(other)
+            }
+        }
+    }
+    pub fn elementwise_multiplication(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Matrix(v) => {
+                let v1 = self.vectorized_data();
+                let v2 = v.vectorized_data();
+                assert_eq!(v1.len(), v2.len());
+                let mut out = self.clone();
+                let mut out_vec = out.vectorized_data_mut();
+                v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a * *b);
+                OptimaTensor::Matrix(out)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_multiplication(other)
+            }
+        }
+    }
+    pub fn elementwise_division(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::Matrix(v) => {
+                let v1 = self.vectorized_data();
+                let v2 = v.vectorized_data();
+                assert_eq!(v1.len(), v2.len());
+                let mut out = self.clone();
+                let mut out_vec = out.vectorized_data_mut();
+                v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a / *b);
+                OptimaTensor::Matrix(out)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_division(other)
             }
         }
     }
@@ -1132,8 +1399,16 @@ impl OptimaTensor2D {
         out
     }
 }
+impl Clone for OptimaTensor2D {
+    fn clone(&self) -> Self {
+        Self {
+            matrix: self.matrix.clone(),
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+}
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct OptimaTensorND {
     tensor: ArrayD<f64>,
     id: f64
@@ -1239,6 +1514,10 @@ impl OptimaTensorND {
                 todo!("This hasn't been implemented yet.  If you encounter this error, it's probably time to implement it.")
                 // For reference: let res = tensordot(&arr, &arr2, &vec![Axis(1)], &vec![Axis(0)]);
             }
+            OptimaTensor::Scalar(t) => {
+                let out = self.tensor.clone() * t.value[0];
+                OptimaTensor::new_from_tensor(out)
+            }
             _ => {
                 let c = self.convert(&other.map_to_type());
                 c.dot(other)
@@ -1253,7 +1532,7 @@ impl OptimaTensorND {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_addition(other)
             }
         }
     }
@@ -1265,11 +1544,44 @@ impl OptimaTensorND {
             }
             _ => {
                 let c = self.convert(&other.map_to_type());
-                c.dot(other)
+                c.elementwise_subtraction(other)
             }
         }
     }
-
+    pub fn elementwise_multiplication(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::TensorND(v) => {
+                let v1 = self.vectorized_data();
+                let v2 = v.vectorized_data();
+                assert_eq!(v1.len(), v2.len());
+                let mut out = self.clone();
+                let mut out_vec = out.vectorized_data_mut();
+                v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a * *b);
+                OptimaTensor::TensorND(out)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_multiplication(other)
+            }
+        }
+    }
+    pub fn elementwise_division(&self, other: &OptimaTensor) -> OptimaTensor {
+        match other {
+            OptimaTensor::TensorND(v) => {
+                let v1 = self.vectorized_data();
+                let v2 = v.vectorized_data();
+                assert_eq!(v1.len(), v2.len());
+                let mut out = self.clone();
+                let mut out_vec = out.vectorized_data_mut();
+                v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a / *b);
+                OptimaTensor::TensorND(out)
+            }
+            _ => {
+                let c = self.convert(&other.map_to_type());
+                c.elementwise_division(other)
+            }
+        }
+    }
     fn vectorized_data(&self) -> &[f64] { self.tensor.as_slice().unwrap() }
     fn vectorized_data_mut(&mut self) -> &mut [f64] { self.tensor.as_slice_mut().unwrap() }
     fn vectorized_idx_to_indices(&self, vectorized_idx: usize) -> Vec<usize> {
@@ -1355,6 +1667,14 @@ impl OptimaTensorND {
         &vectorized_data[vectorized_idx]
     }
 }
+impl Clone for OptimaTensorND {
+    fn clone(&self) -> Self {
+        Self {
+            tensor: self.tensor.clone(),
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+        }
+    }
+}
 
 fn copy_vectorized_data(from: &[f64], to: &mut [f64]) {
     let l1 = from.len();
@@ -1396,25 +1716,46 @@ impl OTFImmutVars {
     pub fn object_ref(&self, signature: &OTFImmutVarsObjectType) -> Option<&OTFImmutVarsObject> {
         self.c.object_ref(signature)
     }
+    pub fn object_ref_mut(&mut self, signature: &OTFImmutVarsObjectType) -> Option<&mut OTFImmutVarsObject> {
+        self.c.object_mut_ref(signature)
+    }
     pub fn insert_or_replace(&mut self, object: OTFImmutVarsObject) {
         self.c.insert_or_replace_object(object);
     }
     pub fn insert_or_replace_get_robot_set<T: GetRobotSet + 'static>(&mut self, object: T) {
         self.insert_or_replace(OTFImmutVarsObject::GetRobotSet(Box::new(object)));
     }
+
+    pub fn ref_robot_set(&self) -> &RobotSet {
+        let object = self.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("needs GetRobotSet");
+        let get_robot_set = object.unwrap_get_robot_set();
+        let robot_set = get_robot_set.get_robot_set();
+        return robot_set;
+    }
+    pub fn ref_robot_geometric_shape_scene(&self) -> &RobotGeometricShapeScene {
+        let object = self.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
+        let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
+        return robot_geometric_shape_scene;
+    }
 }
 
 pub enum OTFImmutVarsObject {
-    Test,
     GetRobotSet(Box<dyn GetRobotSet>),
-    RobotLinkSpecificationCollection(RobotLinkSpecificationCollection)
+    RobotLinkTransformSpecificationCollection(RobotLinkTransformSpecificationCollection),
+    OptimaTensorWindowMemoryContainer(OptimaTensorWindowMemoryContainer),
+    TimedGenericRobotJointStateWindowMemoryContainer(TimedGenericRobotJointStateWindowMemoryContainer),
+    GenericRobotJointStateCurrTime(f64),
+    RobotGeometricShapeScene(RobotGeometricShapeScene)
 }
 impl EnumMapToType<OTFImmutVarsObjectType> for OTFImmutVarsObject {
     fn map_to_type(&self) -> OTFImmutVarsObjectType {
         match self {
-            OTFImmutVarsObject::Test => { OTFImmutVarsObjectType::Test }
             OTFImmutVarsObject::GetRobotSet(_) => { OTFImmutVarsObjectType::GetRobotSet }
-            OTFImmutVarsObject::RobotLinkSpecificationCollection(_) => { OTFImmutVarsObjectType::RobotLinkSpecificationCollection }
+            OTFImmutVarsObject::RobotLinkTransformSpecificationCollection(_) => { OTFImmutVarsObjectType::RobotLinkTransformSpecificationCollection }
+            OTFImmutVarsObject::OptimaTensorWindowMemoryContainer(_) => { OTFImmutVarsObjectType::OptimaTensorWindowMemoryContainer }
+            OTFImmutVarsObject::TimedGenericRobotJointStateWindowMemoryContainer(_) => { OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer }
+            OTFImmutVarsObject::GenericRobotJointStateCurrTime(_) => { OTFImmutVarsObjectType::GenericRobotJointStateCurrTime }
+            OTFImmutVarsObject::RobotGeometricShapeScene(_) => { OTFImmutVarsObjectType::RobotGeometricShapeScene }
         }
     }
 }
@@ -1425,9 +1766,63 @@ impl OTFImmutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
-    pub fn unwrap_robot_link_specification_collection(&self) -> &RobotLinkSpecificationCollection {
+    pub fn unwrap_robot_link_transform_specification_collection(&self) -> &RobotLinkTransformSpecificationCollection {
         return match self {
-            OTFImmutVarsObject::RobotLinkSpecificationCollection(r) => { r }
+            OTFImmutVarsObject::RobotLinkTransformSpecificationCollection(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_robot_link_transform_specification_collection_mut(&mut self) -> &mut RobotLinkTransformSpecificationCollection {
+        return match self {
+            OTFImmutVarsObject::RobotLinkTransformSpecificationCollection(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_optima_tensor_window_memory_container(&self) -> &OptimaTensorWindowMemoryContainer {
+        return match self {
+            OTFImmutVarsObject::OptimaTensorWindowMemoryContainer(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_optima_tensor_window_memory_container_mut(&mut self) -> &mut OptimaTensorWindowMemoryContainer {
+        return match self {
+            OTFImmutVarsObject::OptimaTensorWindowMemoryContainer(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_timed_generic_robot_joint_state_window_memory_container(&self) -> &TimedGenericRobotJointStateWindowMemoryContainer {
+        return match self {
+            OTFImmutVarsObject::TimedGenericRobotJointStateWindowMemoryContainer(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_timed_generic_robot_joint_state_window_memory_container_mut(&mut self) -> &mut TimedGenericRobotJointStateWindowMemoryContainer {
+        return match self {
+            OTFImmutVarsObject::TimedGenericRobotJointStateWindowMemoryContainer(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_generic_robot_joint_state_curr_time(&self) -> &f64 {
+        return match self {
+            OTFImmutVarsObject::GenericRobotJointStateCurrTime(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_generic_robot_joint_state_curr_time_mut(&mut self) -> &mut f64 {
+        return match self {
+            OTFImmutVarsObject::GenericRobotJointStateCurrTime(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_robot_geometric_shape_scene(&self) -> &RobotGeometricShapeScene {
+        return match self {
+            OTFImmutVarsObject::RobotGeometricShapeScene(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_robot_geometric_shape_scene_mut(&mut self) -> &mut RobotGeometricShapeScene {
+        return match self {
+            OTFImmutVarsObject::RobotGeometricShapeScene(r) => { r }
             _ => { panic!("wrong type.") }
         }
     }
@@ -1435,9 +1830,12 @@ impl OTFImmutVarsObject {
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OTFImmutVarsObjectType {
-    Test,
     GetRobotSet,
-    RobotLinkSpecificationCollection
+    RobotLinkTransformSpecificationCollection,
+    OptimaTensorWindowMemoryContainer,
+    TimedGenericRobotJointStateWindowMemoryContainer,
+    GenericRobotJointStateCurrTime,
+    RobotGeometricShapeScene
 }
 
 /// var indices must be locked prior to getting keys
@@ -1459,8 +1857,8 @@ impl OTFMutVars {
             session_key_counter: 0
         }
     }
-    pub fn get_vars(&mut self, signatures: &Vec<OTFMutVarsObjectType>, recompute_var_ifs: &Vec<RecomputeVarIf>, input: &OptimaTensor, immut_vars: &OTFImmutVars, session_key: &OTFMutVarsSessionKey) -> Vec<&mut OTFMutVarsObject> {
-        self.register_vars(input, immut_vars, recompute_var_ifs, signatures, session_key);
+    pub fn get_vars(&mut self, signatures: &Vec<OTFMutVarsObjectType>, params: &Vec<OTFMutVarsParams>, recompute_var_ifs: &Vec<RecomputeVarIf>, input: &OptimaTensor, immut_vars: &OTFImmutVars, session_key: &OTFMutVarsSessionKey) -> Vec<&mut OTFMutVarsObject> {
+        self.register_vars(input, immut_vars, recompute_var_ifs, signatures, params, session_key);
         let var_keys = self.get_var_keys(signatures, input, session_key);
         return self.unlock_object_mut_refs(&var_keys, input, session_key);
     }
@@ -1468,7 +1866,26 @@ impl OTFMutVars {
         let out = OTFMutVarsSessionKey { key_idx: self.session_key_counter };
         let block = OTFMutVarsSessionBlock {
             key: out.clone(),
+            is_base_session: false,
             input_tensor_id: input.id(),
+            already_gave_out_var_keys_this_session: false,
+            registered_vars: vec![]
+        };
+        let binary_search_res = self.registered_session_blocks.binary_search_by(|x| x.key.partial_cmp(&out).unwrap());
+        let idx = match binary_search_res {
+            Ok(idx) => {idx}
+            Err(idx) => {idx}
+        };
+        self.registered_session_blocks.insert(idx, block);
+        self.session_key_counter += 1;
+        return out;
+    }
+    pub fn register_base_session(&mut self) -> OTFMutVarsSessionKey {
+        let out = OTFMutVarsSessionKey { key_idx: self.session_key_counter };
+        let block = OTFMutVarsSessionBlock {
+            key: out.clone(),
+            is_base_session: true,
+            input_tensor_id: f64::MIN,
             already_gave_out_var_keys_this_session: false,
             registered_vars: vec![]
         };
@@ -1496,6 +1913,8 @@ impl OTFMutVars {
         };
         let session_block = &self.registered_session_blocks[session_block_idx];
 
+        assert!(session_block.is_base_session, "must insert base variable in a base session.");
+
         if session_block.already_gave_out_var_keys_this_session {
             panic!("Cannot insert a variable in a session that has already given out var keys.");
         }
@@ -1513,7 +1932,7 @@ impl OTFMutVars {
             }
         };
     }
-    fn register_vars(&mut self, input: &OptimaTensor, immut_vars: &OTFImmutVars, recompute_var_ifs: &Vec<RecomputeVarIf>, signatures: &Vec<OTFMutVarsObjectType>, session_key: &OTFMutVarsSessionKey) {
+    fn register_vars(&mut self, input: &OptimaTensor, immut_vars: &OTFImmutVars, recompute_var_ifs: &Vec<RecomputeVarIf>, signatures: &Vec<OTFMutVarsObjectType>, params: &Vec<OTFMutVarsParams>, session_key: &OTFMutVarsSessionKey) {
         if recompute_var_ifs.len() != signatures.len() {
             panic!("recompute_var_ifs len must equal signatures len");
         }
@@ -1527,6 +1946,8 @@ impl OTFMutVars {
         if session_block.already_gave_out_var_keys_this_session {
             panic!("Cannot register var in this session as it has already given out var keys.  All registers should be done before getting keys.");
         }
+
+        assert!(!session_block.is_base_session, "cannot register general vars with base session key.");
 
         if session_block.input_tensor_id != input.id() {
             panic!("Tried to register a variable with an input tensor that does not match the given session.")
@@ -1551,12 +1972,12 @@ impl OTFMutVars {
                     if compute {
                         match binary_search_res {
                             Ok(idx) => {
-                                let var_object = signature.compute_var(input, immut_vars, self);
+                                let var_object = signature.compute_var(input, immut_vars, self, params);
                                 self.enum_objects[idx] = var_object;
                                 self.vectorized_tensors[idx] = input.vectorized_data().to_vec();
                             }
                             Err(idx) => {
-                                let var_object = signature.compute_var(input, immut_vars, self);
+                                let var_object = signature.compute_var(input, immut_vars, self, params);
                                 self.signatures.insert(idx, signature.clone());
                                 self.enum_objects.insert(idx, var_object);
                                 self.vectorized_tensors.insert(idx, input.vectorized_data().to_vec());
@@ -1628,6 +2049,7 @@ impl OTFMutVars {
 
 #[derive(Clone, Debug)]
 pub enum RecomputeVarIf {
+    Always,
     IsAnyNewInput,
     IsAnyNonFDPerturbationInput,
     InputInfNormIsGreaterThan(f64),
@@ -1636,13 +2058,14 @@ pub enum RecomputeVarIf {
 impl RecomputeVarIf {
     #[allow(unused_variables)]
     pub fn recompute(&self, input: &OptimaTensor, previous_vectorized_tensor: &Vec<f64>, immut_vars: &OTFImmutVars) -> bool {
-        match self {
+        return match self {
+            RecomputeVarIf::Always => { true }
             RecomputeVarIf::IsAnyNewInput => {
                 let vectorized_tensor = input.vectorized_data();
                 for (i, v) in vectorized_tensor.iter().enumerate() {
                     if *v != previous_vectorized_tensor[i] { return true; }
                 }
-                return false;
+                false
             }
             RecomputeVarIf::IsAnyNonFDPerturbationInput => {
                 let vectorized_tensor = input.vectorized_data();
@@ -1650,7 +2073,7 @@ impl RecomputeVarIf {
                     let diff = (*v - previous_vectorized_tensor[i]).abs();
                     if diff > FD_PERTURBATION { return true; }
                 }
-                return false;
+                false
             }
             RecomputeVarIf::InputInfNormIsGreaterThan(val) => {
                 let vectorized_tensor = input.vectorized_data();
@@ -1658,17 +2081,48 @@ impl RecomputeVarIf {
                     let diff = (*v - previous_vectorized_tensor[i]).abs();
                     if diff > *val { return true; }
                 }
-                return false;
+                false
             }
-            RecomputeVarIf::Never => { return false; }
+            RecomputeVarIf::Never => { false }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum OTFMutVarsParams<'a> {
+    None,
+    SimpleDataType(SimpleDataType),
+    RobotSetCollisionAvoidOptions(&'a RobotSetCollisionProximityOptions),
+    VecOfParams(Vec<OTFMutVarsParams<'a>>)
+}
+impl<'a> OTFMutVarsParams<'a> {
+    pub fn unwrap_simple_data_type(&self) -> &SimpleDataType {
+        return match self {
+            OTFMutVarsParams::SimpleDataType(r) => { r }
+            _ => { panic!("wrong type") }
+        }
+    }
+    pub fn unwrap_robot_set_collision_avoid_options(&self) -> &RobotSetCollisionProximityOptions {
+        return match self {
+            OTFMutVarsParams::RobotSetCollisionAvoidOptions(r) => { r }
+            _ => { panic!("wrong type") }
+        }
+    }
+    pub fn unwrap_vec_of_params(&self) -> &Vec<OTFMutVarsParams> {
+        return match self {
+            OTFMutVarsParams::VecOfParams(r) => { r }
+            _ => { panic!("wrong type") }
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum OTFMutVarsObject {
-    Test,
-    RobotSetFKResult(RobotSetFKResult)
+    RobotSetFKResult(RobotSetFKResult),
+    RobotSetFKDOFPerturbationsResult(RobotSetFKDOFPerturbationsResult),
+    WitnessPointsCollection(WitnessPointsCollection),
+    ProximaEngine(ProximaEngine),
+    BVHAABB(ShapeCollectionBVH<BVHCombinableShapeAABB>)
 }
 impl OTFMutVarsObject {
     pub fn unwrap_robot_set_fk_result(&self) -> &RobotSetFKResult {
@@ -1677,43 +2131,162 @@ impl OTFMutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
+    pub fn unwrap_robot_set_fk_dof_perturbations_result(&self) -> &RobotSetFKDOFPerturbationsResult {
+        return match self {
+            OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_witness_points_collection(&self) -> &WitnessPointsCollection {
+        return match self {
+            OTFMutVarsObject::WitnessPointsCollection(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_witness_points_collection_mut(&mut self) -> &mut WitnessPointsCollection {
+        return match self {
+            OTFMutVarsObject::WitnessPointsCollection(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_proxima_engine(&self) -> &ProximaEngine {
+        return match self {
+            OTFMutVarsObject::ProximaEngine(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_proxima_engine_mut(&mut self) -> &mut ProximaEngine {
+        return match self {
+            OTFMutVarsObject::ProximaEngine(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_bvh_aabb(&self) -> &ShapeCollectionBVH<BVHCombinableShapeAABB> {
+        return match self {
+            OTFMutVarsObject::BVHAABB(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    pub fn unwrap_bvh_aabb_mut(&mut self) -> &mut ShapeCollectionBVH<BVHCombinableShapeAABB> {
+        return match self {
+            OTFMutVarsObject::BVHAABB(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
 }
 impl EnumMapToType<OTFMutVarsObjectType> for OTFMutVarsObject {
     fn map_to_type(&self) -> OTFMutVarsObjectType {
         match self {
-            OTFMutVarsObject::Test => { OTFMutVarsObjectType::Test }
             OTFMutVarsObject::RobotSetFKResult(_) => { OTFMutVarsObjectType::RobotSetFKResult }
+            OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(_) => { OTFMutVarsObjectType::RobotSetFKDOFPerturbationsResult }
+            OTFMutVarsObject::WitnessPointsCollection(_) => { OTFMutVarsObjectType::WitnessPointsCollection }
+            OTFMutVarsObject::ProximaEngine(_) => { OTFMutVarsObjectType::ProximaEngine }
+            OTFMutVarsObject::BVHAABB(_) => { OTFMutVarsObjectType::BVHAABB }
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OTFMutVarsObjectType {
-    Test,
-    RobotSetFKResult
+    RobotSetFKResult,
+    RobotSetFKDOFPerturbationsResult,
+    WitnessPointsCollection,
+    ProximaEngine,
+    BVHAABB
 }
 impl OTFMutVarsObjectType {
-    pub fn compute_var(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> OTFMutVarsObject {
+    pub fn compute_var(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, params: &Vec<OTFMutVarsParams>) -> OTFMutVarsObject {
         let session_key = mut_vars.register_session(input);
-        let out = self.compute_var_raw(input, immut_vars, mut_vars, &session_key);
+        let out = self.compute_var_raw(input, immut_vars, mut_vars, params, &session_key);
         mut_vars.close_session(&session_key);
         out
     }
     #[allow(unused_variables)]
-    fn compute_var_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsObject {
+    fn compute_var_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, params: &Vec<OTFMutVarsParams>, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsObject {
         match self {
-            OTFMutVarsObjectType::Test => { return OTFMutVarsObject::Test }
             OTFMutVarsObjectType::RobotSetFKResult => {
                 let robot_set_object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("error");
                 let robot_set = robot_set_object.unwrap_get_robot_set().get_robot_set();
-                let robot_set_link_specification_collection_object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotLinkSpecificationCollection).expect("error");
-                let robot_set_link_specification_collection = robot_set_link_specification_collection_object.unwrap_robot_link_specification_collection();
 
                 let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
 
                 let res = robot_set.robot_set_kinematics_module().compute_fk(&robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
 
                 OTFMutVarsObject::RobotSetFKResult(res)
+            }
+            OTFMutVarsObjectType::RobotSetFKDOFPerturbationsResult => {
+                let robot_set_object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("error");
+                let robot_set = robot_set_object.unwrap_get_robot_set().get_robot_set();
+
+                let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+
+                let res = robot_set.robot_set_kinematics_module().compute_fk_dof_perturbations(&robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion, Some(FD_PERTURBATION)).expect("error");
+
+                OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(res)
+            }
+            OTFMutVarsObjectType::WitnessPointsCollection => {
+                let robot_set_collision_avoid_options = params[0].unwrap_robot_set_collision_avoid_options();
+                let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+                let robot_set = immut_vars.ref_robot_set();
+                let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+
+                let witness_points_collection = match robot_set_collision_avoid_options {
+                    RobotSetCollisionProximityOptions::Proxima { budget, r, d_max, a_max, loss_function } => {
+                        let signatures = vec![OTFMutVarsObjectType::ProximaEngine];
+                        let recompute_var_ifs = vec![RecomputeVarIf::Never];
+                        let params = vec![OTFMutVarsParams::None];
+                        let mut vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
+                        let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
+                        let res = robot_geometric_shape_scene.proxima_proximity_query(&robot_set_joint_state, None, proxima_engine, *d_max, *a_max, loss_function.clone(), *r, budget.clone(), &None).expect("error");
+                        let witness_points_collection = res.output_witness_points_collection();
+                        witness_points_collection
+                    }
+                    RobotSetCollisionProximityOptions::BVHAABB { d_max, .. } => {
+                        let signatures = vec![OTFMutVarsObjectType::BVHAABB];
+                        let recompute_var_ifs = vec![RecomputeVarIf::Never];
+                        let params = vec![OTFMutVarsParams::None];
+                        let mut vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
+                        let mut bvh = vars[0].unwrap_bvh_aabb_mut();
+                        let filter_output = robot_geometric_shape_scene.bvh_scene_filter(bvh, &robot_set_joint_state, None, BVHVisit::Distance { margin: *d_max });
+                        let input = RobotGeometricShapeSceneQuery::Contact {
+                            robot_set_joint_state: &robot_set_joint_state,
+                            env_obj_pose_constraint_group_input: None,
+                            prediction: *d_max,
+                            inclusion_list: &Some(filter_output.pairs_list())
+                        };
+                        let res = robot_geometric_shape_scene.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false).expect("error");
+                        let witness_points_collection = res.output_witness_points_collection();
+                        witness_points_collection
+                    }
+                    RobotSetCollisionProximityOptions::NaiveIteration { d_max, .. } => {
+                        let input = RobotGeometricShapeSceneQuery::Contact {
+                            robot_set_joint_state: &robot_set_joint_state,
+                            env_obj_pose_constraint_group_input: None,
+                            prediction: *d_max,
+                            inclusion_list: &None
+                        };
+                        let res = robot_geometric_shape_scene.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false).expect("error");
+                        let witness_points_collection = res.output_witness_points_collection();
+                        witness_points_collection
+                    }
+                };
+                OTFMutVarsObject::WitnessPointsCollection(witness_points_collection)
+            }
+            OTFMutVarsObjectType::ProximaEngine => {
+                let object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
+                let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
+                let proxima_engine = robot_geometric_shape_scene.spawn_proxima_engine(None);
+                OTFMutVarsObject::ProximaEngine(proxima_engine)
+            }
+            OTFMutVarsObjectType::BVHAABB => {
+                let object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
+                let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
+                let object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("needs GetRobotSet");
+                let get_robot_set = object.unwrap_get_robot_set();
+                let robot_set = get_robot_set.get_robot_set();
+                let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+                let bvh = robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, None, 2);
+                OTFMutVarsObject::BVHAABB(bvh)
             }
         }
     }
@@ -1735,6 +2308,7 @@ pub struct OTFMutVarsSessionKey {
 #[derive(Clone, Debug)]
 struct OTFMutVarsSessionBlock {
     key: OTFMutVarsSessionKey,
+    is_base_session: bool,
     input_tensor_id: f64,
     already_gave_out_var_keys_this_session: bool,
     registered_vars: Vec<OTFMutVarsObjectType>,
@@ -1743,6 +2317,18 @@ struct OTFMutVarsSessionBlock {
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone)]
+pub struct OptimaTensorWindowMemoryContainer {
+    pub c: WindowMemoryContainer<OptimaTensor>
+}
+impl OptimaTensorWindowMemoryContainer {
+    pub fn new(window_size: usize, init: OptimaTensor) -> Self {
+        Self {
+            c: WindowMemoryContainer::new(window_size, init)
+        }
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
