@@ -5,6 +5,7 @@ use nalgebra::{Vector3};
 use parry3d_f64::query::{Ray};
 use serde::{Serialize, Deserialize};
 use instant::{Duration};
+use itertools::izip;
 use crate::utils::utils_combinations::comb;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
@@ -242,16 +243,17 @@ impl ShapeCollection {
                                    d_max: f64,
                                    a_max: f64,
                                    loss_function: SignedDistanceLossFunction,
+                                   aggregator: SignedDistanceAggregator,
                                    r: f64,
                                    proxima_budget: ProximaBudget,
                                    inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaProximityOutput, OptimaError> {
         assert_eq!(self.id, proxima_engine.id);
-        assert!(0.0 <= r && r <= 1.0);
+        assert!(r == 0.0 || r == 1.0);
 
         let start = instant::Instant::now();
 
         let mut output = ProximaProximityOutput {
-            output_sum: 0.0,
+            aggregated_output_value: 0.0,
             maximum_possible_error: 0.0,
             r,
             ground_truth_check_signatures: vec![],
@@ -261,8 +263,9 @@ impl ShapeCollection {
         };
 
         let filter_output = self.proxima_scene_filter(poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list).expect("error");
-        let mut output_sum = filter_output.output_sum;
-        let mut maximum_possible_error = filter_output.maximum_possible_error;
+
+        let mut aggregated_output = 0.0;
+        let mut maximum_possible_error = 0.0;
         let mut single_comparison_outputs = filter_output.single_comparison_outputs.clone();
         for s in &filter_output.ground_truth_check_signatures {
             output.ground_truth_check_signatures.push(s.clone());
@@ -271,7 +274,25 @@ impl ShapeCollection {
         let grid = proxima_engine.grid_mut_ref();
         let poses = &poses.poses;
 
-        'f: for single_comparison_output in &mut single_comparison_outputs {
+        let mut approximations_after_loss = vec![];
+        let mut worst_case_values_after_loss = vec![];
+        for single_comparison_output in &single_comparison_outputs {
+            approximations_after_loss.push(single_comparison_output.approximate_distance_loss_with_cutoff);
+            if r == 0.0 {
+                worst_case_values_after_loss.push(single_comparison_output.upper_bound_signed_distance_loss_with_cutoff);
+            } else if r == 1.0 {
+                worst_case_values_after_loss.push(single_comparison_output.lower_bound_signed_distance_loss_with_cutoff);
+            } else {
+                unreachable!()
+            }
+        }
+
+        'f: for (single_comparison_output_idx, single_comparison_output) in single_comparison_outputs.iter_mut().enumerate() {
+            aggregated_output = aggregator.aggregate(&approximations_after_loss);
+            let curr_worst_case_proximity_output_value = aggregator.aggregate(&worst_case_values_after_loss);
+
+            maximum_possible_error = (curr_worst_case_proximity_output_value - aggregated_output).abs();
+
             match proxima_budget {
                 ProximaBudget::Accuracy(budget) => {
                     if maximum_possible_error < budget { break 'f; }
@@ -303,29 +324,20 @@ impl ShapeCollection {
             };
             single_comparison_output.ground_truth_distance = Some(ground_truth_dis);
 
+            let ground_truth_signed_distance_loss_with_cutoff = ProximaFunctions::proxima_loss_with_cutoff(ground_truth_dis, d_max, a_max, *shape_average_distance, &loss_function);
+            approximations_after_loss[single_comparison_output_idx] = ground_truth_signed_distance_loss_with_cutoff;
+            worst_case_values_after_loss[single_comparison_output_idx] = ground_truth_signed_distance_loss_with_cutoff;
 
-            /*
-            let lower_bound_diff = dis - single_comparison_output.lower_bound_signed_distance;
-            let upper_bound_diff = single_comparison_output.upper_bound_signed_distance - dis;
-
-            assert!(lower_bound_diff > -0.000001
-                        && upper_bound_diff > -0.000001,
-                    "Just a sanity check to make sure proofs are correct.  {}",
-                    format!("lower bound: {:?}, dis: {:?}, upper bound: {:?}", single_comparison_output.lower_bound_signed_distance, dis, single_comparison_output.upper_bound_signed_distance));
-            */
-
-            let d_c = ProximaFunctions::proxima_loss_with_cutoff(ground_truth_dis, d_max, a_max, *shape_average_distance, &loss_function);
-
-            maximum_possible_error -= single_comparison_output.max_possible_error;
-            output_sum -= single_comparison_output.d_c;
-            output_sum += d_c;
+            // maximum_possible_error -= single_comparison_output.max_possible_loss_function_error;
+            // output_sum -= single_comparison_output.approximate_distance_loss_with_cutoff;
+            // output_sum += ground_truth_signed_distance_loss_with_cutoff;
         }
 
-        output.output_sum = output_sum;
+        output.aggregated_output_value = aggregated_output;
         output.maximum_possible_error = maximum_possible_error;
         output.duration = start.elapsed();
         output.proxima_single_comparison_outputs = single_comparison_outputs;
-        output.query_pairs_list = filter_output.query_pairs_list;
+        output.query_pairs_list = filter_output.query_pairs_list.clone();
 
         Ok(output)
     }
@@ -337,6 +349,8 @@ impl ShapeCollection {
                                 loss_function: &SignedDistanceLossFunction,
                                 r: f64,
                                 inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaSceneFilterOutput, OptimaError> {
+        assert!(r == 0.0 || r == 1.0);
+
         let start = instant::Instant::now();
 
         let grid = proxima_engine.grid_mut_ref();
@@ -345,7 +359,7 @@ impl ShapeCollection {
         let mut filter_output = ProximaSceneFilterOutput {
             single_comparison_outputs: vec![],
             query_pairs_list: self.spawn_query_pairs_list(false),
-            output_sum: 0.0,
+            output_loss_function_sum: 0.0,
             maximum_possible_error: 0.0,
             ground_truth_check_signatures: vec![],
             duration: Default::default()
@@ -366,8 +380,8 @@ impl ShapeCollection {
                                 let shape_average_distance = self.average_distances.data_cell(i, j)?.curr_value();
                                 let proxima_single_comparison_output = ProximaFunctions::proxima_single_comparison(data_cell_mut, shape1, shape2, *shape_average_distance, i, j, pose1, pose2, d_max, a_max, r, &loss_function)?;
                                 if let Some(p) = &proxima_single_comparison_output {
-                                    filter_output.maximum_possible_error += p.max_possible_error;
-                                    filter_output.output_sum += p.d_c;
+                                    filter_output.maximum_possible_error += p.max_possible_loss_function_error;
+                                    filter_output.output_loss_function_sum += p.approximate_distance_loss_with_cutoff;
                                     filter_output.single_comparison_outputs.push(p.clone());
                                     filter_output.query_pairs_list.add_pair((i,j));
                                     if p.ground_truth_check { filter_output.ground_truth_check_signatures.push((shape1.signature().clone(), shape2.signature().clone())) }
@@ -393,8 +407,8 @@ impl ShapeCollection {
                                         let shape_average_distance = self.average_distances.data_cell(i, j)?.curr_value();
                                         let proxima_single_comparision_output = ProximaFunctions::proxima_single_comparison(data_cell_mut, shape1, shape2, *shape_average_distance, i, j, pose1, pose2, d_max, a_max, r, &loss_function)?;
                                         if let Some(p) = &proxima_single_comparision_output {
-                                            filter_output.maximum_possible_error += p.max_possible_error;
-                                            filter_output.output_sum += p.d_c;
+                                            filter_output.maximum_possible_error += p.max_possible_loss_function_error;
+                                            filter_output.output_loss_function_sum += p.approximate_distance_loss_with_cutoff;
                                             filter_output.single_comparison_outputs.push(p.clone());
                                             filter_output.query_pairs_list.add_pair((i,j));
                                             if p.ground_truth_check { filter_output.ground_truth_check_signatures.push((shape1.signature().clone(), shape2.signature().clone())) }
@@ -408,7 +422,7 @@ impl ShapeCollection {
             }
         }
 
-        filter_output.single_comparison_outputs.sort_by(|x, y| y.max_possible_error.partial_cmp(&x.max_possible_error).unwrap());
+        filter_output.single_comparison_outputs.sort_by(|x, y| y.max_possible_loss_function_error.partial_cmp(&x.max_possible_loss_function_error).unwrap());
         filter_output.duration = start.elapsed();
 
         Ok(filter_output)
@@ -789,21 +803,6 @@ impl <'a> ShapeCollectionQuery<'a> {
     }
 }
 
-/*
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ShapeCollectionQueryOutput {
-    GeometricShapeQueryGroupOutput(GeometricShapeQueryGroupOutput)
-}
-impl ShapeCollectionQueryOutput {
-    pub fn unwrap_geometric_shape_query_group_output(&self) -> &GeometricShapeQueryGroupOutput {
-        match self {
-            ShapeCollectionQueryOutput::GeometricShapeQueryGroupOutput(g) => {g}
-            _ => { panic!("wrong type.") }
-        }
-    }
-}
-*/
-
 /// A convenient way to pass SE(3) pose information into a `ShapeCollectionQuery` object.  The length
 /// of the `poses` field vector will be the same length as the `ShapeCollection shapes` field.  If a
 /// particular pose is `None` in this list, the shape at the corresponding index in `ShapeCollection.shapes`
@@ -912,18 +911,21 @@ impl ProximaFunctions {
                     let u_c = Self::proxima_loss_with_cutoff(upper_bound, d_max, a_max, shape_average_distance, loss_function);
                     let d_c = Self::proxima_loss_with_cutoff(d_hat, d_max, a_max, shape_average_distance, loss_function);
 
-                    let max_possible_error = (l_c - d_c).max(d_c - u_c);
+                    let max_possible_loss_function_error = (l_c - d_c).max(d_c - u_c);
 
                     Ok(Some(ProximaSingleComparisonOutput {
-                        max_possible_error,
-                        d_c,
+                        max_possible_loss_function_error,
+                        approximate_signed_distance: d_hat,
+                        approximate_distance_loss_with_cutoff: d_c,
+                        lower_bound_signed_distance: lower_bound,
+                        lower_bound_signed_distance_loss_with_cutoff: l_c,
+                        upper_bound_signed_distance: upper_bound,
+                        upper_bound_signed_distance_loss_with_cutoff: u_c,
                         shape_idxs: (shape1_idx, shape2_idx),
                         shape_signatures: (shape1.signature().clone(), shape2.signature().clone()),
-                        lower_bound_signed_distance: lower_bound,
-                        upper_bound_signed_distance: upper_bound,
                         modified_upper_bound_points,
                         ground_truth_distance: None,
-                        ground_truth_check: false
+                        ground_truth_check: false,
                     }))
                 }
                 _ => { Ok(None) }
@@ -946,15 +948,18 @@ impl ProximaFunctions {
             };
             
             Ok(Some(ProximaSingleComparisonOutput {
-                max_possible_error: 0.0,
-                d_c,
+                max_possible_loss_function_error: 0.0,
+                approximate_signed_distance: ground_truth_dis,
+                approximate_distance_loss_with_cutoff: d_c,
+                lower_bound_signed_distance: ground_truth_dis,
+                lower_bound_signed_distance_loss_with_cutoff: d_c,
+                upper_bound_signed_distance: ground_truth_dis,
+                upper_bound_signed_distance_loss_with_cutoff: d_c,
                 shape_idxs: (shape1_idx, shape2_idx),
                 shape_signatures: (shape1.signature().clone(), shape2.signature().clone()),
-                lower_bound_signed_distance: ground_truth_dis,
-                upper_bound_signed_distance: ground_truth_dis,
                 modified_upper_bound_points,
                 ground_truth_distance: Some(ground_truth_dis),
-                ground_truth_check: true
+                ground_truth_check: true,
             }))
         }
     }
@@ -1255,12 +1260,15 @@ pub enum ProximaSignedDistanceBoundsResult {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProximaSingleComparisonOutput {
-    max_possible_error: f64,
-    d_c: f64,
+    max_possible_loss_function_error: f64,
+    approximate_signed_distance: f64,
+    approximate_distance_loss_with_cutoff: f64,
+    lower_bound_signed_distance: f64,
+    lower_bound_signed_distance_loss_with_cutoff: f64,
+    upper_bound_signed_distance: f64,
+    upper_bound_signed_distance_loss_with_cutoff: f64,
     shape_idxs: (usize, usize),
     shape_signatures: (GeometricShapeSignature, GeometricShapeSignature),
-    lower_bound_signed_distance: f64,
-    upper_bound_signed_distance: f64,
     modified_upper_bound_points: (Vector3<f64>, Vector3<f64>),
     ground_truth_distance: Option<f64>,
     ground_truth_check: bool
@@ -1268,7 +1276,7 @@ pub struct ProximaSingleComparisonOutput {
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct ProximaProximityOutput {
-    output_sum: f64,
+    aggregated_output_value: f64,
     maximum_possible_error: f64,
     r: f64,
     duration: Duration,
@@ -1297,6 +1305,27 @@ impl ProximaProximityOutput {
 
         out
     }
+    pub fn aggregated_output_value(&self) -> f64 {
+        self.aggregated_output_value
+    }
+    pub fn maximum_possible_error(&self) -> f64 {
+        self.maximum_possible_error
+    }
+    pub fn r(&self) -> f64 {
+        self.r
+    }
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+    pub fn ground_truth_check_signatures(&self) -> &Vec<(GeometricShapeSignature, GeometricShapeSignature)> {
+        &self.ground_truth_check_signatures
+    }
+    pub fn proxima_single_comparison_outputs(&self) -> &Vec<ProximaSingleComparisonOutput> {
+        &self.proxima_single_comparison_outputs
+    }
+    pub fn query_pairs_list(&self) -> &ShapeCollectionQueryPairsList {
+        &self.query_pairs_list
+    }
 }
 #[cfg(not(target_arch = "wasm32"))]
 #[pymethods]
@@ -1308,7 +1337,7 @@ impl ProximaProximityOutput {
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct ProximaSceneFilterOutput {
-    output_sum: f64,
+    output_loss_function_sum: f64,
     maximum_possible_error: f64,
     duration: Duration,
     ground_truth_check_signatures: Vec<(GeometricShapeSignature, GeometricShapeSignature)>,
@@ -1332,6 +1361,24 @@ impl ProximaSceneFilterOutput {
         }
 
         out
+    }
+    pub fn output_loss_function_sum(&self) -> f64 {
+        self.output_loss_function_sum
+    }
+    pub fn maximum_possible_error(&self) -> f64 {
+        self.maximum_possible_error
+    }
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+    pub fn ground_truth_check_signatures(&self) -> &Vec<(GeometricShapeSignature, GeometricShapeSignature)> {
+        &self.ground_truth_check_signatures
+    }
+    pub fn single_comparison_outputs(&self) -> &Vec<ProximaSingleComparisonOutput> {
+        &self.single_comparison_outputs
+    }
+    pub fn query_pairs_list(&self) -> &ShapeCollectionQueryPairsList {
+        &self.query_pairs_list
     }
 }
 
@@ -1359,6 +1406,54 @@ impl SignedDistanceLossFunction {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SignedDistanceAggregator {
+    SimpleSum,
+    Average,
+    PNorm { p: f64 }
+}
+impl Default for SignedDistanceAggregator {
+    fn default() -> Self {
+        Self::PNorm { p: 10.0 }
+    }
+}
+impl SignedDistanceAggregator {
+    pub fn aggregate(&self, values_after_loss: &Vec<f64>) -> f64 {
+        assert!(values_after_loss.len() > 0);
+
+        let mut out = 0.0;
+
+        match self {
+            SignedDistanceAggregator::SimpleSum => {
+                for v in values_after_loss { out += v; }
+            }
+            SignedDistanceAggregator::Average => {
+                let mut num_values = values_after_loss.len() as f64;
+                for v in values_after_loss { out += v; }
+                out /= num_values;
+            }
+            SignedDistanceAggregator::PNorm { p } => {
+                /*
+                let mut numerator = 0.0;
+                let mut denominator = 0.0;
+
+                for v in values_after_loss {
+                    let exp = (*alpha * v).exp();
+                    numerator += v * exp;
+                    denominator += exp;
+                }
+
+                out = numerator / denominator;
+                */
+                for v in values_after_loss { out += v.abs().powf(*p) }
+                out = out.powf(1.0 / *p);
+            }
+        }
+
+        out
+    }
+}
+
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct WitnessPointsCollection {
     collection: Vec<WitnessPoints>
@@ -1375,22 +1470,25 @@ impl WitnessPointsCollection {
     pub fn collection(&self) -> &Vec<WitnessPoints> {
         &self.collection
     }
-    pub fn compute_proximity_output_sum(&self, mode: &ProximityOutputSumMode, loss: &SignedDistanceLossFunction) -> f64 {
-        let mut out_sum = 0.0;
+    pub fn compute_proximity_output_sum(&self, mode: &ProximityOutputSumMode, loss: &SignedDistanceLossFunction, aggregator: &SignedDistanceAggregator) -> f64 {
+        let mut values_after_loss = vec![];
         match mode {
             ProximityOutputSumMode::RawSignedDistance { d_max } => {
                 for wp in &self.collection {
-                    out_sum += loss.loss(wp.signed_distance, *d_max);
+                    // out_sum += loss.loss(wp.signed_distance, *d_max);
+                    values_after_loss.push(loss.loss(wp.signed_distance, *d_max));
                 }
             }
             ProximityOutputSumMode::AverageSignedDistance { a_max, shape_collection } => {
                 for wp in &self.collection {
                     let average_distance = shape_collection.average_distance_from_signatures(&wp.shape_signatures);
-                    out_sum += loss.loss(wp.signed_distance / average_distance, *a_max);
+                    // out_sum += loss.loss(wp.signed_distance / average_distance, *a_max);
+                    values_after_loss.push(loss.loss(wp.signed_distance / average_distance, *a_max));
                 }
             }
         }
-        out_sum
+        // out_sum
+        return aggregator.aggregate(&values_after_loss);
     }
 }
 #[cfg(not(target_arch = "wasm32"))]

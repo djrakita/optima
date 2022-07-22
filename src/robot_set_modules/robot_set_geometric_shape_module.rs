@@ -19,7 +19,7 @@ use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaPairwiseMode, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaPairwiseMode, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceAggregator, SignedDistanceLossFunction};
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
@@ -216,6 +216,7 @@ impl RobotSetGeometricShapeModule {
                                    d_max: f64,
                                    a_max: f64,
                                    loss_function: SignedDistanceLossFunction,
+                                   aggregator: SignedDistanceAggregator,
                                    r: f64,
                                    proxima_budget: ProximaBudget,
                                    inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaProximityOutput, OptimaError> {
@@ -223,7 +224,7 @@ impl RobotSetGeometricShapeModule {
         let collection = self.robot_set_shape_collection(&robot_link_shape_representation)?;
         let poses = collection.recover_poses(&res)?;
 
-        return collection.shape_collection.proxima_proximity_query(&poses, proxima_engine, d_max, a_max, loss_function, r, proxima_budget, inclusion_list);
+        return collection.shape_collection.proxima_proximity_query(&poses, proxima_engine, d_max, a_max, loss_function, aggregator, r, proxima_budget, inclusion_list);
     }
     pub fn proxima_scene_filter(&self,
                                    robot_set_joint_state: &RobotSetJointState,

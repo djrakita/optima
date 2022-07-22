@@ -5,8 +5,6 @@
 //! The core library is written in Rust, though high quality ports to high-level languages such as
 //! Python and Javascript are available via PyO3 and WebAssembly, respectively.
 
-extern crate core;
-
 pub mod nonlinear_optimization;
 pub mod optima_tensor_function;
 pub mod robot_modules;

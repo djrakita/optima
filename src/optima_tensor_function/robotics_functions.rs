@@ -3,6 +3,7 @@ use nalgebra::{DMatrix, DVector, Vector6};
 use parry3d_f64::partitioning::QBVHDataGenerator;
 use crate::optima_tensor_function::{FD_PERTURBATION, OptimaTensor, OptimaTensorFunction, OptimaTensorFunctionGenerics, OTFDimensions, OTFImmutVars, OTFImmutVarsObjectType, OTFMutVars, OTFMutVarsObjectType, OTFMutVarsParams, OTFMutVarsSessionKey, OTFResult, RecomputeVarIf};
 use crate::robot_modules::robot_kinematics_module::{JacobianEndPoint, JacobianMode};
+use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
 use crate::robot_set_modules::robot_set_kinematics_module::RobotSetFKResult;
 use crate::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
 use crate::utils::utils_errors::OptimaError;
@@ -10,11 +11,11 @@ use crate::utils::utils_generic_data_structures::AveragingFloat;
 use crate::utils::utils_robot::robot_set_link_specification::RobotSetLinkTransformSpecification;
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShapeAABB, GeometricShapeSignature};
-use crate::utils::utils_shape_geometry::shape_collection::{BVH, ProximaBudget, ProximaEngine, ProximaFunctions, ProximityOutputSumMode, SignedDistanceLossFunction, WitnessPoints, WitnessPointsCollection, WitnessPointsType};
+use crate::utils::utils_shape_geometry::shape_collection::{BVH, ProximaBudget, ProximaEngine, ProximaFunctions, ProximaSceneFilterOutput, ProximityOutputSumMode, ShapeCollectionQueryPairsList, SignedDistanceAggregator, SignedDistanceLossFunction, WitnessPoints, WitnessPointsCollection, WitnessPointsType};
 
 #[derive(Clone)]
-pub struct OTFRobotSetLinkTransformSpecification;
-impl OTFRobotSetLinkTransformSpecification {
+pub struct OTFRobotLinkTransformSpecification;
+impl OTFRobotLinkTransformSpecification {
     fn internal_call(robot_set_fk_result: &RobotSetFKResult, specs: &Vec<RobotSetLinkTransformSpecification>) -> f64 {
         let mut out_error = 0.0;
         for s in specs {
@@ -54,7 +55,7 @@ impl OTFRobotSetLinkTransformSpecification {
         return out_error;
     }
 }
-impl OptimaTensorFunction for OTFRobotSetLinkTransformSpecification {
+impl OptimaTensorFunction for OTFRobotLinkTransformSpecification {
     fn output_dimensions(&self) -> Vec<usize> {
         vec![]
     }
@@ -701,19 +702,270 @@ impl RobotJointStateDerivativeUtils {
 }
 
 #[derive(Clone)]
+pub struct OTFRobotCollisionProximityProxima {
+    r: f64,
+    a_max: f64,
+    d_max: f64,
+    budget: ProximaBudget,
+    loss_function: SignedDistanceLossFunction,
+    aggregator: SignedDistanceAggregator,
+    fd_mode: RobotCollisionProximityGradientFDMode
+}
+impl OTFRobotCollisionProximityProxima {
+    pub fn new(r: f64, a_max: f64, d_max: f64, budget: ProximaBudget, loss_function: SignedDistanceLossFunction, aggregator: SignedDistanceAggregator, fd_mode: RobotCollisionProximityGradientFDMode) -> Self {
+        Self {
+            r,
+            a_max,
+            d_max,
+            budget,
+            loss_function,
+            aggregator,
+            fd_mode
+        }
+    }
+    fn call_raw_with_necessary_vars(&self,
+                                    robot_set_joint_state: &RobotSetJointState,
+                                    robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                    proxima_engine: &mut ProximaEngine,
+                                    inclusion_list: Option<&ShapeCollectionQueryPairsList>,
+                                    r_override: Option<f64>) -> Result<OTFResult, OptimaError> {
+        let res = robot_geometric_shape_scene.proxima_proximity_query(&robot_set_joint_state,
+                                                                      None,
+                                                                      proxima_engine,
+                                                                      self.d_max,
+                                                                      self.a_max,
+                                                                      self.loss_function.clone(),
+                                                                      self.aggregator.clone(),
+                                                                      match r_override {
+                                                                          None => { self.r }
+                                                                          Some(r) => { r }
+                                                                      },
+                                                                      self.budget.clone(),
+                                                                      &inclusion_list).expect("error");
+        let aggregated_output_value = res.aggregated_output_value();
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(aggregated_output_value)));
+    }
+    fn derivative_finite_difference_raw(&self,
+                                        robot_set_joint_state: &RobotSetJointState,
+                                        robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                        proxima_engine: &mut ProximaEngine) -> Result<OTFResult, OptimaError> {
+        let num_dofs = robot_set_joint_state.concatenated_state().len();
+
+        let x_0_res = self.call_raw_with_necessary_vars(robot_set_joint_state, robot_geometric_shape_scene, proxima_engine, None, Some(1.0)).expect("error");
+        let x_0 = x_0_res.unwrap_tensor().unwrap_scalar();
+
+        let mut out_vec = DVector::zeros(num_dofs);
+
+        for i in 0..num_dofs {
+            let mut robot_set_joint_state_h = robot_set_joint_state.clone();
+            robot_set_joint_state_h[i] += FD_PERTURBATION;
+
+            let x_h_res = self.call_raw_with_necessary_vars(&robot_set_joint_state_h, robot_geometric_shape_scene, proxima_engine, None, Some(1.0)).expect("error");
+            let x_h = x_h_res.unwrap_tensor().unwrap_scalar();
+
+            out_vec[i] = (x_h - x_0) / FD_PERTURBATION;
+        }
+
+        Ok(OTFResult::Complete(OptimaTensor::new_from_vector(out_vec)))
+    }
+    fn derivative_finite_difference_pre_filtered(&self,
+                                                 robot_set_joint_state: &RobotSetJointState,
+                                                 robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                                 proxima_engine: &mut ProximaEngine) -> Result<OTFResult, OptimaError> {
+        let num_dofs = robot_set_joint_state.concatenated_state().len();
+
+        let filter_output = robot_geometric_shape_scene.proxima_scene_filter(robot_set_joint_state, None, proxima_engine, self.d_max, self.a_max, self.loss_function.clone(), 1.0, &None).expect("error");
+        let inclusion_list = filter_output.query_pairs_list();
+
+        let x_0_res = self.call_raw_with_necessary_vars(robot_set_joint_state, robot_geometric_shape_scene, proxima_engine, Some(inclusion_list), Some(1.0)).expect("error");
+        let x_0 = x_0_res.unwrap_tensor().unwrap_scalar();
+
+        let mut out_vec = DVector::zeros(num_dofs);
+
+        for i in 0..num_dofs {
+            let mut robot_set_joint_state_h = robot_set_joint_state.clone();
+            robot_set_joint_state_h[i] += FD_PERTURBATION;
+
+            let x_h_res = self.call_raw_with_necessary_vars(&robot_set_joint_state_h, robot_geometric_shape_scene, proxima_engine, Some(inclusion_list), Some(1.0)).expect("error");
+            let x_h = x_h_res.unwrap_tensor().unwrap_scalar();
+
+            out_vec[i] = (x_h - x_0) / FD_PERTURBATION;
+        }
+
+        Ok(OTFResult::Complete(OptimaTensor::new_from_vector(out_vec)))
+    }
+    fn derivative_finite_difference_jacobian(&self,
+                                             robot_set_joint_state: &RobotSetJointState,
+                                             robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                             proxima_engine: &mut ProximaEngine) -> Result<OTFResult, OptimaError> {
+        let res = robot_geometric_shape_scene.proxima_proximity_query(&robot_set_joint_state,
+                                                                      None,
+                                                                      proxima_engine,
+                                                                      self.d_max,
+                                                                      self.a_max,
+                                                                      self.loss_function.clone(),
+                                                                      self.aggregator.clone(),
+                                                                      1.0,
+                                                                      self.budget.clone(),
+                                                                      &None).expect("error");
+        let witness_points_collection = res.output_witness_points_collection();
+
+        let out_vec = general_robot_jacobian_collision_proximity_gradient(&witness_points_collection, robot_set_joint_state, robot_geometric_shape_scene, self.a_max, &self.loss_function, &self.aggregator);
+
+        return Ok(OTFResult::Complete(OptimaTensor::new_from_vector(out_vec)));
+    }
+}
+impl OptimaTensorFunction for OTFRobotCollisionProximityProxima {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::ProximaEngine], &vec![OTFMutVarsParams::None], &vec![RecomputeVarIf::Never], input, immut_vars, session_key);
+        let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
+
+        let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+        let robot_set_joint_state = robot_geometric_shape_scene.robot_set().spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+
+        return self.call_raw_with_necessary_vars(&robot_set_joint_state, robot_geometric_shape_scene, &mut proxima_engine, None, None);
+    }
+
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+        let session_key = mut_vars.register_session(input);
+        let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::ProximaEngine], &vec![OTFMutVarsParams::None], &vec![RecomputeVarIf::Never], input, immut_vars, &session_key);
+        let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
+
+        let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+        let robot_set_joint_state = robot_geometric_shape_scene.robot_set().spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+
+        let ret = match &self.fd_mode {
+            RobotCollisionProximityGradientFDMode::RawFiniteDifference => {
+                self.derivative_finite_difference_raw(&robot_set_joint_state, robot_geometric_shape_scene, proxima_engine)
+            }
+            RobotCollisionProximityGradientFDMode::PreFilteredFiniteDifference => {
+                self.derivative_finite_difference_pre_filtered(&robot_set_joint_state, robot_geometric_shape_scene, proxima_engine)
+            }
+            RobotCollisionProximityGradientFDMode::JacobianFiniteDifference => {
+                self.derivative_finite_difference_jacobian(&robot_set_joint_state, robot_geometric_shape_scene, proxima_engine)
+            }
+        };
+
+        mut_vars.close_session(&session_key);
+
+        return ret;
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum RobotCollisionProximityGradientFDMode {
+    RawFiniteDifference,
+    PreFilteredFiniteDifference,
+    JacobianFiniteDifference,
+}
+
+fn general_robot_jacobian_collision_proximity_gradient(witness_points_collection: &WitnessPointsCollection,
+                                                       robot_set_joint_state: &RobotSetJointState,
+                                                       robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                                       a_max: f64,
+                                                       loss_function: &SignedDistanceLossFunction,
+                                                       aggregator: &SignedDistanceAggregator) -> DVector<f64> {
+    let mut jacobian_option_pairs: Vec<[Option<DMatrix<f64>>; 2]> = Vec::new();
+
+    let robot_set = robot_geometric_shape_scene.robot_set();
+
+    // set up jacobian matrices for witness points
+    for wp in witness_points_collection.collection() {
+            let mut jacobian_option_pair = [None, None];
+
+            let witness_points = &wp.witness_points();
+            let signatures = wp.shape_signatures();
+
+            match signatures.0 {
+                GeometricShapeSignature::RobotSetLink { robot_idx_in_set, link_idx_in_robot, .. } => {
+                    let jacobian = robot_set.robot_set_kinematics_module().compute_jacobian(&robot_set_joint_state, robot_idx_in_set, None, link_idx_in_robot, &JacobianEndPoint::Global(witness_points.0.clone()), None, JacobianMode::Translational).expect("error");
+                    jacobian_option_pair[0] = Some(jacobian);
+                }
+                _ => { }
+            }
+            match signatures.1 {
+                GeometricShapeSignature::RobotSetLink { robot_idx_in_set, link_idx_in_robot, .. } => {
+                    let jacobian = robot_set.robot_set_kinematics_module().compute_jacobian(&robot_set_joint_state, robot_idx_in_set, None, link_idx_in_robot, &JacobianEndPoint::Global(witness_points.1.clone()), None, JacobianMode::Translational).expect("error");
+                    jacobian_option_pair[1] = Some(jacobian);
+                }
+                _ => { }
+            }
+
+            jacobian_option_pairs.push(jacobian_option_pair);
+        }
+
+    let x_0 = witness_points_collection.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance {
+        a_max,
+        shape_collection: robot_geometric_shape_scene.shape_collection()
+    }, loss_function, aggregator);
+
+    let num_dofs = robot_set_joint_state.concatenated_state().len();
+    let mut out_vec = DVector::zeros(num_dofs);
+    for dof_idx in 0..num_dofs {
+        let mut robot_set_joint_state_dvec = DVector::<f64>::zeros(num_dofs);
+        robot_set_joint_state_dvec[dof_idx] += FD_PERTURBATION;
+
+        let mut witness_points_collection_h = WitnessPointsCollection::new();
+
+        for (wp_idx, wp) in witness_points_collection.collection().iter().enumerate() {
+            let jacobian_option_pair = &jacobian_option_pairs[wp_idx];
+
+            let jacobian_option0 = &jacobian_option_pair[0];
+            let jacobian_option1 = &jacobian_option_pair[1];
+
+            let adjusted_point0 = if let Some(jacobian0) = jacobian_option0 {
+                let delta_x = jacobian0 * &robot_set_joint_state_dvec;
+                &delta_x + &wp.witness_points().0
+            } else {
+                wp.witness_points().0.clone()
+            };
+
+            let adjusted_point1 = if let Some(jacobian1) = jacobian_option1 {
+                let delta_x = jacobian1 * &robot_set_joint_state_dvec;
+                &delta_x + &wp.witness_points().1
+            } else {
+                wp.witness_points().1.clone()
+            };
+
+            let mut adjusted_signed_distance = (&adjusted_point0 - &adjusted_point1).norm();
+            if wp.signed_distance() < 0.0 { adjusted_signed_distance *= -1.0; }
+
+            witness_points_collection_h.insert(WitnessPoints::new(adjusted_signed_distance, (adjusted_point0, adjusted_point1), wp.shape_signatures().clone(), WitnessPointsType::GroundTruth));
+        }
+
+        let x_h = witness_points_collection_h.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance {
+            a_max,
+            shape_collection: robot_geometric_shape_scene.shape_collection()
+        }, loss_function, aggregator);
+
+        let f_h = (-x_0 + x_h) / FD_PERTURBATION;
+        out_vec[dof_idx] = f_h;
+    }
+
+    out_vec
+}
+
+/*
+#[derive(Clone)]
 pub struct OTFRobotSetCollisionProximityQuery {
-    robot_set_collision_proximity_options: RobotSetCollisionProximityOptions,
+    robot_set_collision_proximity_options: RobotSetCollisionProximityParams,
     robot_set_collision_proximity_gradient_fd_mode: RobotSetCollisionProximityGradientFDMode
 }
 impl OTFRobotSetCollisionProximityQuery {
-    pub fn new(robot_set_collision_proximity_options: RobotSetCollisionProximityOptions,
+    pub fn new(robot_set_collision_proximity_options: RobotSetCollisionProximityParams,
                robot_set_collision_proximity_gradient_mode: RobotSetCollisionProximityGradientFDMode) -> Self {
         Self {
             robot_set_collision_proximity_options,
             robot_set_collision_proximity_gradient_fd_mode: robot_set_collision_proximity_gradient_mode
         }
     }
-    pub fn compare_fd_derivative_modes(&self, init_state: &OptimaTensor, num_dofs: usize, num_calls: usize, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
+    pub fn compare_fd_derivative_modes(&self, init_state: &OptimaTensor, num_calls: usize, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
+        let num_dofs = init_state.unwrap_vector().len();
+
         let mut rand_inputs = vec![];
         rand_inputs.push(init_state.clone());
         for i in 0..num_calls {
@@ -745,8 +997,8 @@ impl OTFRobotSetCollisionProximityQuery {
     fn call_raw_proxima_r_fixed_at_1(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let new_proximity_options = match &self.robot_set_collision_proximity_options {
-            RobotSetCollisionProximityOptions::Proxima { budget, r: _, d_max, a_max, loss_function } => {
-                RobotSetCollisionProximityOptions::Proxima {
+            RobotSetCollisionProximityParams::Proxima { budget, r: _, d_max, a_max, loss_function } => {
+                RobotSetCollisionProximityParams::Proxima {
                     budget: budget.clone(),
                     r: 1.0,
                     d_max: *d_max,
@@ -754,12 +1006,12 @@ impl OTFRobotSetCollisionProximityQuery {
                     loss_function: loss_function.clone()
                 }
             }
-            RobotSetCollisionProximityOptions::BVHAABB { .. } => { self.robot_set_collision_proximity_options.clone() }
-            RobotSetCollisionProximityOptions::NaiveIteration { .. } => { self.robot_set_collision_proximity_options.clone() }
+            RobotSetCollisionProximityParams::BVHAABB { .. } => { self.robot_set_collision_proximity_options.clone() }
+            RobotSetCollisionProximityParams::NaiveIteration { .. } => { self.robot_set_collision_proximity_options.clone() }
         };
 
         let signatures = vec![OTFMutVarsObjectType::WitnessPointsCollection];
-        let params = vec![OTFMutVarsParams::RobotSetCollisionAvoidOptions(&new_proximity_options)];
+        let params = vec![OTFMutVarsParams::RobotSetCollisionAvoidParams(&new_proximity_options), OTFMutVarsParams::None];
         let recompute_var_ifs = vec![RecomputeVarIf::Always];
         let vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, &session_key);
         let witness_points_collection = vars[0].unwrap_witness_points_collection();
@@ -793,8 +1045,8 @@ impl OTFRobotSetCollisionProximityQuery {
         let session_key = mut_vars.register_session(input);
 
         let new_proximity_options = match &self.robot_set_collision_proximity_options {
-            RobotSetCollisionProximityOptions::Proxima { budget, r: _, d_max, a_max, loss_function } => {
-                RobotSetCollisionProximityOptions::Proxima {
+            RobotSetCollisionProximityParams::Proxima { budget, r: _, d_max, a_max, loss_function } => {
+                RobotSetCollisionProximityParams::Proxima {
                     budget: budget.clone(),
                     r: 1.0,
                     d_max: *d_max,
@@ -802,11 +1054,11 @@ impl OTFRobotSetCollisionProximityQuery {
                     loss_function: loss_function.clone()
                 }
             }
-            RobotSetCollisionProximityOptions::BVHAABB { .. } => { self.robot_set_collision_proximity_options.clone() }
-            RobotSetCollisionProximityOptions::NaiveIteration { .. } => { self.robot_set_collision_proximity_options.clone() }
+            RobotSetCollisionProximityParams::BVHAABB { .. } => { self.robot_set_collision_proximity_options.clone() }
+            RobotSetCollisionProximityParams::NaiveIteration { .. } => { self.robot_set_collision_proximity_options.clone() }
         };
         let signatures = vec![OTFMutVarsObjectType::WitnessPointsCollection];
-        let params = vec![OTFMutVarsParams::RobotSetCollisionAvoidOptions(&new_proximity_options)];
+        let params = vec![OTFMutVarsParams::RobotSetCollisionAvoidParams(&new_proximity_options)];
         let recompute_var_ifs = vec![RecomputeVarIf::Always];
         let vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, &session_key);
         let witness_points_collection = vars[0].unwrap_witness_points_collection();
@@ -894,7 +1146,7 @@ impl OptimaTensorFunction for OTFRobotSetCollisionProximityQuery {
 
     fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
         let signatures = vec![OTFMutVarsObjectType::WitnessPointsCollection];
-        let params = vec![OTFMutVarsParams::RobotSetCollisionAvoidOptions(&self.robot_set_collision_proximity_options)];
+        let params = vec![OTFMutVarsParams::RobotSetCollisionAvoidParams(&self.robot_set_collision_proximity_options), OTFMutVarsParams::None];
         let recompute_var_ifs = vec![RecomputeVarIf::IsAnyNewInput];
         let vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
         let witness_points_collection = vars[0].unwrap_witness_points_collection();
@@ -919,22 +1171,22 @@ impl OptimaTensorFunction for OTFRobotSetCollisionProximityQuery {
 }
 
 #[derive(Clone, Debug)]
-pub enum RobotSetCollisionProximityOptions {
+pub enum RobotSetCollisionProximityParams {
     Proxima { budget: ProximaBudget, r: f64, d_max: f64, a_max: f64, loss_function: SignedDistanceLossFunction },
     BVHAABB { d_max: f64, a_max: f64, loss_function: SignedDistanceLossFunction },
     NaiveIteration { d_max: f64, a_max: f64, loss_function: SignedDistanceLossFunction }
 }
-impl RobotSetCollisionProximityOptions {
+impl RobotSetCollisionProximityParams {
     pub fn compute_robot_proximity_output_sum(&self, witness_points_collection: &WitnessPointsCollection, robot_geometric_shape_scene: &RobotGeometricShapeScene) -> f64 {
         let out_sum = match self {
-            RobotSetCollisionProximityOptions::Proxima {  a_max, loss_function, .. } => {
-                witness_points_collection.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance { a_max: *a_max, shape_collection: robot_geometric_shape_scene.shape_collection() }, loss_function)
+            RobotSetCollisionProximityParams::Proxima {  a_max, loss_function, .. } => {
+                witness_points_collection.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance { a_max: *a_max, shape_collection: robot_geometric_shape_scene.shape_collection() }, loss_function, &SignedDistanceAggregator::PNorm { p: 10.0 })
             }
-            RobotSetCollisionProximityOptions::BVHAABB { a_max, loss_function, .. } => {
-                witness_points_collection.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance { a_max: *a_max, shape_collection: robot_geometric_shape_scene.shape_collection() }, loss_function)
+            RobotSetCollisionProximityParams::BVHAABB { a_max, loss_function, .. } => {
+                witness_points_collection.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance { a_max: *a_max, shape_collection: robot_geometric_shape_scene.shape_collection() }, loss_function, &SignedDistanceAggregator::PNorm { p: 10.0 })
             }
-            RobotSetCollisionProximityOptions::NaiveIteration { a_max, loss_function, .. } => {
-                witness_points_collection.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance { a_max: *a_max, shape_collection: robot_geometric_shape_scene.shape_collection() }, loss_function)
+            RobotSetCollisionProximityParams::NaiveIteration { a_max, loss_function, .. } => {
+                witness_points_collection.compute_proximity_output_sum(&ProximityOutputSumMode::AverageSignedDistance { a_max: *a_max, shape_collection: robot_geometric_shape_scene.shape_collection() }, loss_function, &SignedDistanceAggregator::PNorm { p: 10.0 })
             }
         };
         out_sum
@@ -946,5 +1198,21 @@ pub enum RobotSetCollisionProximityGradientFDMode {
     RawFiniteDifference,
     JacobianFiniteDifference,
 }
+
+#[derive(Clone, Debug)]
+pub enum RobotSetCollisionProximityAggregationMode {
+    SimpleSum,
+    PNorm { p: f64 }
+}
+impl RobotSetCollisionProximityAggregationMode {
+    pub fn compute_robot_proximity_output_value(&self,
+                                                witness_points_collection: &WitnessPointsCollection,
+                                                robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                                a_max: f64,
+                                                loss_function: &SignedDistanceLossFunction) -> f64 {
+        todo!()
+    }
+}
+*/
 
 

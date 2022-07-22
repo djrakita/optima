@@ -433,6 +433,41 @@ impl OptimaTensorFunction for OTFTensorAveragedL1Norm {
 }
 
 #[derive(Clone)]
+pub struct OTFTensorPNorm { pub p: f64 }
+impl OptimaTensorFunction for OTFTensorPNorm {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let vectorized = input.vectorized_data();
+        let mut out = 0.0;
+
+        for v in vectorized { out += v.abs().powf(self.p); }
+        out = out.powf(1.0 / self.p);
+
+        Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(out)))
+    }
+
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+        let vectorized = input.vectorized_data();
+        let mut out = OptimaTensor::new_zeros(input.dimensions());
+        let mut out_vectorized = out.vectorized_data_mut();
+
+        let mut prod = 0.0;
+        for v in vectorized { prod += v.abs().powf(self.p); }
+        prod = prod.powf(1.0/self.p - 1.0);
+
+        for (i, v) in vectorized.iter().enumerate() {
+            // out_vectorized[i] = v.powf(self.p - 1.0) * prod;
+            out_vectorized[i] = *v * v.abs().powf(self.p - 2.0) * prod;
+        }
+
+        Ok(OTFResult::Complete(out))
+    }
+}
+
+#[derive(Clone)]
 pub struct OTFTensorLinfNorm;
 impl OptimaTensorFunction for OTFTensorLinfNorm {
     fn output_dimensions(&self) -> Vec<usize> {

@@ -21,7 +21,7 @@ use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PosePy, O
 use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, BVHCombinableShapeAABB, GeometricShape, GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutputPy};
-use crate::utils::utils_shape_geometry::shape_collection::{BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaPairwiseMode, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionBVHAABB, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceLossFunction};
+use crate::utils::utils_shape_geometry::shape_collection::{BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaPairwiseMode, ProximaProximityOutput, ProximaSceneFilterOutput, ShapeCollection, ShapeCollectionBVH, ShapeCollectionBVHAABB, ShapeCollectionInputPoses, ShapeCollectionQuery, ShapeCollectionQueryList, ShapeCollectionQueryPairsList, SignedDistanceAggregator, SignedDistanceLossFunction};
 use crate::utils::utils_shape_geometry::trimesh_engine::ConvexDecompositionResolution;
 use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
@@ -590,11 +590,12 @@ impl RobotGeometricShapeScene {
                                    d_max: f64,
                                    a_max: f64,
                                    loss_function: SignedDistanceLossFunction,
+                                   aggregator: SignedDistanceAggregator,
                                    r: f64,
                                    proxima_budget: ProximaBudget,
                                    inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaProximityOutput, OptimaError> {
         let poses = self.recover_poses(robot_set_joint_state, env_obj_pose_constraint_group_input)?;
-        return self.shape_collection.proxima_proximity_query(&poses, proxima_engine, d_max, a_max, loss_function, r, proxima_budget, inclusion_list);
+        return self.shape_collection.proxima_proximity_query(&poses, proxima_engine, d_max, a_max, loss_function, aggregator, r, proxima_budget, inclusion_list);
     }
     pub fn proxima_scene_filter(&self,
                                    robot_set_joint_state: &RobotSetJointState,
@@ -739,6 +740,7 @@ impl RobotGeometricShapeScenePy {
                                       d_max: f64,
                                       a_max: f64,
                                       loss_function: &str,
+                                      aggregator: &str,
                                       r: f64,
                                       proxima_budget: &str) -> ProximaProximityOutput {
         let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
@@ -748,7 +750,9 @@ impl RobotGeometricShapeScenePy {
             proxima_engine,
             d_max,
             a_max,
-            SignedDistanceLossFunction::from_ron_string(loss_function).expect("error"), r,
+            SignedDistanceLossFunction::from_ron_string(loss_function).expect("error"),
+            SignedDistanceAggregator::from_ron_string(aggregator).expect("error"),
+            r,
             ProximaBudget::from_ron_string(proxima_budget).expect("error"), &None).expect("error");
         return res;
     }

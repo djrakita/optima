@@ -2,7 +2,6 @@ use std::ops::{Add, Div, Mul, Sub};
 use nalgebra::{DMatrix, DVector};
 use ndarray::{Array, ArrayD};
 use serde::{Serialize, Deserialize};
-use crate::optima_tensor_function::robotics_functions::RobotSetCollisionProximityOptions;
 use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set::RobotSet;
 use crate::robot_set_modules::robot_set_kinematics_module::{RobotSetFKDOFPerturbationsResult, RobotSetFKResult};
@@ -10,12 +9,13 @@ use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, Robot
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType, SimpleDataType, WindowMemoryContainer};
+use crate::utils::utils_math::interpolation::{LinearInterpolationMode, SimpleInterpolationUtils};
 use crate::utils::utils_robot::robot_generic_structures::{TimedGenericRobotJointStateWindowMemoryContainer};
 use crate::utils::utils_robot::robot_set_link_specification::RobotLinkTransformSpecificationCollection;
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShapeAABB, LogCondition, StopCondition};
-use crate::utils::utils_shape_geometry::shape_collection::{BVHVisit, ProximaEngine, ShapeCollectionBVH, WitnessPointsCollection};
+use crate::utils::utils_shape_geometry::shape_collection::{BVHVisit, ProximaEngine, ProximaSceneFilterOutput, ShapeCollectionBVH, SignedDistanceAggregator, WitnessPointsCollection};
 
 pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
     fn output_dimensions(&self) -> Vec<usize>;
@@ -193,6 +193,56 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
     }
     fn derivative4_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
         OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative4, input_dimensions, immut_vars, mut_vars, num_inputs);
+    }
+
+    fn empirical_convexity_or_concavity_check_via_hessian(&self, input_dimensions: Vec<usize>, num_checks: usize, c: ConvexOrConcave, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
+        assert_eq!(self.output_dimensions().len(), 0, "can only check convexity or concavity with scalar functions.");
+
+        for i in 0..num_checks {
+            let r = OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone()));
+            let hessian_res = self.derivative2(&r, immut_vars, mut_vars, None).expect("error");
+            let hessian = hessian_res.unwrap_tensor();
+            let determinant = match hessian {
+                OptimaTensor::Scalar(o) => { o.value[0] }
+                OptimaTensor::Vector(_) => { panic!("wrong type.") }
+                OptimaTensor::Matrix(o) => { o.matrix.determinant() }
+                OptimaTensor::TensorND(_) => { panic!("wrong type.") }
+            };
+            let success = match &c {
+                ConvexOrConcave::Convex => {
+                    if determinant >= -0.000001 { true } else { false }
+                }
+                ConvexOrConcave::Concave => {
+                    if determinant <= 0.000001 { true } else { false }
+                }
+            };
+
+            match success {
+                true => {
+                    optima_print(&format!("Check {} was a success.  Determinant: {}", i, determinant), PrintMode::Println, PrintColor::Green, true);
+                }
+                false => {
+                    match &c {
+                        ConvexOrConcave::Convex => {
+                            optima_print(&format!("Function is not convex.  Determinant: {}", determinant), PrintMode::Println, PrintColor::Red, true);
+                        }
+                        ConvexOrConcave::Concave => {
+                            optima_print(&format!("Function is not concave.  Determinant: {}", determinant), PrintMode::Println, PrintColor::Red, true);
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+
+        match &c {
+                ConvexOrConcave::Convex => {
+                    optima_print(&format!("Based on this empirical test, the function appears to be convex."), PrintMode::Println, PrintColor::Green, true);
+                }
+                ConvexOrConcave::Concave => {
+                    optima_print(&format!("Based on this empirical test, the function appears to be concave."), PrintMode::Println, PrintColor::Green, true);
+                }
+            }
     }
 }
 pub struct OptimaTensorFunctionGenerics;
@@ -443,6 +493,12 @@ pub enum OTFDimension {
     Fixed(usize)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConvexOrConcave {
+    Convex,
+    Concave
+}
+
 #[derive(Clone, Debug)]
 pub enum OTFResult {
     Unimplemented, Complete(OptimaTensor)
@@ -613,6 +669,9 @@ impl OptimaTensor {
             OptimaTensor::Matrix(t) => { t.dimensions() }
             OptimaTensor::TensorND(t) => { t.dimensions() }
         }
+    }
+    pub fn linearly_interpolate(&self, other: &OptimaTensor, mode: &LinearInterpolationMode) -> Vec<OptimaTensor> {
+        linearly_interpolate_optima_tensors(self, other, mode)
     }
     pub fn dot(&self, other: &OptimaTensor) -> OptimaTensor {
         let mut out = match self {
@@ -1694,6 +1753,29 @@ pub enum OptimaTensorSliceScope {
     Fixed(usize)
 }
 
+pub fn linearly_interpolate_optima_tensors(a: &OptimaTensor, b: &OptimaTensor, mode: &LinearInterpolationMode) -> Vec<OptimaTensor> {
+    let a_vectorized = a.vectorized_data();
+    let b_vectorized = b.vectorized_data();
+
+    assert_eq!(a_vectorized.len(), b_vectorized.len());
+
+    let a_dvec = DVector::from_column_slice(a_vectorized);
+    let b_dvec = DVector::from_column_slice(b_vectorized);
+
+    let dvecs = SimpleInterpolationUtils::linear_interpolation(&a_dvec, &b_dvec, mode);
+
+    let mut out_vec = vec![];
+
+    for d in &dvecs {
+        let mut o = OptimaTensor::new_zeros(a.dimensions());
+        let v = o.vectorized_data_mut();
+        for (i, dd) in d.iter().enumerate() { v[i] = *dd; }
+        out_vec.push(o);
+    }
+
+    out_vec
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2089,25 +2171,34 @@ impl RecomputeVarIf {
 }
 
 #[derive(Clone, Debug)]
-pub enum OTFMutVarsParams<'a> {
+pub enum OTFMutVarsParams {
     None,
     SimpleDataType(SimpleDataType),
-    RobotSetCollisionAvoidOptions(&'a RobotSetCollisionProximityOptions),
-    VecOfParams(Vec<OTFMutVarsParams<'a>>)
+    // RobotSetCollisionAvoidParams(&'a RobotSetCollisionProximityParams),
+    // ProximaSceneFilterOutput(&'a ProximaSceneFilterOutput),
+    VecOfParams(Vec<OTFMutVarsParams>)
 }
-impl<'a> OTFMutVarsParams<'a> {
+impl OTFMutVarsParams {
     pub fn unwrap_simple_data_type(&self) -> &SimpleDataType {
         return match self {
             OTFMutVarsParams::SimpleDataType(r) => { r }
             _ => { panic!("wrong type") }
         }
     }
-    pub fn unwrap_robot_set_collision_avoid_options(&self) -> &RobotSetCollisionProximityOptions {
+    /*
+    pub fn unwrap_robot_set_collision_avoid_params(&self) -> &RobotSetCollisionProximityParams {
         return match self {
-            OTFMutVarsParams::RobotSetCollisionAvoidOptions(r) => { r }
+            OTFMutVarsParams::RobotSetCollisionAvoidParams(r) => { r }
             _ => { panic!("wrong type") }
         }
     }
+    pub fn unwrap_proxima_scene_filter_output(&self) -> &ProximaSceneFilterOutput {
+        return match self {
+            OTFMutVarsParams::ProximaSceneFilterOutput(r) => { r }
+            _ => { panic!("wrong type") }
+        }
+    }
+    */
     pub fn unwrap_vec_of_params(&self) -> &Vec<OTFMutVarsParams> {
         return match self {
             OTFMutVarsParams::VecOfParams(r) => { r }
@@ -2120,9 +2211,10 @@ impl<'a> OTFMutVarsParams<'a> {
 pub enum OTFMutVarsObject {
     RobotSetFKResult(RobotSetFKResult),
     RobotSetFKDOFPerturbationsResult(RobotSetFKDOFPerturbationsResult),
-    WitnessPointsCollection(WitnessPointsCollection),
+    // WitnessPointsCollection(WitnessPointsCollection),
     ProximaEngine(ProximaEngine),
-    BVHAABB(ShapeCollectionBVH<BVHCombinableShapeAABB>)
+    BVHAABB(ShapeCollectionBVH<BVHCombinableShapeAABB>),
+    // ProximaSceneFilterOutput(ProximaSceneFilterOutput)
 }
 impl OTFMutVarsObject {
     pub fn unwrap_robot_set_fk_result(&self) -> &RobotSetFKResult {
@@ -2137,6 +2229,7 @@ impl OTFMutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
+    /*
     pub fn unwrap_witness_points_collection(&self) -> &WitnessPointsCollection {
         return match self {
             OTFMutVarsObject::WitnessPointsCollection(r) => { r }
@@ -2149,6 +2242,7 @@ impl OTFMutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
+    */
     pub fn unwrap_proxima_engine(&self) -> &ProximaEngine {
         return match self {
             OTFMutVarsObject::ProximaEngine(r) => { r }
@@ -2173,15 +2267,24 @@ impl OTFMutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
+    /*
+    pub fn unwrap_proxima_scene_filter_output(&self) -> &ProximaSceneFilterOutput {
+        return match self {
+            OTFMutVarsObject::ProximaSceneFilterOutput(r) => { r }
+            _ => { panic!("wrong type.") }
+        }
+    }
+    */
 }
 impl EnumMapToType<OTFMutVarsObjectType> for OTFMutVarsObject {
     fn map_to_type(&self) -> OTFMutVarsObjectType {
         match self {
             OTFMutVarsObject::RobotSetFKResult(_) => { OTFMutVarsObjectType::RobotSetFKResult }
             OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(_) => { OTFMutVarsObjectType::RobotSetFKDOFPerturbationsResult }
-            OTFMutVarsObject::WitnessPointsCollection(_) => { OTFMutVarsObjectType::WitnessPointsCollection }
+           //  OTFMutVarsObject::WitnessPointsCollection(_) => { OTFMutVarsObjectType::WitnessPointsCollection }
             OTFMutVarsObject::ProximaEngine(_) => { OTFMutVarsObjectType::ProximaEngine }
             OTFMutVarsObject::BVHAABB(_) => { OTFMutVarsObjectType::BVHAABB }
+            // OTFMutVarsObject::ProximaSceneFilterOutput(_) => { OTFMutVarsObjectType::ProximaSceneFilterOutput }
         }
     }
 }
@@ -2190,9 +2293,10 @@ impl EnumMapToType<OTFMutVarsObjectType> for OTFMutVarsObject {
 pub enum OTFMutVarsObjectType {
     RobotSetFKResult,
     RobotSetFKDOFPerturbationsResult,
-    WitnessPointsCollection,
+    // WitnessPointsCollection,
     ProximaEngine,
-    BVHAABB
+    BVHAABB,
+    // ProximaSceneFilterOutput
 }
 impl OTFMutVarsObjectType {
     pub fn compute_var(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, params: &Vec<OTFMutVarsParams>) -> OTFMutVarsObject {
@@ -2224,24 +2328,31 @@ impl OTFMutVarsObjectType {
 
                 OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(res)
             }
+            /*
             OTFMutVarsObjectType::WitnessPointsCollection => {
-                let robot_set_collision_avoid_options = params[0].unwrap_robot_set_collision_avoid_options();
+                let robot_set_collision_avoid_options = params[0].unwrap_robot_set_collision_avoid_params();
                 let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
                 let robot_set = immut_vars.ref_robot_set();
                 let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
 
                 let witness_points_collection = match robot_set_collision_avoid_options {
-                    RobotSetCollisionProximityOptions::Proxima { budget, r, d_max, a_max, loss_function } => {
+                    RobotSetCollisionProximityParams::Proxima { budget, r, d_max, a_max, loss_function } => {
+                        let proxima_scene_filter_output_option = match params[1] {
+                            OTFMutVarsParams::None => { None }
+                            OTFMutVarsParams::ProximaSceneFilterOutput(proxima_scene_filter_output) => { Some(proxima_scene_filter_output) }
+                            _ => { panic!("wrong type.  Must be either None or ProximaSceneFilterOutput.") }
+                        };
+
                         let signatures = vec![OTFMutVarsObjectType::ProximaEngine];
                         let recompute_var_ifs = vec![RecomputeVarIf::Never];
                         let params = vec![OTFMutVarsParams::None];
                         let mut vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
                         let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
-                        let res = robot_geometric_shape_scene.proxima_proximity_query(&robot_set_joint_state, None, proxima_engine, *d_max, *a_max, loss_function.clone(), *r, budget.clone(), &None).expect("error");
+                        let res = robot_geometric_shape_scene.proxima_proximity_query(&robot_set_joint_state, None, proxima_engine, *d_max, *a_max, loss_function.clone(), SignedDistanceAggregator::SimpleSum, *r, budget.clone(), &None, &proxima_scene_filter_output_option).expect("error");
                         let witness_points_collection = res.output_witness_points_collection();
                         witness_points_collection
                     }
-                    RobotSetCollisionProximityOptions::BVHAABB { d_max, .. } => {
+                    RobotSetCollisionProximityParams::BVHAABB { d_max, .. } => {
                         let signatures = vec![OTFMutVarsObjectType::BVHAABB];
                         let recompute_var_ifs = vec![RecomputeVarIf::Never];
                         let params = vec![OTFMutVarsParams::None];
@@ -2258,7 +2369,7 @@ impl OTFMutVarsObjectType {
                         let witness_points_collection = res.output_witness_points_collection();
                         witness_points_collection
                     }
-                    RobotSetCollisionProximityOptions::NaiveIteration { d_max, .. } => {
+                    RobotSetCollisionProximityParams::NaiveIteration { d_max, .. } => {
                         let input = RobotGeometricShapeSceneQuery::Contact {
                             robot_set_joint_state: &robot_set_joint_state,
                             env_obj_pose_constraint_group_input: None,
@@ -2272,6 +2383,7 @@ impl OTFMutVarsObjectType {
                 };
                 OTFMutVarsObject::WitnessPointsCollection(witness_points_collection)
             }
+            */
             OTFMutVarsObjectType::ProximaEngine => {
                 let object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
                 let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
@@ -2288,6 +2400,28 @@ impl OTFMutVarsObjectType {
                 let bvh = robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, None, 2);
                 OTFMutVarsObject::BVHAABB(bvh)
             }
+            /*
+            OTFMutVarsObjectType::ProximaSceneFilterOutput => {
+                let signatures = vec![OTFMutVarsObjectType::ProximaEngine];
+                let params = vec![OTFMutVarsParams::None];
+                let recompute_var_ifs = vec![RecomputeVarIf::Never];
+                let mut vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
+                let proxima_engine = vars[0].unwrap_proxima_engine_mut();
+
+                let robot_set_collision_avoid_options = params[0].unwrap_robot_set_collision_avoid_params();
+                let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+                let robot_set = immut_vars.ref_robot_set();
+                let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+
+                match robot_set_collision_avoid_options {
+                    RobotSetCollisionProximityParams::Proxima { budget, r, d_max, a_max, loss_function } => {
+                        let res = robot_geometric_shape_scene.proxima_scene_filter(&robot_set_joint_state, None, proxima_engine, *d_max, *a_max, loss_function.clone(), *r, &None).expect("error");
+                        return OTFMutVarsObject::ProximaSceneFilterOutput(res);
+                    }
+                    _ => { panic!("wrong type.") }
+                }
+            }
+            */
         }
     }
 }
