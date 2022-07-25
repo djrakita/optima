@@ -9,7 +9,7 @@ use itertools::izip;
 use crate::utils::utils_combinations::comb;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
-use crate::utils::utils_generic_data_structures::{MemoryCell, Mixable, SquareArray2D};
+use crate::utils::utils_generic_data_structures::{AveragingFloat, MemoryCell, Mixable, SquareArray2D};
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_rotation::OptimaRotation;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3Pose;
@@ -271,6 +271,7 @@ impl ShapeCollection {
             output.ground_truth_check_signatures.push(s.clone());
         }
 
+        // let (grid, average_proxima_loop_time) = proxima_engine.grid_and_average_proxima_loop_time_mut_refs();
         let grid = proxima_engine.grid_mut_ref();
         let poses = &poses.poses;
 
@@ -293,29 +294,40 @@ impl ShapeCollection {
 
             maximum_possible_error = (curr_worst_case_proximity_output_value - aggregated_output).abs();
 
+            let shape_idx1 = single_comparison_output.shape_idxs.0;
+            let shape_idx2 = single_comparison_output.shape_idxs.1;
+            let data_cell_mut = grid.data_cell_mut(shape_idx1, shape_idx2)?.as_mut().unwrap();
+
             match proxima_budget {
                 ProximaBudget::Accuracy(budget) => {
                     if maximum_possible_error < budget { break 'f; }
                 }
                 ProximaBudget::TimeInMicroseconds(budget) => {
                     let duration = start.elapsed();
-                    if duration.as_micros() > budget { break 'f; }
+                    let average_time = data_cell_mut.average_computation_time_mut_ref();
+                    if average_time.counter() > 0.0 {
+                        let average_distance_check_time = Duration::from_secs_f64(average_time.value());
+                        if duration.as_micros() + average_distance_check_time.as_micros() > budget {
+                            break 'f;
+                        }
+                    } else {
+                        if duration.as_micros() > budget { break 'f; }
+                    }
                 }
             }
 
             if single_comparison_output.ground_truth_check { continue; }
 
-            let shape_idx1 = single_comparison_output.shape_idxs.0;
-            let shape_idx2 = single_comparison_output.shape_idxs.1;
             let shape1 = &self.shapes[shape_idx1];
             let shape2 = &self.shapes[shape_idx2];
             let pose1 = poses[shape_idx1].as_ref().unwrap();
             let pose2 = poses[shape_idx2].as_ref().unwrap();
             let shape_average_distance = self.average_distances.data_cell(shape_idx1, shape_idx2)?.curr_value();
 
-            let data_cell_mut = grid.data_cell_mut(shape_idx1, shape_idx2)?.as_mut().unwrap();
-
+            let loop_start_time = instant::Instant::now();
             ProximaFunctions::proxima_ground_truth_check_and_update_block(data_cell_mut, shape1, pose1, shape2, pose2)?;
+            data_cell_mut.average_computation_time_mut_ref().add_new_value(loop_start_time.elapsed().as_secs_f64());
+
             single_comparison_output.ground_truth_check = true;
             output.ground_truth_check_signatures.push((shape1.signature().clone(), shape2.signature().clone()));
             let ground_truth_dis = match data_cell_mut {
@@ -331,6 +343,7 @@ impl ShapeCollection {
             // maximum_possible_error -= single_comparison_output.max_possible_loss_function_error;
             // output_sum -= single_comparison_output.approximate_distance_loss_with_cutoff;
             // output_sum += ground_truth_signed_distance_loss_with_cutoff;
+            // average_proxima_loop_time.add_new_value(loop_start_time.elapsed().as_secs_f64());
         }
 
         output.aggregated_output_value = aggregated_output;
@@ -1172,6 +1185,16 @@ impl ProximaPairwiseBlock {
             ProximaPairwiseBlock::SE3Displacement(block) => { block.initialized }
         }
     }
+    pub fn average_computation_time_mut_ref(&mut self) -> &mut AveragingFloat {
+        return match self {
+            ProximaPairwiseBlock::R3AndSO3Displacements(a) => {
+                &mut a.average_computation_time
+            }
+            ProximaPairwiseBlock::SE3Displacement(a) => {
+                &mut a.average_computation_time
+            }
+        }
+    }
 }
 impl Mixable for ProximaPairwiseBlock {
     fn mix(&self, _other: &Self) -> Self {
@@ -1194,7 +1217,8 @@ pub struct ProximaPairwiseBlockA {
     rotation_disp_j: OptimaRotation,
     translation_disp_j: f64,
     contact_j: ContactWrapper,
-    f: f64
+    f: f64,
+    average_computation_time: AveragingFloat
 }
 impl Mixable for ProximaPairwiseBlockA {
     /// Mixing doesn't really make sense for a ProximaPairwiseBlock, so this is just a dummy implementation
@@ -1214,7 +1238,8 @@ impl Default for ProximaPairwiseBlockA {
             rotation_disp_j: OptimaRotation::new_unit_quaternion_identity(),
             translation_disp_j: 0.0,
             contact_j: ContactWrapper::default(),
-            f: 0.0
+            f: 0.0,
+            average_computation_time: Default::default()
         }
     }
 }
@@ -1228,7 +1253,8 @@ pub struct ProximaPairwiseBlockB {
     b_transform_j: OptimaSE3Pose,
     transform_disp_j: OptimaSE3Pose,
     contact_j: ContactWrapper,
-    f: f64
+    f: f64,
+    average_computation_time: AveragingFloat
 }
 impl Mixable for ProximaPairwiseBlockB {
     /// Mixing doesn't really make sense for a ProximaPairwiseBlock, so this is just a dummy implementation
@@ -1247,7 +1273,8 @@ impl Default for ProximaPairwiseBlockB {
             b_transform_j: Default::default(),
             transform_disp_j: Default::default(),
             contact_j: ContactWrapper::default(),
-            f: 0.0
+            f: 0.0,
+            average_computation_time: Default::default()
         }
     }
 }
@@ -1390,8 +1417,8 @@ pub enum ProximaBudget {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SignedDistanceLossFunction {
-    GaussianHinge,
-    Hinge
+    Hinge,
+    GaussianHinge
 }
 impl SignedDistanceLossFunction {
     pub fn loss(&self, x: f64, cutoff: f64) -> f64 {
@@ -1419,7 +1446,7 @@ impl Default for SignedDistanceAggregator {
 }
 impl SignedDistanceAggregator {
     pub fn aggregate(&self, values_after_loss: &Vec<f64>) -> f64 {
-        assert!(values_after_loss.len() > 0);
+        if values_after_loss.len()  == 0 { return 0.0; }
 
         let mut out = 0.0;
 
@@ -1470,25 +1497,52 @@ impl WitnessPointsCollection {
     pub fn collection(&self) -> &Vec<WitnessPoints> {
         &self.collection
     }
-    pub fn compute_proximity_output_sum(&self, mode: &ProximityOutputSumMode, loss: &SignedDistanceLossFunction, aggregator: &SignedDistanceAggregator) -> f64 {
+    pub fn compute_proximity_output(&self, mode: &ProximityOutputMode, loss: &SignedDistanceLossFunction, aggregator: &SignedDistanceAggregator) -> f64 {
         let mut values_after_loss = vec![];
+        for (i, wp) in self.collection().iter().enumerate() {
+            values_after_loss.push(mode.get_value_after_loss(wp, loss));
+        }
+
+        /*
         match mode {
-            ProximityOutputSumMode::RawSignedDistance { d_max } => {
+            ProximityOutputMode::RawSignedDistance { d_max } => {
                 for wp in &self.collection {
                     // out_sum += loss.loss(wp.signed_distance, *d_max);
                     values_after_loss.push(loss.loss(wp.signed_distance, *d_max));
                 }
             }
-            ProximityOutputSumMode::AverageSignedDistance { a_max, shape_collection } => {
+            ProximityOutputMode::AverageSignedDistance { a_max, shape_collection } => {
                 for wp in &self.collection {
-                    let average_distance = shape_collection.average_distance_from_signatures(&wp.shape_signatures);
-                    // out_sum += loss.loss(wp.signed_distance / average_distance, *a_max);
-                    values_after_loss.push(loss.loss(wp.signed_distance / average_distance, *a_max));
+                    // let average_distance = shape_collection.average_distance_from_signatures(&wp.shape_signatures);
+                    // values_after_loss.push(loss.loss(wp.signed_distance / average_distance, *a_max));
                 }
             }
         }
-        // out_sum
+        */
+
         return aggregator.aggregate(&values_after_loss);
+    }
+    /// will be sorted greatest to least.  Returns the sorted values after loss as well.
+    pub fn sort_by_values_after_loss(&mut self, mode: ProximityOutputMode, loss: &SignedDistanceLossFunction) -> Vec<f64> {
+        let mut values_after_loss = vec![];
+        for wp in &self.collection { values_after_loss.push(mode.get_value_after_loss(wp, loss)); }
+        let mut p = permutation::sort_by(&values_after_loss, |x, y| y.partial_cmp(x).unwrap());
+        p.apply_slice_in_place(&mut self.collection);
+        p.apply_slice_in_place(&mut values_after_loss);
+        return values_after_loss;
+    }
+    pub fn cull_after_first_n(&mut self, n: usize) {
+        if self.collection.len() < n { return; }
+        else {
+            let mut collection = vec![];
+            for (idx, c) in self.collection.iter().enumerate() {
+                if idx >= n {
+                    self.collection = collection;
+                    return;
+                }
+                collection.push(c.clone());
+            }
+        }
     }
 }
 #[cfg(not(target_arch = "wasm32"))]
@@ -1536,9 +1590,22 @@ pub enum WitnessPointsType {
 }
 
 #[derive(Clone, Debug)]
-pub enum ProximityOutputSumMode<'a> {
+pub enum ProximityOutputMode<'a> {
     RawSignedDistance { d_max: f64 },
     AverageSignedDistance { a_max: f64, shape_collection: &'a ShapeCollection }
+}
+impl <'a> ProximityOutputMode<'a> {
+    pub fn get_value_after_loss(&self, witness_points: &WitnessPoints, loss: &SignedDistanceLossFunction) -> f64 {
+        return match self {
+            ProximityOutputMode::RawSignedDistance { d_max } => {
+                loss.loss(witness_points.signed_distance, *d_max)
+            }
+            ProximityOutputMode::AverageSignedDistance { a_max, shape_collection } => {
+                let average_distance = shape_collection.average_distance_from_signatures(&witness_points.shape_signatures);
+                loss.loss(witness_points.signed_distance / average_distance, *a_max)
+            }
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

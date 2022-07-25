@@ -431,6 +431,9 @@ impl AveragingFloat {
         self.value = self.total_sum / self.counter;
     }
     pub fn value(&self) -> f64 { self.value }
+    pub fn counter(&self) -> f64 {
+        self.counter
+    }
 }
 impl Default for AveragingFloat {
     fn default() -> Self {

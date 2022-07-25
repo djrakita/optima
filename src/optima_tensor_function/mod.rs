@@ -2,6 +2,7 @@ use std::ops::{Add, Div, Mul, Sub};
 use nalgebra::{DMatrix, DVector};
 use ndarray::{Array, ArrayD};
 use serde::{Serialize, Deserialize};
+use crate::optima_tensor_function::robotics_functions::RobotCollisionProximityBVHMode;
 use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set::RobotSet;
 use crate::robot_set_modules::robot_set_kinematics_module::{RobotSetFKDOFPerturbationsResult, RobotSetFKResult};
@@ -147,28 +148,28 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         return combined_dimensions;
     }
 
-    fn diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
+    fn diagnostics(&self, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
         optima_print_new_line();
         optima_print("Call Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.call_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 1000);
+        self.call_diagnostics(input_sampling_mode.clone(), immut_vars, mut_vars, 1000);
         optima_print_new_line();
         optima_print("Derivative Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 500);
+        self.derivative_diagnostics(input_sampling_mode.clone(), immut_vars, mut_vars, 500);
         optima_print_new_line();
         optima_print("Derivative2 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative2_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 50);
+        self.derivative2_diagnostics(input_sampling_mode.clone(), immut_vars, mut_vars, 50);
         optima_print_new_line();
         optima_print("Derivative3 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative3_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 5);
+        self.derivative3_diagnostics(input_sampling_mode.clone(), immut_vars, mut_vars, 5);
         optima_print_new_line();
         optima_print("Derivative4 Diagnostics ---> ", PrintMode::Println, PrintColor::Blue, true);
-        self.derivative4_diagnostics(input_dimensions.clone(), immut_vars, mut_vars, 5);
+        self.derivative4_diagnostics(input_sampling_mode.clone(), immut_vars, mut_vars, 5);
     }
-    fn call_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize) {
+    fn call_diagnostics(&self, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize) {
         let mut call_time = AveragingFloat::new();
 
-        for _ in 0..num_calls {
-            let input = OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone()));
+        let inputs = OptimaTensorFunctionGenerics::diagnostics_input_sampling(num_calls, input_sampling_mode);
+        for input in inputs {
             let start = instant::Instant::now();
             self.call( &input, immut_vars, mut_vars).expect("error");
             let duration = start.elapsed();
@@ -180,19 +181,18 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone {
         optima_print(&format!("Call time over {} inputs is ", num_calls), PrintMode::Print, PrintColor::None, false);
         optima_print(&format!("{:?}", call_time_as_duration), PrintMode::Print, PrintColor::Green, true);
         optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
-
     }
-    fn derivative_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative, input_dimensions, immut_vars, mut_vars, num_inputs);
+    fn derivative_diagnostics(&self, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative, input_sampling_mode, immut_vars, mut_vars, num_inputs);
     }
-    fn derivative2_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative2, input_dimensions, immut_vars, mut_vars, num_inputs);
+    fn derivative2_diagnostics(&self, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative2, input_sampling_mode, immut_vars, mut_vars, num_inputs);
     }
-    fn derivative3_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative3, input_dimensions, immut_vars, mut_vars, num_inputs);
+    fn derivative3_diagnostics(&self, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative3, input_sampling_mode, immut_vars, mut_vars, num_inputs);
     }
-    fn derivative4_diagnostics(&self, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
-        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative4, input_dimensions, immut_vars, mut_vars, num_inputs);
+    fn derivative4_diagnostics(&self, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_inputs: usize) {
+        OptimaTensorFunctionGenerics::derivative_diagnostics_generic(self, Self::derivative4, input_sampling_mode, immut_vars, mut_vars, num_inputs);
     }
 
     fn empirical_convexity_or_concavity_check_via_hessian(&self, input_dimensions: Vec<usize>, num_checks: usize, c: ConvexOrConcave, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) {
@@ -326,14 +326,11 @@ impl OptimaTensorFunctionGenerics {
 
         return Ok(OTFResult::Complete(output));
     }
-    pub fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input_dimensions: Vec<usize>, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
+    pub fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
         where S: OptimaTensorFunction,
               F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars, Option<OTFDerivativeMode>) -> Result<OTFResult, OptimaError> {
 
-        let mut rand_inputs = vec![];
-        for _ in 0..num_calls {
-            rand_inputs.push(OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone())));
-        }
+        let mut rand_inputs = Self::diagnostics_input_sampling(num_calls, input_sampling_mode);
 
         let mut finite_difference_time = AveragingFloat::new();
         let mut finite_difference_results = vec![];
@@ -440,6 +437,35 @@ impl OptimaTensorFunctionGenerics {
             optima_print(&format!(" on average.\n"), PrintMode::Print, PrintColor::None, false);
         }
     }
+    pub fn diagnostics_input_sampling(num_inputs: usize, input_sampling_mode: InputSamplingMode) -> Vec<OptimaTensor> {
+        let mut out_vec = vec![];
+        match input_sampling_mode {
+            InputSamplingMode::SameInput { input } => {
+                for _ in 0..num_inputs { out_vec.push( input.clone() ) }
+            }
+            InputSamplingMode::UniformRandom { input_dimensions } => {
+                for _ in 0..num_inputs { out_vec.push( OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone())) ) }
+            }
+            InputSamplingMode::RandomWalk { input_dimensions, step_size } => {
+                let mut curr_state = OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone()));
+                for _ in 0..num_inputs {
+                    out_vec.push(curr_state.clone());
+                    let rand_push = OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone()));
+                    curr_state = curr_state + step_size * rand_push;
+                }
+            }
+            InputSamplingMode::RandomWalkFromStartPoint { start_point, step_size } => {
+                let input_dimensions = start_point.dimensions();
+                let mut curr_state = start_point.clone();
+                for _ in 0..num_inputs {
+                    out_vec.push(curr_state.clone());
+                    let rand_push = OptimaTensor::new_random_sampling(OTFDimensions::Fixed(input_dimensions.clone()));
+                    curr_state = curr_state + step_size * rand_push;
+                }
+            }
+        }
+        out_vec
+    }
 }
 
 pub trait OptimaTensorFunctionClone {
@@ -493,12 +519,6 @@ pub enum OTFDimension {
     Fixed(usize)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ConvexOrConcave {
-    Convex,
-    Concave
-}
-
 #[derive(Clone, Debug)]
 pub enum OTFResult {
     Unimplemented, Complete(OptimaTensor)
@@ -521,6 +541,20 @@ impl OTFResult {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum OTFDerivativeMode {
     Analytical, FiniteDifference, Test
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ConvexOrConcave {
+    Convex,
+    Concave
+}
+
+#[derive(Clone, Debug)]
+pub enum InputSamplingMode<'a> {
+    SameInput { input: &'a OptimaTensor },
+    UniformRandom { input_dimensions: Vec<usize> },
+    RandomWalk { input_dimensions: Vec<usize>, step_size: f64 },
+    RandomWalkFromStartPoint { start_point: &'a OptimaTensor, step_size: f64 }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2174,8 +2208,7 @@ impl RecomputeVarIf {
 pub enum OTFMutVarsParams {
     None,
     SimpleDataType(SimpleDataType),
-    // RobotSetCollisionAvoidParams(&'a RobotSetCollisionProximityParams),
-    // ProximaSceneFilterOutput(&'a ProximaSceneFilterOutput),
+    RobotCollisionProximityBVHMode(RobotCollisionProximityBVHMode),
     VecOfParams(Vec<OTFMutVarsParams>)
 }
 impl OTFMutVarsParams {
@@ -2185,20 +2218,12 @@ impl OTFMutVarsParams {
             _ => { panic!("wrong type") }
         }
     }
-    /*
-    pub fn unwrap_robot_set_collision_avoid_params(&self) -> &RobotSetCollisionProximityParams {
+    pub fn unwrap_robot_collision_proximity_bvh_mode(&self) -> &RobotCollisionProximityBVHMode {
         return match self {
-            OTFMutVarsParams::RobotSetCollisionAvoidParams(r) => { r }
+            OTFMutVarsParams::RobotCollisionProximityBVHMode(r) => { r }
             _ => { panic!("wrong type") }
         }
     }
-    pub fn unwrap_proxima_scene_filter_output(&self) -> &ProximaSceneFilterOutput {
-        return match self {
-            OTFMutVarsParams::ProximaSceneFilterOutput(r) => { r }
-            _ => { panic!("wrong type") }
-        }
-    }
-    */
     pub fn unwrap_vec_of_params(&self) -> &Vec<OTFMutVarsParams> {
         return match self {
             OTFMutVarsParams::VecOfParams(r) => { r }
@@ -2209,12 +2234,11 @@ impl OTFMutVarsParams {
 
 #[derive(Clone, Debug)]
 pub enum OTFMutVarsObject {
+    None,
     RobotSetFKResult(RobotSetFKResult),
     RobotSetFKDOFPerturbationsResult(RobotSetFKDOFPerturbationsResult),
-    // WitnessPointsCollection(WitnessPointsCollection),
     ProximaEngine(ProximaEngine),
     BVHAABB(ShapeCollectionBVH<BVHCombinableShapeAABB>),
-    // ProximaSceneFilterOutput(ProximaSceneFilterOutput)
 }
 impl OTFMutVarsObject {
     pub fn unwrap_robot_set_fk_result(&self) -> &RobotSetFKResult {
@@ -2229,20 +2253,6 @@ impl OTFMutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
-    /*
-    pub fn unwrap_witness_points_collection(&self) -> &WitnessPointsCollection {
-        return match self {
-            OTFMutVarsObject::WitnessPointsCollection(r) => { r }
-            _ => { panic!("wrong type.") }
-        }
-    }
-    pub fn unwrap_witness_points_collection_mut(&mut self) -> &mut WitnessPointsCollection {
-        return match self {
-            OTFMutVarsObject::WitnessPointsCollection(r) => { r }
-            _ => { panic!("wrong type.") }
-        }
-    }
-    */
     pub fn unwrap_proxima_engine(&self) -> &ProximaEngine {
         return match self {
             OTFMutVarsObject::ProximaEngine(r) => { r }
@@ -2267,36 +2277,27 @@ impl OTFMutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
-    /*
-    pub fn unwrap_proxima_scene_filter_output(&self) -> &ProximaSceneFilterOutput {
-        return match self {
-            OTFMutVarsObject::ProximaSceneFilterOutput(r) => { r }
-            _ => { panic!("wrong type.") }
-        }
-    }
-    */
 }
 impl EnumMapToType<OTFMutVarsObjectType> for OTFMutVarsObject {
     fn map_to_type(&self) -> OTFMutVarsObjectType {
         match self {
+            OTFMutVarsObject::None => { OTFMutVarsObjectType::None }
             OTFMutVarsObject::RobotSetFKResult(_) => { OTFMutVarsObjectType::RobotSetFKResult }
             OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(_) => { OTFMutVarsObjectType::RobotSetFKDOFPerturbationsResult }
-           //  OTFMutVarsObject::WitnessPointsCollection(_) => { OTFMutVarsObjectType::WitnessPointsCollection }
             OTFMutVarsObject::ProximaEngine(_) => { OTFMutVarsObjectType::ProximaEngine }
             OTFMutVarsObject::BVHAABB(_) => { OTFMutVarsObjectType::BVHAABB }
-            // OTFMutVarsObject::ProximaSceneFilterOutput(_) => { OTFMutVarsObjectType::ProximaSceneFilterOutput }
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OTFMutVarsObjectType {
+    None,
     RobotSetFKResult,
     RobotSetFKDOFPerturbationsResult,
-    // WitnessPointsCollection,
     ProximaEngine,
+    AbstractBVH,
     BVHAABB,
-    // ProximaSceneFilterOutput
 }
 impl OTFMutVarsObjectType {
     pub fn compute_var(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, params: &Vec<OTFMutVarsParams>) -> OTFMutVarsObject {
@@ -2328,62 +2329,6 @@ impl OTFMutVarsObjectType {
 
                 OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(res)
             }
-            /*
-            OTFMutVarsObjectType::WitnessPointsCollection => {
-                let robot_set_collision_avoid_options = params[0].unwrap_robot_set_collision_avoid_params();
-                let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
-                let robot_set = immut_vars.ref_robot_set();
-                let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
-
-                let witness_points_collection = match robot_set_collision_avoid_options {
-                    RobotSetCollisionProximityParams::Proxima { budget, r, d_max, a_max, loss_function } => {
-                        let proxima_scene_filter_output_option = match params[1] {
-                            OTFMutVarsParams::None => { None }
-                            OTFMutVarsParams::ProximaSceneFilterOutput(proxima_scene_filter_output) => { Some(proxima_scene_filter_output) }
-                            _ => { panic!("wrong type.  Must be either None or ProximaSceneFilterOutput.") }
-                        };
-
-                        let signatures = vec![OTFMutVarsObjectType::ProximaEngine];
-                        let recompute_var_ifs = vec![RecomputeVarIf::Never];
-                        let params = vec![OTFMutVarsParams::None];
-                        let mut vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
-                        let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
-                        let res = robot_geometric_shape_scene.proxima_proximity_query(&robot_set_joint_state, None, proxima_engine, *d_max, *a_max, loss_function.clone(), SignedDistanceAggregator::SimpleSum, *r, budget.clone(), &None, &proxima_scene_filter_output_option).expect("error");
-                        let witness_points_collection = res.output_witness_points_collection();
-                        witness_points_collection
-                    }
-                    RobotSetCollisionProximityParams::BVHAABB { d_max, .. } => {
-                        let signatures = vec![OTFMutVarsObjectType::BVHAABB];
-                        let recompute_var_ifs = vec![RecomputeVarIf::Never];
-                        let params = vec![OTFMutVarsParams::None];
-                        let mut vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
-                        let mut bvh = vars[0].unwrap_bvh_aabb_mut();
-                        let filter_output = robot_geometric_shape_scene.bvh_scene_filter(bvh, &robot_set_joint_state, None, BVHVisit::Distance { margin: *d_max });
-                        let input = RobotGeometricShapeSceneQuery::Contact {
-                            robot_set_joint_state: &robot_set_joint_state,
-                            env_obj_pose_constraint_group_input: None,
-                            prediction: *d_max,
-                            inclusion_list: &Some(filter_output.pairs_list())
-                        };
-                        let res = robot_geometric_shape_scene.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false).expect("error");
-                        let witness_points_collection = res.output_witness_points_collection();
-                        witness_points_collection
-                    }
-                    RobotSetCollisionProximityParams::NaiveIteration { d_max, .. } => {
-                        let input = RobotGeometricShapeSceneQuery::Contact {
-                            robot_set_joint_state: &robot_set_joint_state,
-                            env_obj_pose_constraint_group_input: None,
-                            prediction: *d_max,
-                            inclusion_list: &None
-                        };
-                        let res = robot_geometric_shape_scene.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false).expect("error");
-                        let witness_points_collection = res.output_witness_points_collection();
-                        witness_points_collection
-                    }
-                };
-                OTFMutVarsObject::WitnessPointsCollection(witness_points_collection)
-            }
-            */
             OTFMutVarsObjectType::ProximaEngine => {
                 let object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
                 let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
@@ -2393,35 +2338,23 @@ impl OTFMutVarsObjectType {
             OTFMutVarsObjectType::BVHAABB => {
                 let object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
                 let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
-                let object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("needs GetRobotSet");
-                let get_robot_set = object.unwrap_get_robot_set();
-                let robot_set = get_robot_set.get_robot_set();
+                let robot_set = robot_geometric_shape_scene.robot_set();
                 let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
                 let bvh = robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, None, 2);
                 OTFMutVarsObject::BVHAABB(bvh)
             }
-            /*
-            OTFMutVarsObjectType::ProximaSceneFilterOutput => {
-                let signatures = vec![OTFMutVarsObjectType::ProximaEngine];
-                let params = vec![OTFMutVarsParams::None];
-                let recompute_var_ifs = vec![RecomputeVarIf::Never];
-                let mut vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
-                let proxima_engine = vars[0].unwrap_proxima_engine_mut();
-
-                let robot_set_collision_avoid_options = params[0].unwrap_robot_set_collision_avoid_params();
-                let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
-                let robot_set = immut_vars.ref_robot_set();
-                let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
-
-                match robot_set_collision_avoid_options {
-                    RobotSetCollisionProximityParams::Proxima { budget, r, d_max, a_max, loss_function } => {
-                        let res = robot_geometric_shape_scene.proxima_scene_filter(&robot_set_joint_state, None, proxima_engine, *d_max, *a_max, loss_function.clone(), *r, &None).expect("error");
-                        return OTFMutVarsObject::ProximaSceneFilterOutput(res);
+            OTFMutVarsObjectType::None => { OTFMutVarsObject::None }
+            OTFMutVarsObjectType::AbstractBVH => {
+                let robot_collision_proximity_bvh_mode = params[0].unwrap_robot_collision_proximity_bvh_mode();
+                return match robot_collision_proximity_bvh_mode {
+                    RobotCollisionProximityBVHMode::None => {
+                        OTFMutVarsObject::None
                     }
-                    _ => { panic!("wrong type.") }
+                    RobotCollisionProximityBVHMode::AABB => {
+                        Self::BVHAABB.compute_var_raw(input, immut_vars, mut_vars, params, session_key)
+                    }
                 }
             }
-            */
         }
     }
 }
