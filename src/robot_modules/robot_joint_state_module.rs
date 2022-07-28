@@ -507,9 +507,9 @@ impl Add for RobotJointState {
     type Output = Result<RobotJointState, OptimaError>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        if &self.robot_joint_state_type != &rhs.robot_joint_state_type {
-            return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot states of different types ({:?} + {:?}).", self.robot_joint_state_type(), rhs.robot_joint_state_type()), file!(), line!()));
-        }
+        // if &self.robot_joint_state_type != &rhs.robot_joint_state_type {
+            // return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot states of different types ({:?} + {:?}).", self.robot_joint_state_type(), rhs.robot_joint_state_type()), file!(), line!()));
+        // }
         return Ok(RobotJointState::new_unchecked(self.joint_state() + rhs.joint_state(), self.robot_joint_state_type.clone()))
     }
 }

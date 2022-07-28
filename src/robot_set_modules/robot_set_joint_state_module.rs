@@ -340,9 +340,9 @@ impl GenericRobotJointState for RobotSetJointState {
 impl Add for RobotSetJointState {
     type Output = Result<RobotSetJointState, OptimaError>;
     fn add(self, rhs: Self) -> Self::Output {
-        if &self.robot_set_joint_state_type != &rhs.robot_set_joint_state_type {
-            return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot set states of different types ({:?} + {:?}).", self.robot_set_joint_state_type(), rhs.robot_set_joint_state_type()), file!(), line!()));
-        }
+        // if &self.robot_set_joint_state_type != &rhs.robot_set_joint_state_type {
+            // return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot set states of different types ({:?} + {:?}).", self.robot_set_joint_state_type(), rhs.robot_set_joint_state_type()), file!(), line!()));
+        // }
 
         if self.concatenated_state.len() != rhs.concatenated_state.len() {
             return Err(OptimaError::new_generic_error_str(&format!("Tried to add robot set states of different lengths ({:?} + {:?}).", self.concatenated_state.len(), rhs.concatenated_state.len()), file!(), line!()));

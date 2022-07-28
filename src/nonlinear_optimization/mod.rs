@@ -1,12 +1,13 @@
 use std::sync::Mutex;
 use std::time::Duration;
 use nalgebra::DVector;
+use serde::{Serialize, Deserialize};
 use optimization_engine::{constraints, Optimizer, Problem, SolverError};
 use optimization_engine::alm::{AlmCache, AlmFactory, AlmOptimizer, AlmProblem, NO_JACOBIAN_MAPPING, NO_MAPPING, NO_SET};
 use optimization_engine::core::ExitStatus;
 use optimization_engine::panoc::{PANOCCache, PANOCOptimizer};
 use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OTFImmutVars, OTFMutVars};
-use crate::optima_tensor_function::standard_functions::{OTFComposition, OTFMaxZero, OTFWeightedSum};
+use crate::optima_tensor_function::standard_functions::{OTFAddScalar, OTFComposition, OTFMaxZero, OTFMultiplyByScalar, OTFWeightedSum};
 #[cfg(not(target_arch = "wasm32"))]
 use nlopt::*;
 
@@ -17,33 +18,39 @@ pub enum NonlinearOptimizer {
     Nlopt(NLoptNonlinearOptimizer)
 }
 impl NonlinearOptimizer {
-    pub fn new<F: OptimaTensorFunction + Clone + 'static>(cost: F, problem_size: usize, t: NonlinearOptimizerType) -> Self {
+    pub fn new(problem_size: usize, t: NonlinearOptimizerType) -> Self {
         return match t {
-            NonlinearOptimizerType::OpEn => { Self::OpEn(OpEnNonlinearOptimizer::new(cost, problem_size)) }
+            NonlinearOptimizerType::OpEn => { Self::OpEn(OpEnNonlinearOptimizer::new(problem_size)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptGlobalNonderivativeDirect => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::DIRECT)) }
+            NonlinearOptimizerType::NloptGlobalNonderivativeDirect => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::DIRECT)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptGlobalNonderivativeDIRECTL => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::DIRECTL)) }
+            NonlinearOptimizerType::NloptGlobalNonderivativeDIRECTL => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::DIRECTL)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptGlobalNonderivativeCRS => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::CRS)) }
+            NonlinearOptimizerType::NloptGlobalNonderivativeCRS => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::CRS)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptGlobalDerivativeSTOGO => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::STOGO)) }
+            NonlinearOptimizerType::NloptGlobalDerivativeSTOGO => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::STOGO)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptGlobalDerivativeSTOGORAND => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::STOGORAND)) }
+            NonlinearOptimizerType::NloptGlobalDerivativeSTOGORAND => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::STOGORAND)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptGlobalNonderivativeISRES => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::ISRES)) }
+            NonlinearOptimizerType::NloptGlobalNonderivativeISRES => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::ISRES)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptGlobalNonderivativeESCH => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::ESCH)) }
+            NonlinearOptimizerType::NloptGlobalNonderivativeESCH => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::ESCH)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptLocalNonderivativeCOBYLA => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::COBYLA)) }
+            NonlinearOptimizerType::NloptLocalNonderivativeCOBYLA => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::COBYLA)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptLocalNonderivativeBOBYQA => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::BOBYQA)) }
+            NonlinearOptimizerType::NloptLocalNonderivativeBOBYQA => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::BOBYQA)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptLocalDerivativeSLSQP => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::SLSQP)) }
+            NonlinearOptimizerType::NloptLocalDerivativeSLSQP => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::SLSQP)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptLocalDerivataiveMMA => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::MMA)) }
+            NonlinearOptimizerType::NloptLocalDerivataiveMMA => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::MMA)) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizerType::NloptLocalDerivataiveCCSAQ => { Self::Nlopt(NLoptNonlinearOptimizer::new(cost, problem_size, NloptAlgorithmWrapper::CCSAQ)) }
+            NonlinearOptimizerType::NloptLocalDerivataiveCCSAQ => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::CCSAQ)) }
+        }
+    }
+    pub fn add_cost_term<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F, weight: Option<f64>) {
+        match self {
+            NonlinearOptimizer::OpEn(n) => { n.add_cost_term(f, weight); }
+            NonlinearOptimizer::Nlopt(n) => { n.add_cost_term(f, weight); }
         }
     }
     pub fn add_equality_constraint<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F) {
@@ -60,6 +67,31 @@ impl NonlinearOptimizer {
             NonlinearOptimizer::Nlopt(n) => { n.add_less_than_zero_inequality_constraint(f); }
         }
     }
+    pub fn add_term_generic<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F, specification: &OptimizationTermSpecification) {
+        match specification {
+            OptimizationTermSpecification::DoNotInclude => {  }
+            OptimizationTermSpecification::Include { optimization_assignment } => {
+                match optimization_assignment {
+                    OptimizationTermAssignment::Objective { weight } => {
+                        self.add_cost_term(f, Some(*weight));
+                    }
+                    OptimizationTermAssignment::EqualityConstraint { must_equal } => {
+                        let c = OTFComposition::new(OTFAddScalar { scalar: -*must_equal }, f);
+                        self.add_equality_constraint(c);
+                    }
+                    OptimizationTermAssignment::LTInequalityConstraint { must_be_less_than } => {
+                        let c = OTFComposition::new(OTFAddScalar { scalar: -*must_be_less_than }, f);
+                        self.add_less_than_zero_inequality_constraint(c);
+                    }
+                    OptimizationTermAssignment::GTInequalityConstraint { must_be_greater_than } => {
+                        let c = OTFComposition::new(OTFAddScalar { scalar: -*must_be_greater_than }, f);
+                        let cc = OTFComposition::new(OTFMultiplyByScalar { scalar: -1.0 }, c);
+                        self.add_less_than_zero_inequality_constraint(cc);
+                    }
+                }
+            }
+        }
+    }
     pub fn set_bounds(&mut self, bounds: Vec<(f64, f64)>) {
         match self {
             NonlinearOptimizer::OpEn(n) => { n.set_bounds(bounds); }
@@ -72,6 +104,12 @@ impl NonlinearOptimizer {
             NonlinearOptimizer::OpEn(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters) }
             #[cfg(not(target_arch = "wasm32"))]
             NonlinearOptimizer::Nlopt(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters) }
+        }
+    }
+    pub fn cost(&self) -> Box<&dyn OptimaTensorFunction> {
+        return match self {
+            NonlinearOptimizer::OpEn(o) => { Box::new(&o.cost_function) }
+            NonlinearOptimizer::Nlopt(o) => { Box::new(&o.cost_function) }
         }
     }
 }
@@ -211,22 +249,25 @@ impl NloptAlgorithmWrapper {
 
 #[derive(Clone)]
 pub struct OpEnNonlinearOptimizer {
-    cost_function: Box<dyn OptimaTensorFunction>,
+    cost_function: OTFWeightedSum,
     constraint_function: Option<OTFWeightedSum>,
     problem_size: usize,
     bounds: (Vec<f64>, Vec<f64>),
 }
 impl OpEnNonlinearOptimizer {
-    pub fn new<F: OptimaTensorFunction + Clone + 'static>(cost: F, problem_size: usize) -> Self {
+    pub fn new(problem_size: usize) -> Self {
         let mut lower_bounds = vec![];
         let mut upper_bounds = vec![];
         for _ in 0..problem_size { lower_bounds.push(-f64::INFINITY); upper_bounds.push(f64::INFINITY); }
         Self {
-            cost_function: Box::new(cost),
+            cost_function: OTFWeightedSum::new(),
             constraint_function: None,
             problem_size,
             bounds: (lower_bounds, upper_bounds)
         }
+    }
+    pub fn add_cost_term<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F, weight: Option<f64>) {
+        self.cost_function.add_function(f, weight);
     }
     pub fn add_equality_constraint<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F) {
         if self.constraint_function.is_none() {
@@ -434,7 +475,7 @@ impl OpEnNonlinearOptimizer {
 pub struct NLoptNonlinearOptimizer {
     algorithm: Algorithm,
     algorithm_wrapper: NloptAlgorithmWrapper,
-    cost_function: Box<dyn OptimaTensorFunction>,
+    cost_function: OTFWeightedSum,
     equality_constraints: Vec<Box<dyn OptimaTensorFunction>>,
     inequality_constraints: Vec<Box<dyn OptimaTensorFunction>>,
     problem_size: usize,
@@ -442,16 +483,19 @@ pub struct NLoptNonlinearOptimizer {
 }
 #[cfg(not(target_arch = "wasm32"))]
 impl NLoptNonlinearOptimizer {
-    pub fn new<F: OptimaTensorFunction + 'static>(cost: F, problem_size: usize, algorithm: NloptAlgorithmWrapper) -> Self {
+    pub fn new(problem_size: usize, algorithm: NloptAlgorithmWrapper) -> Self {
         Self {
             algorithm: algorithm.map_to_algorithm(),
             algorithm_wrapper: algorithm,
-            cost_function: Box::new(cost),
+            cost_function: OTFWeightedSum::new(),
             equality_constraints: vec![],
             inequality_constraints: vec![],
             problem_size,
             bounds: None
         }
+    }
+    pub fn add_cost_term<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F, weight: Option<f64>) {
+        self.cost_function.add_function(f, weight);
     }
     pub fn add_equality_constraint<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F) {
         self.equality_constraints.push(Box::new(f));
@@ -705,4 +749,20 @@ impl Default for OptimizerParameters {
             nlopt_xtol_rel: 0.00001
         }
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OptimizationTermSpecification {
+    DoNotInclude,
+    Include { optimization_assignment: OptimizationTermAssignment }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OptimizationTermAssignment {
+    Objective { weight: f64 },
+    EqualityConstraint { must_equal: f64 },
+    LTInequalityConstraint { must_be_less_than: f64 },
+    GTInequalityConstraint { must_be_greater_than: f64 }
 }

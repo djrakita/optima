@@ -5,6 +5,7 @@
 //! The core library is written in Rust, though high quality ports to high-level languages such as
 //! Python and Javascript are available via PyO3 and WebAssembly, respectively.
 
+pub mod inverse_kinematics;
 pub mod nonlinear_optimization;
 pub mod optima_tensor_function;
 pub mod robot_modules;

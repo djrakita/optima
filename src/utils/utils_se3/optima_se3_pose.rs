@@ -224,6 +224,20 @@ impl OptimaSE3Pose {
             }
         }
     }
+
+    pub fn multiply_separate_rotation_and_translation(&self, other: &OptimaSE3Pose, conversion_if_necessary: bool) -> Result<OptimaSE3Pose, OptimaError> {
+        let self_translation = self.translation();
+        let self_rotation = self.rotation();
+        let other_translation = other.translation();
+        let other_rotation = other.rotation();
+
+        let multiplied_translation = self_translation + other_translation;
+        let multiplied_rotation = self_rotation.multiply(&other_rotation, conversion_if_necessary).expect("error");
+
+        let mut combined = Self::new_rotation_and_translation(RotationAndTranslation::new(multiplied_rotation, multiplied_translation));
+        let res = combined.convert(&self.map_to_pose_type());
+        return Ok(res);
+    }
     /// Multiplication by a point.
     pub fn multiply_by_point(&self, point: &Vector3<f64>) -> Vector3<f64> {
         return match self {

@@ -12,7 +12,7 @@ use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType, SimpleDataType, WindowMemoryContainer};
 use crate::utils::utils_math::interpolation::{LinearInterpolationMode, SimpleInterpolationUtils};
 use crate::utils::utils_robot::robot_generic_structures::{TimedGenericRobotJointStateWindowMemoryContainer};
-use crate::utils::utils_robot::robot_set_link_specification::RobotLinkTransformSpecificationCollection;
+use crate::utils::utils_robot::robot_set_link_specification::RobotLinkTransformGoalCollection;
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShapeAABB, LogCondition, StopCondition};
@@ -646,7 +646,9 @@ impl OptimaTensor {
     pub fn unwrap_scalar(&self) -> f64 {
         match self {
             OptimaTensor::Scalar(t) => { t.value[0] }
-            _ => { panic!("wrong type.") }
+            _ => {
+                panic!("wrong type.")
+            }
         }
     }
     pub fn unwrap_vector(&self) -> &DVector<f64> {
@@ -1814,6 +1816,7 @@ pub fn linearly_interpolate_optima_tensors(a: &OptimaTensor, b: &OptimaTensor, m
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#[derive(Clone)]
 pub struct OTFImmutVars {
     c: Box<dyn EnumTypeContainer<OTFImmutVarsObject, OTFImmutVarsObjectType>>
 }
@@ -1843,10 +1846,20 @@ impl OTFImmutVars {
     }
 
     pub fn ref_robot_set(&self) -> &RobotSet {
-        let object = self.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("needs GetRobotSet");
-        let get_robot_set = object.unwrap_get_robot_set();
-        let robot_set = get_robot_set.get_robot_set();
-        return robot_set;
+        let object = self.object_ref(&OTFImmutVarsObjectType::GetRobotSet);
+        if let Some(object) = object {
+            let get_robot_set = object.unwrap_get_robot_set();
+            let robot_set = get_robot_set.get_robot_set();
+            return robot_set;
+        }
+        let object = self.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene);
+        if let Some(object) = object {
+            let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
+            let robot_set = robot_geometric_shape_scene.get_robot_set();
+            return robot_set;
+        }
+
+        panic!("Could not recover a robot set here.");
     }
     pub fn ref_robot_geometric_shape_scene(&self) -> &RobotGeometricShapeScene {
         let object = self.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
@@ -1855,9 +1868,10 @@ impl OTFImmutVars {
     }
 }
 
+#[derive(Clone)]
 pub enum OTFImmutVarsObject {
     GetRobotSet(Box<dyn GetRobotSet>),
-    RobotLinkTransformSpecificationCollection(RobotLinkTransformSpecificationCollection),
+    RobotLinkTransformGoalCollection(RobotLinkTransformGoalCollection),
     OptimaTensorWindowMemoryContainer(OptimaTensorWindowMemoryContainer),
     TimedGenericRobotJointStateWindowMemoryContainer(TimedGenericRobotJointStateWindowMemoryContainer),
     GenericRobotJointStateCurrTime(f64),
@@ -1867,7 +1881,7 @@ impl EnumMapToType<OTFImmutVarsObjectType> for OTFImmutVarsObject {
     fn map_to_type(&self) -> OTFImmutVarsObjectType {
         match self {
             OTFImmutVarsObject::GetRobotSet(_) => { OTFImmutVarsObjectType::GetRobotSet }
-            OTFImmutVarsObject::RobotLinkTransformSpecificationCollection(_) => { OTFImmutVarsObjectType::RobotLinkTransformSpecificationCollection }
+            OTFImmutVarsObject::RobotLinkTransformGoalCollection(_) => { OTFImmutVarsObjectType::RobotLinkTransformGoalCollection }
             OTFImmutVarsObject::OptimaTensorWindowMemoryContainer(_) => { OTFImmutVarsObjectType::OptimaTensorWindowMemoryContainer }
             OTFImmutVarsObject::TimedGenericRobotJointStateWindowMemoryContainer(_) => { OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer }
             OTFImmutVarsObject::GenericRobotJointStateCurrTime(_) => { OTFImmutVarsObjectType::GenericRobotJointStateCurrTime }
@@ -1882,15 +1896,15 @@ impl OTFImmutVarsObject {
             _ => { panic!("wrong type.") }
         }
     }
-    pub fn unwrap_robot_link_transform_specification_collection(&self) -> &RobotLinkTransformSpecificationCollection {
+    pub fn unwrap_robot_link_transform_specification_collection(&self) -> &RobotLinkTransformGoalCollection {
         return match self {
-            OTFImmutVarsObject::RobotLinkTransformSpecificationCollection(r) => { r }
+            OTFImmutVarsObject::RobotLinkTransformGoalCollection(r) => { r }
             _ => { panic!("wrong type.") }
         }
     }
-    pub fn unwrap_robot_link_transform_specification_collection_mut(&mut self) -> &mut RobotLinkTransformSpecificationCollection {
+    pub fn unwrap_robot_link_transform_specification_collection_mut(&mut self) -> &mut RobotLinkTransformGoalCollection {
         return match self {
-            OTFImmutVarsObject::RobotLinkTransformSpecificationCollection(r) => { r }
+            OTFImmutVarsObject::RobotLinkTransformGoalCollection(r) => { r }
             _ => { panic!("wrong type.") }
         }
     }
@@ -1947,7 +1961,7 @@ impl OTFImmutVarsObject {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OTFImmutVarsObjectType {
     GetRobotSet,
-    RobotLinkTransformSpecificationCollection,
+    RobotLinkTransformGoalCollection,
     OptimaTensorWindowMemoryContainer,
     TimedGenericRobotJointStateWindowMemoryContainer,
     GenericRobotJointStateCurrTime,
@@ -2310,8 +2324,9 @@ impl OTFMutVarsObjectType {
     fn compute_var_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, params: &Vec<OTFMutVarsParams>, session_key: &OTFMutVarsSessionKey) -> OTFMutVarsObject {
         match self {
             OTFMutVarsObjectType::RobotSetFKResult => {
-                let robot_set_object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("error");
-                let robot_set = robot_set_object.unwrap_get_robot_set().get_robot_set();
+                // let robot_set_object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("error");
+                // let robot_set = robot_set_object.unwrap_get_robot_set().get_robot_set();
+                let robot_set = immut_vars.ref_robot_set();
 
                 let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
 
@@ -2320,8 +2335,7 @@ impl OTFMutVarsObjectType {
                 OTFMutVarsObject::RobotSetFKResult(res)
             }
             OTFMutVarsObjectType::RobotSetFKDOFPerturbationsResult => {
-                let robot_set_object = immut_vars.object_ref(&OTFImmutVarsObjectType::GetRobotSet).expect("error");
-                let robot_set = robot_set_object.unwrap_get_robot_set().get_robot_set();
+                let robot_set = immut_vars.ref_robot_set();
 
                 let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
 

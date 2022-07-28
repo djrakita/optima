@@ -3,6 +3,11 @@ use crate::robot_set_modules::robot_set::RobotSet;
 pub trait GetRobotSet {
     fn get_robot_set(&self) -> &RobotSet;
 }
+impl Clone for Box<dyn GetRobotSet> {
+    fn clone(&self) -> Self {
+        self.clone()
+    }
+}
 
 pub mod robot_set_configuration_module;
 pub mod robot_set_joint_state_module;

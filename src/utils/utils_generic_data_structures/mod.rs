@@ -452,7 +452,13 @@ pub trait EnumTypeContainer<T, S> where T: EnumMapToType<S> {
     fn remove_object(&mut self, signature: &S);
     fn contains_object(&self, signature: &S) -> bool;
 }
+impl <T, S> Clone for Box<dyn EnumTypeContainer<T, S>> where T: EnumMapToType<S> {
+    fn clone(&self) -> Self {
+        self.clone()
+    }
+}
 
+#[derive(Clone)]
 pub struct EnumBinarySearchTypeContainer<T, S>
     where T: EnumMapToType<S>,
           S: PartialEq + PartialOrd {
@@ -503,6 +509,10 @@ impl <T, S> EnumBinarySearchTypeContainer<T, S>
             }
             _ => { None }
         }
+    }
+    pub fn remove_all_objects(&mut self) {
+        self.enum_objects.clear();
+        self.signatures.clear();
     }
     pub fn object_ref_with_idx(&self, signature: &S) -> Option<(&T, usize)> {
         let binary_search_res = self.binary_search_res(signature);

@@ -27,9 +27,9 @@ impl<F, G> OptimaTensorFunction for OTFComposition<F, G>
     }
 
     fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let g_res = self.g.call_raw(input, immut_vars, mut_vars, session_key)?;
+        let g_res = self.g.call_raw(input, immut_vars, mut_vars, session_key).expect("error");
         let g = g_res.unwrap_tensor();
-        let f_res = self.f.call_raw(g, immut_vars, mut_vars, session_key)?;
+        let f_res = self.f.call_raw(g, immut_vars, mut_vars, session_key).expect("error");
         return Ok(f_res);
     }
 
@@ -85,7 +85,7 @@ impl OptimaTensorFunction for OTFWeightedSum {
     fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
         let mut out = OptimaTensor::new_zeros(vec![]);
         for (i, function) in self.functions.iter().enumerate() {
-            let mut f_res = function.call_raw(input, immut_vars, mut_vars, session_key)?;
+            let mut f_res = function.call(input, immut_vars, mut_vars).expect("error");
             let f = f_res.unwrap_tensor_mut();
             f.scalar_multiplication(self.weights[i]);
             if i == 0 {
@@ -446,6 +446,8 @@ impl OptimaTensorFunction for OTFTensorPNorm {
         for v in vectorized { out += v.abs().powf(self.p); }
         out = out.powf(1.0 / self.p);
 
+        assert!(!out.is_nan(), "call raw with an input of {:?} is NaN.", input);
+
         Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(out)))
     }
 
@@ -456,11 +458,12 @@ impl OptimaTensorFunction for OTFTensorPNorm {
 
         let mut prod = 0.0;
         for v in vectorized { prod += v.abs().powf(self.p); }
-        prod = prod.powf(1.0/self.p - 1.0);
+        if prod != 0.0 { prod = prod.powf(1.0 / self.p - 1.0); }
 
         for (i, v) in vectorized.iter().enumerate() {
-            // out_vectorized[i] = v.powf(self.p - 1.0) * prod;
-            out_vectorized[i] = *v * v.abs().powf(self.p - 2.0) * prod;
+            let val = *v * v.abs().powf(self.p - 2.0) * prod;
+            assert!(!val.is_nan(), "val with an input of {:?} is NaN.  prod is {:?}", input, prod);
+            out_vectorized[i] = val;
         }
 
         Ok(OTFResult::Complete(out))
@@ -645,8 +648,8 @@ impl OptimaTensorFunction for OTFNormalizer {
 /// Function that just returns 0.  This is useful for optimization problems that only has constraints
 /// and no cost.
 #[derive(Clone)]
-pub struct ZeroFunction;
-impl OptimaTensorFunction for ZeroFunction {
+pub struct OTFZeroFunction;
+impl OptimaTensorFunction for OTFZeroFunction {
     fn output_dimensions(&self) -> Vec<usize> {
         vec![]
     }
