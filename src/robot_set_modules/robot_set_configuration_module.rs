@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -67,7 +68,7 @@ impl RobotSetConfigurationModule {
     }
     pub fn print_summary(&self) {
         for (i, r) in self.robot_configuration_modules.iter().enumerate() {
-            optima_print(&format!("Robot {} ---> ", i), PrintMode::Println, PrintColor::Cyan, true);
+            optima_print(&format!("Robot {} ---> ", i), PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
             r.print_summary();
             optima_print_new_line();
         }
@@ -75,7 +76,7 @@ impl RobotSetConfigurationModule {
     /// Robot set configurations are saved to the optima_assets/optima_robot_sets directory.
     pub fn save_robot_set_configuration_module(&self, set_name: &str) -> Result<(), OptimaError> {
         if self.robot_configuration_modules.len() <= 1 {
-            optima_print("WARNING: Cannot save RobotSetConfigurationModule with <= 1 robot.", PrintMode::Println, PrintColor::Yellow, true);
+            optima_print("WARNING: Cannot save RobotSetConfigurationModule with <= 1 robot.", PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
             return Ok(());
         }
 

@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -101,7 +102,7 @@ impl RobotMeshFileManagerModule {
         }
 
         let mut directory_optima_paths = vec![];
-        optima_print("Finding mesh file directories.  This may take a while...", PrintMode::Println, PrintColor::Cyan, true);
+        optima_print("Finding mesh file directories.  This may take a while...", PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
         for d in &directory_string_vecs {
             let p = OptimaPath::new_home_path()?;
             let res = p.walk_directory_and_match(OptimaPathMatchingPattern::PathComponents(d.clone()), OptimaPathMatchingStopCondition::First);
@@ -133,7 +134,7 @@ impl RobotMeshFileManagerModule {
     #[allow(unused_must_use)]
     #[cfg(not(target_arch = "wasm32"))]
     pub fn find_and_copy_visual_meshes_to_assets(&self) -> Result<(), OptimaError> {
-        optima_print(&format!("Finding and copying visual meshes to assets folder..."), PrintMode::Println, PrintColor::Blue, true);
+        optima_print(&format!("Finding and copying visual meshes to assets folder..."), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
         let destination = OptimaPath::new_asset_physical_path_from_json_file()?;
         let paths = self.find_optima_paths_to_urdf_link_meshes(&LinkMeshType::Visual)?;
         let num_paths = paths.len();

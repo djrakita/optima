@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -301,7 +302,7 @@ impl RobotSetFKResult {
     }
     pub fn print_summary(&self) {
         for (i, robot_fk_result) in self.robot_fk_results.iter().enumerate() {
-            optima_print(&format!("Robot {} ---> ", i), PrintMode::Println, PrintColor::Cyan, true);
+            optima_print(&format!("Robot {} ---> ", i), PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
             robot_fk_result.print_summary();
         }
     }

@@ -10,6 +10,7 @@ use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OTFImmut
 use crate::optima_tensor_function::standard_functions::{OTFAddScalar, OTFComposition, OTFMaxZero, OTFMultiplyByScalar, OTFWeightedSum};
 #[cfg(not(target_arch = "wasm32"))]
 use nlopt::*;
+use crate::utils::utils_console::OptimaDebug;
 
 #[derive(Clone)]
 pub enum NonlinearOptimizer {
@@ -99,11 +100,11 @@ impl NonlinearOptimizer {
             NonlinearOptimizer::Nlopt(_) => {}
         }
     }
-    pub fn optimize(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters) -> OptimizerResult {
+    pub fn optimize(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters, debug: OptimaDebug) -> OptimizerResult {
         return match self {
-            NonlinearOptimizer::OpEn(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters) }
+            NonlinearOptimizer::OpEn(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters, debug.clone()) }
             #[cfg(not(target_arch = "wasm32"))]
-            NonlinearOptimizer::Nlopt(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters) }
+            NonlinearOptimizer::Nlopt(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters, debug.clone()) }
         }
     }
     pub fn cost(&self) -> Box<&dyn OptimaTensorFunction> {
@@ -114,7 +115,7 @@ impl NonlinearOptimizer {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum NonlinearOptimizerType {
     OpEn,
     #[cfg(not(target_arch = "wasm32"))]
@@ -295,13 +296,13 @@ impl OpEnNonlinearOptimizer {
         }
         self.bounds = (lower_bounds, upper_bounds);
     }
-    pub fn optimize(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters) -> OptimizerResult {
+    pub fn optimize(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters, debug: OptimaDebug) -> OptimizerResult {
         return match self.constraint_function {
-            None => { self.optimize_panoc(init_condition, immut_vars, mut_vars, parameters) }
-            Some(_) => { self.optimize_alm(init_condition, immut_vars, mut_vars, parameters) }
+            None => { self.optimize_panoc(init_condition, immut_vars, mut_vars, parameters, debug.clone()) }
+            Some(_) => { self.optimize_alm(init_condition, immut_vars, mut_vars, parameters, debug.clone()) }
         }
     }
-    fn optimize_panoc(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters) -> OptimizerResult {
+    fn optimize_panoc(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters, debug: OptimaDebug) -> OptimizerResult {
         let mut panoc_cache = PANOCCache::new(self.problem_size, 1e-5, 3);
 
         let mut_vars_mutex = Mutex::new(mut_vars);
@@ -309,7 +310,7 @@ impl OpEnNonlinearOptimizer {
         let df = |u: &[f64], grad: &mut [f64]| -> Result<(), SolverError> {
             let mut mut_vars = mut_vars_mutex.lock().unwrap();
             let input = OptimaTensor::new_from_single_array(u);
-            let res = self.cost_function.derivative(&input, immut_vars, *mut_vars, None).expect("error");
+            let res = self.cost_function.derivative(&input, immut_vars, *mut_vars, None, debug.clone()).expect("error");
             let output = res.unwrap_tensor();
             let vectorized = output.vectorized_data();
             for (i, v) in vectorized.iter().enumerate() {
@@ -320,7 +321,7 @@ impl OpEnNonlinearOptimizer {
         let f = |u: &[f64], cost: &mut f64| -> Result<(), SolverError> {
             let mut mut_vars = mut_vars_mutex.lock().unwrap();
             let input = OptimaTensor::new_from_single_array(u);
-            let res = self.cost_function.call(&input, immut_vars, *mut_vars).expect("error");
+            let res = self.cost_function.call(&input, immut_vars, *mut_vars, debug.clone()).expect("error");
             let output = res.unwrap_tensor();
             let val = output.unwrap_scalar();
             *cost = val;
@@ -349,7 +350,7 @@ impl OpEnNonlinearOptimizer {
 
         return OptimizerResult::OpEn(open_result);
     }
-    fn optimize_alm(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters) -> OptimizerResult {
+    fn optimize_alm(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters, debug: OptimaDebug) -> OptimizerResult {
         let panoc_cache = PANOCCache::new(self.problem_size, 1e-5, 3);
         let mut alm_cache = AlmCache::new(panoc_cache, 0, match self.constraint_function {
             None => { 0 }
@@ -363,7 +364,7 @@ impl OpEnNonlinearOptimizer {
         let df = |u: &[f64], grad: &mut [f64]| -> Result<(), SolverError> {
             let mut mut_vars = mut_vars_mutex.lock().unwrap();
             let input = OptimaTensor::new_from_single_array(u);
-            let res = self.cost_function.derivative(&input, immut_vars, *mut_vars, None).expect("error");
+            let res = self.cost_function.derivative(&input, immut_vars, *mut_vars, None, debug.clone()).expect("error");
             let output = res.unwrap_tensor();
             let vectorized = output.vectorized_data();
             for (i, v) in vectorized.iter().enumerate() {
@@ -374,7 +375,7 @@ impl OpEnNonlinearOptimizer {
         let f = |u: &[f64], cost: &mut f64| -> Result<(), SolverError> {
             let mut mut_vars = mut_vars_mutex.lock().unwrap();
             let input = OptimaTensor::new_from_single_array(u);
-            let res = self.cost_function.call(&input, immut_vars, *mut_vars).expect("error");
+            let res = self.cost_function.call(&input, immut_vars, *mut_vars, debug.clone()).expect("error");
             let output = res.unwrap_tensor();
             let val = output.unwrap_scalar();
             *cost = val;
@@ -384,7 +385,7 @@ impl OpEnNonlinearOptimizer {
             if let Some(constraint_function) = &self.constraint_function {
                 let mut mut_vars = mut_vars_mutex.lock().unwrap();
                 let input = OptimaTensor::new_from_single_array(u);
-                let res = constraint_function.call(&input, immut_vars, *mut_vars).expect("error");
+                let res = constraint_function.call(&input, immut_vars, *mut_vars, debug.clone()).expect("error");
                 let output = res.unwrap_tensor();
                 let val = output.unwrap_scalar();
                 f2u[0] = val;
@@ -396,7 +397,7 @@ impl OpEnNonlinearOptimizer {
             if let Some(constraint_function) = &self.constraint_function {
                 let mut mut_vars = mut_vars_mutex.lock().unwrap();
                 let input = OptimaTensor::new_from_single_array(u);
-                let result = constraint_function.derivative(&input, immut_vars, *mut_vars, None).expect("error");
+                let result = constraint_function.derivative(&input, immut_vars, *mut_vars, None, OptimaDebug::False).expect("error");
                 let output = result.unwrap_tensor();
                 let vectorized_data = output.vectorized_data();
                 for (i, v) in vectorized_data.iter().enumerate() {
@@ -513,7 +514,7 @@ impl NLoptNonlinearOptimizer {
         }
         self.bounds = Some((lower_bounds, upper_bounds));
     }
-    pub fn optimize(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters) -> OptimizerResult {
+    pub fn optimize(&mut self, init_condition: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, parameters: &OptimizerParameters, debug: OptimaDebug) -> OptimizerResult {
         let start = instant::Instant::now();
         let mut_vars_mutex = Mutex::new(mut_vars);
 
@@ -521,13 +522,13 @@ impl NLoptNonlinearOptimizer {
             let mut mut_vars = mut_vars_mutex.lock().unwrap();
 
             let input = OptimaTensor::new_from_single_array(x);
-            let res = self.cost_function.call(&input, immut_vars, *mut_vars).expect("error");
+            let res = self.cost_function.call(&input, immut_vars, *mut_vars, debug.clone()).expect("error");
 
             let output = res.unwrap_tensor();
             let val = output.unwrap_scalar();
 
             if let Some(gradient) = _gradient {
-                let res = self.cost_function.derivative(&input, immut_vars, *mut_vars, None).expect("error");
+                let res = self.cost_function.derivative(&input, immut_vars, *mut_vars, None, debug.clone()).expect("error");
                 let output = res.unwrap_tensor();
                 let vectorized = output.vectorized_data();
                 for (i, v) in vectorized.iter().enumerate() { gradient[i] = *v; }
@@ -556,12 +557,12 @@ impl NLoptNonlinearOptimizer {
             let eq_con = |x: &[f64], _gradient: Option<&mut [f64]>, _params: &mut ()| -> f64 {
                 let mut mut_vars = mut_vars_mutex.lock().unwrap();
                 let input = OptimaTensor::new_from_single_array(x);
-                let res = c.call(&input, immut_vars, *mut_vars).expect("error");
+                let res = c.call(&input, immut_vars, *mut_vars, OptimaDebug::False).expect("error");
                 let output = res.unwrap_tensor();
                 let val = output.unwrap_scalar();
 
                 if let Some(gradient) = _gradient {
-                    let res = c.derivative(&input, immut_vars, *mut_vars, None).expect("error");
+                    let res = c.derivative(&input, immut_vars, *mut_vars, None, OptimaDebug::False).expect("error");
                     let output = res.unwrap_tensor();
                     let vectorized = output.vectorized_data();
                     for (i, v) in vectorized.iter().enumerate() { gradient[i] = *v; }
@@ -575,12 +576,12 @@ impl NLoptNonlinearOptimizer {
             let ineq_con = |x: &[f64], _gradient: Option<&mut [f64]>, _params: &mut ()| -> f64 {
                 let mut mut_vars = mut_vars_mutex.lock().unwrap();
                 let input = OptimaTensor::new_from_single_array(x);
-                let res = c.call(&input, immut_vars, *mut_vars).expect("error");
+                let res = c.call(&input, immut_vars, *mut_vars, OptimaDebug::False).expect("error");
                 let output = res.unwrap_tensor();
                 let val = output.unwrap_scalar();
 
                 if let Some(gradient) = _gradient {
-                    let res = c.derivative(&input, immut_vars, *mut_vars, None).expect("error");
+                    let res = c.derivative(&input, immut_vars, *mut_vars, None, OptimaDebug::False).expect("error");
                     let output = res.unwrap_tensor();
                     let vectorized = output.vectorized_data();
                     for (i, v) in vectorized.iter().enumerate() { gradient[i] = *v; }

@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -734,12 +735,12 @@ impl RobotFKResult {
     /// Prints a summary of the forward kinematics result.
     pub fn print_summary(&self) {
         for e in self.link_entries() {
-            optima_print(&format!("Link {} {} ---> ", e.link_idx, e.link_name), PrintMode::Println, PrintColor::Blue, true);
-            optima_print(&format!("   > Pose: {:?}", e.pose), PrintMode::Println, PrintColor::None, false);
+            optima_print(&format!("Link {} {} ---> ", e.link_idx, e.link_name), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
+            optima_print(&format!("   > Pose: {:?}", e.pose), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
             if e.pose.is_some() {
                 let euler_angles = e.pose.as_ref().unwrap().to_euler_angles_and_translation();
-                optima_print(&format!("   > Pose Euler Angles: {:?}", euler_angles.0), PrintMode::Println, PrintColor::None, false);
-                optima_print(&format!("   > Pose Translation: {:?}", euler_angles.1), PrintMode::Println, PrintColor::None, false);
+                optima_print(&format!("   > Pose Euler Angles: {:?}", euler_angles.0), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                optima_print(&format!("   > Pose Translation: {:?}", euler_angles.1), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
             }
         }
     }

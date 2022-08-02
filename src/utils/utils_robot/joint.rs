@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -157,28 +158,28 @@ impl Joint {
         self.child_link_idx = child_link_idx;
     }
     pub fn print_summary(&self) {
-        optima_print(&format!(">> Joint index: "), PrintMode::Print, PrintColor::Blue, true);
-        optima_print(&format!(" {} ", self.joint_idx), PrintMode::Print, PrintColor::None, false);
-        optima_print(&format!("  Joint name: "), PrintMode::Print, PrintColor::Blue, true);
-        optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false);
-        optima_print(&format!("  Num dofs: "), PrintMode::Print, PrintColor::Blue, true);
-        optima_print(&format!(" {} ", self.num_dofs()), PrintMode::Print, PrintColor::None, false);
-        optima_print(&format!("  Present: "), PrintMode::Print, PrintColor::Blue, true);
+        optima_print(&format!(">> Joint index: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {} ", self.joint_idx), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Joint name: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Num dofs: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {} ", self.num_dofs()), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Present: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
         let c = if self.present { PrintColor::Green } else { PrintColor::Red };
-        optima_print(&format!(" {} ", self.present), PrintMode::Print, c, false);
+        optima_print(&format!(" {} ", self.present), PrintMode::Print, c, false, 0, None, vec![]);
         if self.num_axes() > 0 {
             optima_print_new_line();
         }
         for (i, a) in self.joint_axes().iter().enumerate() {
-            optima_print(&format!("      -- Joint sub idx {}: ", i), PrintMode::Print, PrintColor::Cyan, false);
-            optima_print(&format!(" {:?} about axis {:?}, ", a.axis_primitive_type, a.axis), PrintMode::Print, PrintColor::None, false);
+            optima_print(&format!("      -- Joint sub idx {}: ", i), PrintMode::Print, PrintColor::Cyan, false, 0, None, vec![]);
+            optima_print(&format!(" {:?} about axis {:?}, ", a.axis_primitive_type, a.axis), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
 
             match a.is_fixed() {
                 true => {
-                    optima_print(&format!("Fixed at value {}", a.fixed_value.unwrap()), PrintMode::Print, PrintColor::None, false);
+                    optima_print(&format!("Fixed at value {}", a.fixed_value.unwrap()), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
                 }
                 false => {
-                    optima_print("Not fixed.", PrintMode::Print, PrintColor::None, false);
+                    optima_print("Not fixed.", PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
                 }
             };
             if self.joint_axes.len() > 1 && i < self.joint_axes.len()-1 {

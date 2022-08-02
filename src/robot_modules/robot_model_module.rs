@@ -5,6 +5,7 @@ use pyo3::*;
 use wasm_bindgen::prelude::*;
 
 use std::collections::HashMap;
+use std::vec;
 use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_configuration_module::ContiguousChainMobilityMode;
 use crate::utils::utils_errors::OptimaError;
@@ -426,12 +427,12 @@ impl RobotModelModule {
         for i in 0..self.link_tree_max_depth {
             let l = self.link_tree_traversal_layers[i].len();
             // print!("layer {}: ", i);
-            optima_print(&format!("layer {}: ", i), PrintMode::Print, PrintColor::Blue, true);
+            optima_print(&format!("layer {}: ", i), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
             for j in 0..l {
                 let idx = self.link_tree_traversal_layers[i][j];
-                optima_print(&format!("{}, ", self.links[idx].name()), PrintMode::Print, PrintColor::None, false);
+                optima_print(&format!("{}, ", self.links[idx].name()), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
             }
-            optima_print("\n", PrintMode::Print, PrintColor::None, false);
+            optima_print("\n", PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
         }
     }
     /// Sets given link as not present in the model.

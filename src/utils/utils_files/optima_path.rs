@@ -1,6 +1,6 @@
 use vfs::*;
 use rust_embed::RustEmbed;
-use std::{fs};
+use std::{fs, vec};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{PathBuf};
@@ -824,24 +824,24 @@ impl OptimaPath {
     }
     #[allow(unused_must_use)]
     fn auto_create_optima_asset_path_json_file() -> bool {
-        optima_print("Searching for Optima assets folder...", PrintMode::Println, PrintColor::Cyan, true);
+        optima_print("Searching for Optima assets folder...", PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
         let mut home_dir = Self::new_home_path().expect("error");
         let walk_vec = home_dir.walk_directory_and_match(OptimaPathMatchingPattern::FileOrDirName("optima_assets".to_string()), OptimaPathMatchingStopCondition::First);
         return if walk_vec.is_empty() {
-            optima_print("WARNING: optima_assets folder not found on your computer.", PrintMode::Println, PrintColor::Yellow, true);
+            optima_print("WARNING: optima_assets folder not found on your computer.", PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
             let mut lock_path = Self::new_home_path().expect("error");
             lock_path.append(".optima_asset_path.lock");
             lock_path.write_string_to_file(&"".to_string());
-            optima_print(&format!("Adding a lock file here: {:?}", lock_path), PrintMode::Println, PrintColor::Yellow, true);
-            optima_print(&format!("If you would like to use a local optima_assets directory on your computer, please delete the lock file once the assets directory is on your computer"), PrintMode::Println, PrintColor::Yellow, true);
+            optima_print(&format!("Adding a lock file here: {:?}", lock_path), PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
+            optima_print(&format!("If you would like to use a local optima_assets directory on your computer, please delete the lock file once the assets directory is on your computer"), PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
             false
         } else {
             let found_path = walk_vec[0].clone();
             match &found_path {
                 OptimaPath::Path(p) => {
-                    optima_print(&format!("Optima assets folder found at {:?}", p), PrintMode::Println, PrintColor::Green, true);
+                    optima_print(&format!("Optima assets folder found at {:?}", p), PrintMode::Println, PrintColor::Green, true, 0, None, vec![]);
                     home_dir.append(".optima_asset_path.JSON");
-                    optima_print(&format!("Saved found path at {:?}", home_dir), PrintMode::Println, PrintColor::Green, true);
+                    optima_print(&format!("Saved found path at {:?}", home_dir), PrintMode::Println, PrintColor::Green, true, 0, None, vec![]);
                     let path_to_assets_dir = PathToAssetsDir { path_to_assets_dir: p.clone() };
                     home_dir.save_object_to_file_as_json(&path_to_assets_dir).expect("error");
                     true
@@ -867,7 +867,7 @@ pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Resu
             Ok(o)
         }
         Err(_) => {
-            optima_print(json_str, PrintMode::Println, PrintColor::Red, false);
+            optima_print(json_str, PrintMode::Println, PrintColor::Red, false, 0, None, vec![]);
             Err(OptimaError::new_generic_error_str("load_object_from_json_string() failed.  The given json_string is incompatible with the requested type.", file!(), line!()))
         }
     }

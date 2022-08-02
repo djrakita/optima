@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -29,15 +30,15 @@ impl RobotPreprocessingModule {
         path.append_file_location(&OptimaAssetLocation::Robots);
         let all_robot_strings = path.get_all_directories_in_directory();
 
-        optima_print("Welcome to the Optima Robot Preprocessing Module.", PrintMode::Println, PrintColor::Green, true);
+        optima_print("Welcome to the Optima Robot Preprocessing Module.", PrintMode::Println, PrintColor::Green, true, 0, None, vec![]);
         let line = ConsoleInputUtils::get_console_input_string("Use all default options?  (y or n)", PrintColor::Blue)?;
         let default_options = if &line == "y" { true } else { false };
         if default_options {
             for robot_name in &all_robot_strings {
-                optima_print(&format!(" Preprocessing robot {:?}", robot_name), PrintMode::Println, PrintColor::Green, true);
+                optima_print(&format!(" Preprocessing robot {:?}", robot_name), PrintMode::Println, PrintColor::Green, true, 0, None, vec![]);
                 let res = RobotPreprocessingModule::default().preprocess_robot(robot_name);
                 if res.is_err() {
-                    optima_print(&format!(" Could not successfully preprocess robot {:?}.  Encountered error {:?}", robot_name, res), PrintMode::Println, PrintColor::Red, true);
+                    optima_print(&format!(" Could not successfully preprocess robot {:?}.  Encountered error {:?}", robot_name, res), PrintMode::Println, PrintColor::Red, true, 0, None, vec![]);
                 }
             }
             return Ok(());
@@ -51,21 +52,21 @@ impl RobotPreprocessingModule {
         let replace_robot_link_convex_shape_subcomponents = if &line == "y" { true } else { false };
 
         for robot_name in &all_robot_strings {
-            optima_print(&format!("Preprocessing robot {:?}", robot_name), PrintMode::Println, PrintColor::Blue, true);
+            optima_print(&format!("Preprocessing robot {:?}", robot_name), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
             let res = RobotPreprocessingModule {
                 replace_robot_model_module_json,
                 replace_robot_link_convex_shapes,
                 replace_robot_link_convex_shape_subcomponents
             }.preprocess_robot(robot_name);
             if res.is_err() {
-                optima_print(&format!("Could not successfully preprocess robot {:?}.  Encountered error {:?}", robot_name, res), PrintMode::Println, PrintColor::Red, true);
+                optima_print(&format!("Could not successfully preprocess robot {:?}.  Encountered error {:?}", robot_name, res), PrintMode::Println, PrintColor::Red, true, 0, None, vec![]);
             }
         }
 
         Ok(())
     }
     pub fn preprocess_robot_from_console_input(robot_name: &str) -> Result<(), OptimaError> {
-        optima_print("Welcome to the Optima Robot Preprocessing Module.", PrintMode::Println, PrintColor::Blue, true);
+        optima_print("Welcome to the Optima Robot Preprocessing Module.", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
         let line = ConsoleInputUtils::get_console_input_string("Use all default options?  (y or n)", PrintColor::Blue)?;
         let default_options = if &line == "y" { true } else { false };
         if default_options { return Self::default().preprocess_robot(robot_name); }
@@ -96,20 +97,20 @@ impl RobotPreprocessingModule {
         self.preprocess_robot_shape_geometry_module(robot_name)?;
 
         println!();
-        optima_print(&format!("Successfully preprocessed robot {}!", robot_name), PrintMode::Println, PrintColor::Green, true);
+        optima_print(&format!("Successfully preprocessed robot {}!", robot_name), PrintMode::Println, PrintColor::Green, true, 0, None, vec![]);
         Ok(())
     }
     fn preprocess_robot_model_module_json(&self, robot_name: &str) -> Result<(), OptimaError> {
         let mut file_path = OptimaStemCellPath::new_asset_path()?;
         file_path.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ModelModule });
         if !file_path.exists() || self.replace_robot_model_module_json {
-            optima_print("Preprocessing robot model module...", PrintMode::Println, PrintColor::Blue, true);
+            optima_print("Preprocessing robot model module...", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
             file_path.delete_file()?;
 
             let robot_model_module = RobotModelModule::new(robot_name)?;
             robot_model_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ModelModule })?;
 
-            optima_print("Successfully preprocessed robot model module.", PrintMode::Println, PrintColor::Blue, true);
+            optima_print("Successfully preprocessed robot model module.", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
         }
         Ok(())
     }
@@ -126,7 +127,7 @@ impl RobotPreprocessingModule {
     fn preprocess_robot_link_meshes(&self, robot_name: &str) -> Result<(), OptimaError> {
         let mut directory_path = OptimaStemCellPath::new_asset_path()?;
         directory_path.append_file_location(&OptimaAssetLocation::RobotMeshes { robot_name: robot_name.to_string() });
-        optima_print("Preprocessing robot link meshes...", PrintMode::Println, PrintColor::Blue, true);
+        optima_print("Preprocessing robot link meshes...", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
         directory_path.delete_all_items_in_directory()?;
 
         let mut base_meshes_directory_path = OptimaStemCellPath::new_asset_path()?;
@@ -173,7 +174,7 @@ impl RobotPreprocessingModule {
         directory_path.append_file_location(&OptimaAssetLocation::RobotConvexShapes { robot_name: robot_name.to_string() });
         let files_in_directory = directory_path.get_all_items_in_directory(false, false);
         if !directory_path.exists() || files_in_directory.len() == 0 || self.replace_robot_link_convex_shapes {
-            optima_print("Preprocessing robot link convex shapes...", PrintMode::Println, PrintColor::Blue, true);
+            optima_print("Preprocessing robot link convex shapes...", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
             directory_path.delete_all_items_in_directory()?;
 
             let mut base_meshes_directory_path = OptimaStemCellPath::new_asset_path()?;
@@ -209,7 +210,7 @@ impl RobotPreprocessingModule {
         directory_path.append_file_location(&OptimaAssetLocation::RobotConvexSubcomponents { robot_name: robot_name.to_string() });
         let files_in_directory = directory_path.get_all_items_in_directory(false, false);
         if !directory_path.exists() || files_in_directory.len() == 0 || self.replace_robot_link_convex_shapes {
-            optima_print("Preprocessing robot link convex shape subcomponents...", PrintMode::Println, PrintColor::Blue, true);
+            optima_print("Preprocessing robot link convex shape subcomponents...", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
             directory_path.delete_all_items_in_directory()?;
 
             let mut base_meshes_directory_path = OptimaStemCellPath::new_asset_path()?;
@@ -254,7 +255,7 @@ impl RobotPreprocessingModule {
         directory_path_permanent.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModule });
 
         if !directory_path.exists() || !directory_path_permanent.exists() || self.replace_robot_link_convex_shapes || self.replace_robot_link_convex_shape_subcomponents {
-            optima_print("Preprocessing robot shape geometry module...", PrintMode::Println, PrintColor::Blue, true);
+            optima_print("Preprocessing robot shape geometry module...", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
             let robot_shape_geometry_module = RobotGeometricShapeModule::new_from_names(RobotNames::new_base(robot_name), true)?;
             robot_shape_geometry_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModule })?;
             robot_shape_geometry_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModulePermanent })?;

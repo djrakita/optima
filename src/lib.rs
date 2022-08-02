@@ -21,6 +21,14 @@ use pyo3::prelude::*;
 fn optima(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<scenes::robot_geometric_shape_scene::RobotGeometricShapeScenePy>()?;
 
+    m.add_class::<inverse_kinematics::OptimaIKPy>()?;
+    m.add_class::<utils::utils_robot::robot_set_link_specification::RobotLinkTFGoalPy>()?;
+    m.add_class::<utils::utils_robot::robot_set_link_specification::RobotLinkTFSpecPy>()?;
+    m.add_class::<utils::utils_robot::robot_set_link_specification::RobotLinkTFSpecCollectionPy>()?;
+    m.add_class::<utils::utils_robot::robot_set_link_specification::RobotLinkTFSpecAndAllowableErrorPy>()?;
+    m.add_class::<utils::utils_robot::robot_set_link_specification::RobotLinkTFSpecAndAllowableErrorCollectionPy>()?;
+    m.add_class::<utils::utils_robot::robot_set_link_specification::RobotLinkTFAllowableErrorPy>()?;
+
     m.add_class::<robot_set_modules::robot_set::RobotSetPy>()?;
     m.add_class::<robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule>()?;
     m.add_class::<robot_set_modules::robot_set_joint_state_module::RobotSetJointStateModule>()?;

@@ -7,6 +7,7 @@ use wasm_bindgen::prelude::*;
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 use std::ops::{Add, Index, IndexMut, Mul};
+use std::vec;
 use crate::robot_modules::robot_configuration_module::{RobotConfigurationModule};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
@@ -327,13 +328,13 @@ impl RobotJointStateModule {
         };
 
         for (i, joint_axis) in joint_axes.iter().enumerate() {
-            optima_print(&format!("Joint state index {} ---> ", i), PrintMode::Println, PrintColor::Blue, true);
-            optima_print(&format!("   > joint name: {}", self.robot_configuration_module.robot_model_module().joints()[joint_axis.joint_idx()].name()), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("   > joint index: {}", joint_axis.joint_idx()), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("   > joint sub dof index: {}", joint_axis.joint_sub_dof_idx()), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("   > joint sub dof axis type: {:?}", joint_axis.axis_primitive_type()), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("   > axis: {:?}", joint_axis.axis()), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("   > joint value: {}", robot_joint_state[i]), PrintMode::Println, PrintColor::None, false);
+            optima_print(&format!("Joint state index {} ---> ", i), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
+            optima_print(&format!("   > joint name: {}", self.robot_configuration_module.robot_model_module().joints()[joint_axis.joint_idx()].name()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("   > joint index: {}", joint_axis.joint_idx()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("   > joint sub dof index: {}", joint_axis.joint_sub_dof_idx()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("   > joint sub dof axis type: {:?}", joint_axis.axis_primitive_type()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("   > axis: {:?}", joint_axis.axis()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("   > joint value: {}", robot_joint_state[i]), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
         }
     }
     pub fn robot_name(&self) -> &str {

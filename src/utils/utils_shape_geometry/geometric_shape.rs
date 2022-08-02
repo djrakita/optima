@@ -4,6 +4,7 @@ use pyo3::*;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 use std::time::{Duration};
+use std::vec;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
@@ -880,17 +881,17 @@ impl GeometricShapeQueryGroupOutput {
         let len = self.outputs.len();
         for i in 0..len {
             let o = &self.outputs[len - i - 1];
-            optima_print(&format!("   Raw output: {:?}", o.raw_output), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("   Duration: {:?}", o.duration), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("   Signatures: {:?}", o.signatures), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!(" Output {} --- ^", len - i - 1), PrintMode::Println, PrintColor::Cyan, true);
+            optima_print(&format!("   Raw output: {:?}", o.raw_output), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("   Duration: {:?}", o.duration), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("   Signatures: {:?}", o.signatures), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!(" Output {} --- ^", len - i - 1), PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
         }
-        optima_print("Outputs --- ^ ", PrintMode::Println, PrintColor::Blue, false);
-        optima_print("------------", PrintMode::Println, PrintColor::None, false);
-        optima_print(&format!("Duration: {:?}", self.duration), PrintMode::Println, PrintColor::Blue, true);
-        optima_print(&format!("Num Queries: {:?}", self.num_queries), PrintMode::Println, PrintColor::Blue, true);
-        optima_print(&format!("Intersection Found: {:?}", self.intersection_found), PrintMode::Println, PrintColor::Blue, true);
-        optima_print(&format!("Minimum Distance: {:?}", self.minimum_distance), PrintMode::Println, PrintColor::Blue, true);
+        optima_print("Outputs --- ^ ", PrintMode::Println, PrintColor::Blue, false, 0, None, vec![]);
+        optima_print("------------", PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("Duration: {:?}", self.duration), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!("Num Queries: {:?}", self.num_queries), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!("Intersection Found: {:?}", self.intersection_found), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!("Minimum Distance: {:?}", self.minimum_distance), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
 
     }
     #[cfg(not(target_arch = "wasm32"))]

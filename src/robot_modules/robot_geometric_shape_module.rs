@@ -5,6 +5,7 @@ use pyo3::*;
 use wasm_bindgen::prelude::*;
 
 use std::time::{Duration, Instant};
+use std::vec;
 use nalgebra::{DVector, Vector3};
 use parry3d_f64::query::Ray;
 use serde::{Deserialize, Serialize};
@@ -112,7 +113,7 @@ impl RobotGeometricShapeModule {
     #[cfg(not(target_arch = "wasm32"))]
     fn preprocessing_robot_geometric_shape_collection(&mut self,
                                                       robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Result<(), OptimaError> {
-        optima_print(&format!("Setup on {:?}...", robot_link_shape_representation), PrintMode::Println, PrintColor::Blue, true);
+        optima_print(&format!("Setup on {:?}...", robot_link_shape_representation), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
         // Base model modules must be used as these computations apply to all derived configuration
         // variations of this model, not just particular configurations.
         let robot_name = self.robot_kinematics_module.robot_name();

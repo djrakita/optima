@@ -5,6 +5,11 @@ use crate::utils::utils_generic_data_structures::WindowMemoryContainer;
 pub trait GenericRobotJointState: Debug + GenericRobotJointStateClone {
     fn joint_state(&self) -> &DVector<f64>;
 }
+impl GenericRobotJointState for DVector<f64> {
+    fn joint_state(&self) -> &DVector<f64> {
+        self
+    }
+}
 
 pub trait GenericRobotJointStateClone {
     fn clone_box(&self) -> Box<dyn GenericRobotJointState>;

@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -88,10 +89,10 @@ impl RobotSet {
     }
     pub fn print_summary(&self) {
         let num_robots = self.robot_set_configuration_module.robot_configuration_modules().len();
-        optima_print(&format!("{} robots.", num_robots), PrintMode::Println, PrintColor::Blue, true);
+        optima_print(&format!("{} robots.", num_robots), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
         for (i, robot_configuration) in self.robot_set_configuration_module.robot_configuration_modules().iter().enumerate() {
-            optima_print(&format!(" Robot {} ---> {:?}", i, robot_configuration.robot_name()), PrintMode::Println, PrintColor::Blue, false);
-            optima_print(&format!("   Base Offset: {:?}", robot_configuration.robot_configuration_info().base_offset().get_pose_by_type(&OptimaSE3PoseType::EulerAnglesAndTranslation)), PrintMode::Println, PrintColor::None, false );
+            optima_print(&format!(" Robot {} ---> {:?}", i, robot_configuration.robot_name()), PrintMode::Println, PrintColor::Blue, false, 0, None, vec![]);
+            optima_print(&format!("   Base Offset: {:?}", robot_configuration.robot_configuration_info().base_offset().get_pose_by_type(&OptimaSE3PoseType::EulerAnglesAndTranslation)), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
             // optima_print(&format!("   Mobile Base Mode: {:?}", robot_configuration.robot_configuration_info().mobile_base_mode()), PrintMode::Println, PrintColor::None, false );
         }
     }

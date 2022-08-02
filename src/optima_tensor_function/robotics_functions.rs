@@ -1,28 +1,36 @@
+use std::fmt::format;
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use std::marker::PhantomData;
 use itertools::izip;
 use nalgebra::{DMatrix, DVector, Vector6};
 use parry3d_f64::partitioning::QBVHDataGenerator;
+use serde::{Serialize, Deserialize};
 use crate::optima_tensor_function::{FD_PERTURBATION, OptimaTensor, OptimaTensorFunction, OptimaTensorFunctionGenerics, OTFDimensions, OTFImmutVars, OTFImmutVarsObjectType, OTFMutVars, OTFMutVarsObject, OTFMutVarsObjectType, OTFMutVarsParams, OTFMutVarsSessionKey, OTFResult, RecomputeVarIf};
 use crate::optima_tensor_function::standard_functions::OTFZeroFunction;
 use crate::robot_modules::robot_kinematics_module::{JacobianEndPoint, JacobianMode};
 use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
 use crate::robot_set_modules::robot_set_kinematics_module::RobotSetFKResult;
 use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, RobotGeometricShapeSceneQuery};
+use crate::utils::utils_console::OptimaDebug;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::AveragingFloat;
-use crate::utils::utils_robot::robot_set_link_specification::RobotSetLinkTransformGoal;
+use crate::utils::utils_math::finite_difference::FiniteDifferenceUtils;
+use crate::utils::utils_robot::robot_generic_structures::TimedGenericRobotJointState;
+use crate::utils::utils_robot::robot_set_link_specification::RobotLinkTFGoal;
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, BVHCombinableShapeAABB, GeometricShapeSignature, LogCondition, StopCondition};
 use crate::utils::utils_shape_geometry::shape_collection::{BVH, BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaFunctions, ProximaSceneFilterOutput, ProximityOutputMode, ShapeCollectionBVH, ShapeCollectionQueryPairsList, SignedDistanceAggregator, SignedDistanceLossFunction, WitnessPoints, WitnessPointsCollection, WitnessPointsType};
 
 #[derive(Clone)]
-pub struct OTFRobotLinkTransformSpecification;
-impl OTFRobotLinkTransformSpecification {
-    fn internal_call(robot_set_fk_result: &RobotSetFKResult, specs: &Vec<RobotSetLinkTransformGoal>) -> f64 {
+pub struct OTFRobotLinkTFSpec;
+impl OTFRobotLinkTFSpec {
+    fn internal_call(robot_set_fk_result: &RobotSetFKResult, specs: &Vec<RobotLinkTFGoal>) -> f64 {
         let mut out_error = 0.0;
         for s in specs {
             match s {
-                RobotSetLinkTransformGoal::LinkSE3PoseGoal { robot_idx_in_set, link_idx_in_robot, goal, weight } => {
+                RobotLinkTFGoal::LinkSE3PoseGoal { robot_idx_in_set, link_idx_in_robot, goal, weight } => {
                     let pose = robot_set_fk_result.get_pose_from_idxs(*robot_idx_in_set, *link_idx_in_robot);
                     let se3_delta = goal.distance_function(pose, true).expect("error");
                     // let position = pose.translation();
@@ -35,7 +43,7 @@ impl OTFRobotLinkTransformSpecification {
                     };
                     out_error += weight * se3_delta;
                 }
-                RobotSetLinkTransformGoal::LinkPositionGoal { robot_idx_in_set, link_idx_in_robot, goal, weight } => {
+                RobotLinkTFGoal::LinkPositionGoal { robot_idx_in_set, link_idx_in_robot, goal, weight } => {
                     let pose = robot_set_fk_result.get_pose_from_idxs(*robot_idx_in_set, *link_idx_in_robot);
                     let position = pose.translation();
                     let r3_delta = (goal - &position).norm();
@@ -45,7 +53,7 @@ impl OTFRobotLinkTransformSpecification {
                     };
                     out_error += weight * r3_delta;
                 }
-                RobotSetLinkTransformGoal::LinkRotationGoal { robot_idx_in_set, link_idx_in_robot, goal, weight } => {
+                RobotLinkTFGoal::LinkRotationGoal { robot_idx_in_set, link_idx_in_robot, goal, weight } => {
                     let pose = robot_set_fk_result.get_pose_from_idxs(*robot_idx_in_set, *link_idx_in_robot);
                     let rotation = pose.rotation();
                     let so3_delta = rotation.angle_between(goal, true).expect("error");
@@ -61,19 +69,19 @@ impl OTFRobotLinkTransformSpecification {
         return out_error;
     }
 }
-impl OptimaTensorFunction for OTFRobotLinkTransformSpecification {
+impl OptimaTensorFunction for OTFRobotLinkTFSpec {
     fn output_dimensions(&self) -> Vec<usize> {
         vec![]
     }
 
-    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let recompute_var_ifs = vec![RecomputeVarIf::IsAnyNewInput];
         let signatures = vec![OTFMutVarsObjectType::RobotSetFKResult];
         let params = vec![OTFMutVarsParams::None];
-        let vars = mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, immut_vars, session_key);
+        let vars = _mut_vars.get_vars(&signatures, &params, &recompute_var_ifs, input, _immut_vars, _session_key);
         let robot_set_fk_result = vars[0].unwrap_robot_set_fk_result();
 
-        let spec_object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotLinkTransformGoalCollection).expect("must have RobotLinkSpecificationCollection");
+        let spec_object = _immut_vars.object_ref(&OTFImmutVarsObjectType::RobotLinkTFGoalCollection).expect("must have RobotLinkSpecificationCollection");
         let spec = spec_object.unwrap_robot_link_transform_specification_collection();
         let specs = spec.robot_set_link_specification_refs();
 
@@ -81,7 +89,7 @@ impl OptimaTensorFunction for OTFRobotLinkTransformSpecification {
         return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(out)));
     }
 
-    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let recompute_var_ifs = vec![RecomputeVarIf::IsAnyNewInput];
         let signatures = vec![OTFMutVarsObjectType::RobotSetFKDOFPerturbationsResult];
@@ -91,7 +99,7 @@ impl OptimaTensorFunction for OTFRobotLinkTransformSpecification {
         let robot_set_fk_dof_perturbations_result = vars[0].unwrap_robot_set_fk_dof_perturbations_result();
         let perturbation = robot_set_fk_dof_perturbations_result.perturbation();
 
-        let spec_object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotLinkTransformGoalCollection).expect("must have RobotLinkSpecificationCollection");
+        let spec_object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotLinkTFGoalCollection).expect("must have RobotLinkSpecificationCollection");
         let spec = spec_object.unwrap_robot_link_transform_specification_collection();
         let specs = spec.robot_set_link_specification_refs();
 
@@ -107,6 +115,10 @@ impl OptimaTensorFunction for OTFRobotLinkTransformSpecification {
         mut_vars.close_session(&session_key);
 
         return Ok(OTFResult::Complete(OptimaTensor::new_from_vector(grad)));
+    }
+
+    fn to_string(&self) -> String {
+        "OTFRobotLinkTFSpec".to_string()
     }
 
     /*
@@ -246,11 +258,11 @@ impl OptimaTensorFunction for OTFRobotJointStateDerivative {
         vec![self.num_dofs]
     }
 
-    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
         let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
 
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
+        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
         let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
 
         let out_vec = if self.derivative_order == 1 {
@@ -287,17 +299,16 @@ impl OptimaTensorFunction for OTFRobotJointStateDerivative {
             unreachable!()
         };
 
-
         return Ok(OTFResult::Complete(OptimaTensor::new_from_vector(out_vec)));
     }
 
-    fn derivative_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
+    fn derivative_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let mut matrix = DMatrix::identity(self.num_dofs, self.num_dofs);
 
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
+        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
         let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
 
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
+        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
         let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
 
         if self.derivative_order == 1 {
@@ -325,19 +336,23 @@ impl OptimaTensorFunction for OTFRobotJointStateDerivative {
         return Ok(OTFResult::Complete(OptimaTensor::new_from_matrix(matrix)));
     }
 
-    fn derivative2_analytical_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(input, 2));
+    fn derivative2_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 2));
         return Ok(OTFResult::Complete(out));
     }
 
-    fn derivative3_analytical_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(input, 3));
+    fn derivative3_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 3));
         return Ok(OTFResult::Complete(out));
     }
 
-    fn derivative4_analytical_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(input, 4));
+    fn derivative4_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 4));
         return Ok(OTFResult::Complete(out));
+    }
+
+    fn to_string(&self) -> String {
+        format!("OTFRobotJointStateDerivative_{}", self.derivative_order)
     }
 }
 
@@ -711,6 +726,107 @@ impl RobotJointStateDerivativeUtils {
 }
 
 #[derive(Clone)]
+pub struct OTFRobotJointStateDerivative_ {
+    num_dofs: usize,
+    derivative_order: usize,
+    window_size: usize
+}
+impl OTFRobotJointStateDerivative_ {
+    pub fn new(num_dofs: usize, derivative_order: usize, window_size: Option<usize>) -> Self {
+        assert!(derivative_order >= 1);
+        if let Some(w) = window_size { assert!(w > 1); }
+
+        Self {
+            num_dofs,
+            derivative_order,
+            window_size: match window_size {
+                None => { derivative_order + 1 }
+                Some(w) => {w}
+            }
+        }
+    }
+}
+impl OptimaTensorFunction for OTFRobotJointStateDerivative_ {
+    fn output_dimensions(&self) -> Vec<usize> {
+        vec![self.num_dofs]
+    }
+
+    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
+        let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
+
+        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
+        let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
+
+        let robot_set = immut_vars.ref_robot_set();
+        let joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+        let curr_timed_generic_robot_joint_state = TimedGenericRobotJointState::new(joint_state, *curr_time);
+
+        let mut timed_states = window_memory_container.c.previous_n_object_refs(self.window_size-1);
+        timed_states.insert(0, &curr_timed_generic_robot_joint_state);
+
+        let mut time_stencils = vec![];
+        for timed_state in &timed_states {
+            time_stencils.push(timed_state.time() - curr_time)
+        }
+
+        let coeffs = FiniteDifferenceUtils::get_fd_coefficients(&time_stencils, self.derivative_order);
+
+        let mut out = DVector::zeros(self.num_dofs);
+        for (coeff, timed_state) in coeffs.iter().zip(timed_states.iter()) {
+            out += *coeff * timed_state.joint_state();
+        }
+
+        Ok(OTFResult::Complete(OptimaTensor::new_from_vector(out)))
+    }
+
+    fn derivative_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
+        let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
+
+        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
+        let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
+
+        let robot_set = immut_vars.ref_robot_set();
+        let joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
+        let curr_timed_generic_robot_joint_state = TimedGenericRobotJointState::new(joint_state, *curr_time);
+
+        let mut timed_states = window_memory_container.c.previous_n_object_refs(self.window_size-1);
+        timed_states.insert(0, &curr_timed_generic_robot_joint_state);
+
+        let mut time_stencils = vec![];
+        for timed_state in &timed_states {
+            time_stencils.push(timed_state.time() - curr_time)
+        }
+        let coeffs = FiniteDifferenceUtils::get_fd_coefficients(&time_stencils, self.derivative_order);
+
+        let mut out = DMatrix::identity(self.num_dofs, self.num_dofs);
+        out *= coeffs[0];
+
+        Ok(OTFResult::Complete(OptimaTensor::new_from_matrix(out)))
+    }
+
+    fn derivative2_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 2));
+        return Ok(OTFResult::Complete(out));
+    }
+
+    fn derivative3_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 3));
+        return Ok(OTFResult::Complete(out));
+    }
+
+    fn derivative4_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 4));
+        return Ok(OTFResult::Complete(out));
+    }
+
+    fn to_string(&self) -> String {
+        format!("OTFRobotJointStateDerivative_{}", self.derivative_order)
+    }
+}
+
+#[derive(Clone)]
 struct OTFRobotCollisionProximityProxima {
     r: f64,
     a_max: f64,
@@ -830,17 +946,17 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityProxima {
         vec![]
     }
 
-    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::ProximaEngine], &vec![OTFMutVarsParams::None], &vec![RecomputeVarIf::Never], input, immut_vars, session_key);
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let mut vars = _mut_vars.get_vars(&vec![OTFMutVarsObjectType::ProximaEngine], &vec![OTFMutVarsParams::None], &vec![RecomputeVarIf::Never], input, _immut_vars, _session_key);
         let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
 
-        let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+        let robot_geometric_shape_scene = _immut_vars.ref_robot_geometric_shape_scene();
         let robot_set_joint_state = robot_geometric_shape_scene.robot_set().spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
 
         return self.call_raw_with_necessary_vars(&robot_set_joint_state, robot_geometric_shape_scene, &mut proxima_engine, None, None);
     }
 
-    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::ProximaEngine], &vec![OTFMutVarsParams::None], &vec![RecomputeVarIf::Never], input, immut_vars, &session_key);
         let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
@@ -862,6 +978,10 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityProxima {
         mut_vars.close_session(&session_key);
 
         return ret;
+    }
+
+    fn to_string(&self) -> String {
+        "OTFRobotCollisionProximityProxima".to_string()
     }
 }
 
@@ -953,11 +1073,11 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityStandard {
         vec![]
     }
 
-    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::AbstractBVH], &vec![OTFMutVarsParams::RobotCollisionProximityBVHMode(self.bvh_mode.clone())], &vec![RecomputeVarIf::Never], input, immut_vars, session_key);
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        let mut vars = _mut_vars.get_vars(&vec![OTFMutVarsObjectType::AbstractBVH], &vec![OTFMutVarsParams::RobotCollisionProximityBVHMode(self.bvh_mode.clone())], &vec![RecomputeVarIf::Never], input, _immut_vars, _session_key);
         let abstract_bvh = &mut vars[0];
 
-        let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+        let robot_geometric_shape_scene = _immut_vars.ref_robot_geometric_shape_scene();
         let robot_set_joint_state = robot_geometric_shape_scene.robot_set().spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
 
         let bvh_filter = match abstract_bvh {
@@ -975,7 +1095,7 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityStandard {
         self.call_raw_with_necessary_vars(&robot_set_joint_state, robot_geometric_shape_scene, &inclusion_list)
     }
 
-    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::AbstractBVH], &vec![OTFMutVarsParams::RobotCollisionProximityBVHMode(self.bvh_mode.clone())], &vec![RecomputeVarIf::Never], input, immut_vars, &session_key);
         let abstract_bvh = &mut vars[0];
@@ -1021,6 +1141,10 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityStandard {
 
         return out;
     }
+
+    fn to_string(&self) -> String {
+        "OTFRobotCollisionProximityStandard".to_string()
+    }
 }
 
 #[derive(Clone)]
@@ -1055,29 +1179,33 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityGeneric {
         self.f.output_dimensions()
     }
 
-    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        self.f.call_raw(input, immut_vars, mut_vars, session_key)
+    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        self.f.call_raw(input, _immut_vars, _mut_vars, _session_key, _debug)
     }
 
-    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars) -> Result<OTFResult, OptimaError> {
-        self.f.derivative_finite_difference(input, immut_vars, mut_vars)
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+        self.f.derivative_finite_difference(input, immut_vars, mut_vars, debug)
+    }
+
+    fn to_string(&self) -> String {
+        self.f.to_string()
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RobotCollisionProximityGradientFDMode {
     RawFiniteDifference,
     PreFilteredFiniteDifference,
     JacobianFiniteDifference { max_number_of_jacobians: usize },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RobotCollisionProximityBVHMode {
     None,
     AABB
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RobotCollisionProximityGenericParams {
     None,
     Proxima { r: f64, a_max: f64, d_max: f64, budget: ProximaBudget, loss_function: SignedDistanceLossFunction, aggregator: SignedDistanceAggregator, fd_mode: RobotCollisionProximityGradientFDMode } ,

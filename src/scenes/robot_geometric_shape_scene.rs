@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -130,7 +131,7 @@ impl RobotGeometricShapeScene {
         if files_in_directory.len() == 0 { return Err(OptimaError::new_generic_error_str(&format!("Scene mesh file {:?} does not contain file in directory.", name), file!(), line!())); }
 
         if files_in_directory.len() > 1 {
-            optima_print(&format!("WARNING: Scene mesh file {:?} contains more than one file.  Will arbitrarily try reading the first as the mesh file.", name), PrintMode::Println, PrintColor::Yellow, true);
+            optima_print(&format!("WARNING: Scene mesh file {:?} contains more than one file.  Will arbitrarily try reading the first as the mesh file.", name), PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
         }
 
         path.append(&files_in_directory[0]);
@@ -145,7 +146,7 @@ impl RobotGeometricShapeScene {
         let mut path = OptimaStemCellPath::new_asset_path().expect("error");
         path.append_file_location(&OptimaAssetLocation::SceneMeshFilePreprocessing {name: name.to_string()});
         if !path.exists() || force_preprocessing {
-            optima_print(&format!("Preprocessing environment {}...", name), PrintMode::Println, PrintColor::Blue, true);
+            optima_print(&format!("Preprocessing environment {}...", name), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
             let decomposition_resolution = match decomposition_resolution {
                 None => { ConvexDecompositionResolution::Medium }
                 Some(d) => { d }
@@ -321,7 +322,7 @@ impl RobotGeometricShapeScene {
 
         let causes_cycle = self.check_if_pose_constraint_will_cause_cycle(env_obj_idx, &pose_constraint);
         if causes_cycle {
-            optima_print(&format!("WARNING: Adding constraint {:?} to environment object {:?} would cause constraint cycle.  Could not add.", pose_constraint, env_obj_idx), PrintMode::Println, PrintColor::Yellow, true);
+            optima_print(&format!("WARNING: Adding constraint {:?} to environment object {:?} would cause constraint cycle.  Could not add.", pose_constraint, env_obj_idx), PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
             return Ok(());
         }
 
@@ -400,7 +401,7 @@ impl RobotGeometricShapeScene {
             }
             loop_count += 1;
             if loop_count > 10_000 {
-                optima_print("ERROR: Problem in RobotGeometricShapeScene recover_poses.  Seems like there is a loop in a pose constraint, so go fix the loop detection function.", PrintMode::Println, PrintColor::Red, true);
+                optima_print("ERROR: Problem in RobotGeometricShapeScene recover_poses.  Seems like there is a loop in a pose constraint, so go fix the loop detection function.", PrintMode::Println, PrintColor::Red, true, 0, None, vec![]);
                 panic!()
             }
             if complete { break; }
@@ -620,11 +621,11 @@ impl RobotGeometricShapeScene {
         optima_print_new_line();
 
         let num_objects = self.env_obj_count;
-        optima_print(&format!("{} objects.", num_objects), PrintMode::Println, PrintColor::Cyan, true);
+        optima_print(&format!("{} objects.", num_objects), PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
         for i in 0..num_objects {
-            optima_print(&format!(" Object {} ---> ", i), PrintMode::Println, PrintColor::Cyan, false);
-            optima_print(&format!("    Object Info: {:?}", self.env_obj_spawners[i].to_self_no_nones()), PrintMode::Println, PrintColor::None, false);
-            optima_print(&format!("    Object Pose: {:?}", self.env_obj_idx_to_pose_constraint[i]), PrintMode::Println, PrintColor::None, false);
+            optima_print(&format!(" Object {} ---> ", i), PrintMode::Println, PrintColor::Cyan, false, 0, None, vec![]);
+            optima_print(&format!("    Object Info: {:?}", self.env_obj_spawners[i].to_self_no_nones()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+            optima_print(&format!("    Object Pose: {:?}", self.env_obj_idx_to_pose_constraint[i]), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
         }
     }
 }
@@ -665,6 +666,7 @@ impl RobotGeometricShapeScene {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[pyclass]
+#[derive(Clone)]
 pub struct RobotGeometricShapeScenePy {
     #[pyo3(get)]
     robot_set_py: Py<RobotSetPy>,
@@ -786,6 +788,11 @@ impl RobotGeometricShapeScenePy {
         let res = self.robot_geometric_shape_scene.shape_collection_query(&input, stop_condition, log_condition, sort_outputs).expect("error");
         let py_output = res.convert_to_py_output(include_full_output_json_string);
         return py_output;
+    }
+}
+impl RobotGeometricShapeScenePy {
+    pub fn robot_geometric_shape_scene(&self) -> &RobotGeometricShapeScene {
+        &self.robot_geometric_shape_scene
     }
 }
 

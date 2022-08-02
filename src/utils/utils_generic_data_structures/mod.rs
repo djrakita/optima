@@ -304,7 +304,7 @@ impl <T> MemoryCell<T> where T: Clone + Debug + Serialize + DeserializeOwned + D
         Self {
             curr_value: value.clone(),
             base_value: value.clone(),
-            history: vec![value.clone()]
+            history: vec![]
         }
     }
     pub fn new_default() -> Self {
@@ -643,6 +643,15 @@ impl<T: Clone + Debug> WindowMemoryContainer<T> {
         assert!(memory_idx < self.window_size as usize);
         let idx = self.get_idx(self.curr_head, -(memory_idx as isize));
         &self.v[idx as usize]
+    }
+    pub fn previous_n_object_refs(&self, n: usize) -> Vec<&T> {
+        let mut out = vec![];
+
+        for i in 0..n {
+            out.push(self.object_ref(i));
+        }
+
+        out
     }
     fn get_idx(&self, base_idx: isize, offset: isize) -> isize {
         let out = (base_idx + offset) % self.window_size;

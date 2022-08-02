@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -93,16 +94,16 @@ impl Link {
         self.children_link_idxs.push(idx);
     }
     pub fn print_summary(&self) {
-        optima_print(&format!("  Link index: "), PrintMode::Print, PrintColor::Blue, true);
-        optima_print(&format!(" {} ", self.link_idx), PrintMode::Print, PrintColor::None, false);
-        optima_print(&format!("  Link name: "), PrintMode::Print, PrintColor::Blue, true);
-        optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false);
-        optima_print(&format!("  Present: "), PrintMode::Print, PrintColor::Blue, true);
+        optima_print(&format!("  Link index: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {} ", self.link_idx), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Link name: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Present: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
         let color = match self.present {
             true => { PrintColor::Green }
             false => { PrintColor::Red }
         };
-        optima_print(&format!(" {} ", self.present), PrintMode::Print, color, false);
+        optima_print(&format!(" {} ", self.present), PrintMode::Print, color, false, 0, None, vec![]);
     }
     pub fn set_present(&mut self, present: bool) {
         self.present = present;

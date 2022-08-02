@@ -1,3 +1,4 @@
+use std::vec;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -116,7 +117,7 @@ impl RobotConfigurationModule {
                 robot_model_module.add_contiguous_chain_link_and_joint(&contiguous_chain_info.mobility_mode, contiguous_chain_info.start_link_idx);
             } else {
                 let print_string = format!("WARNING: Could not add contiguous chain {:?} because it conflicts with an already added chain.", contiguous_chain_info);
-                optima_print(&print_string, PrintMode::Println, PrintColor::Yellow, true);
+                optima_print(&print_string, PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
                 names_to_remove.push(contiguous_chain_info.chain_name.clone());
             }
         }
@@ -152,7 +153,7 @@ impl RobotConfigurationModule {
         for c in &self.robot_configuration_info.contiguous_chain_infos {
             if &c.chain_name == chain_name {
                 let print_string = format!("WARNING: Could not add contiguous chain {:?} because its name conflicts with an already added chain.", chain_name);
-                optima_print(&print_string, PrintMode::Println, PrintColor::Yellow, true);
+                optima_print(&print_string, PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
                 return Ok(());
             }
         }
