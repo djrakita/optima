@@ -7,8 +7,8 @@ use crate::optima_tensor_function::robotics_functions::RobotCollisionProximityBV
 use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set::RobotSet;
 use crate::robot_set_modules::robot_set_kinematics_module::{RobotSetFKDOFPerturbationsResult, RobotSetFKResult};
-use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, RobotGeometricShapeSceneQuery};
-use crate::utils::utils_console::{NUM_SPACES_PER_TAB, optima_print, optima_print_multi_entry, optima_print_new_line, OptimaDebug, OptimaPrintMultiEntry, OptimaPrintMultiEntryCollection, PrintColor, PrintMode};
+use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene};
+use crate::utils::utils_console::{optima_print, optima_print_multi_entry, optima_print_new_line, OptimaDebug, OptimaPrintMultiEntry, OptimaPrintMultiEntryCollection, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType, SimpleDataType, WindowMemoryContainer};
 use crate::utils::utils_math::interpolation::{LinearInterpolationMode, SimpleInterpolationUtils};
@@ -16,8 +16,8 @@ use crate::utils::utils_robot::robot_generic_structures::{TimedGenericRobotJoint
 use crate::utils::utils_robot::robot_set_link_specification::RobotLinkTFGoalCollection;
 use crate::utils::utils_sampling::SimpleSamplers;
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
-use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShapeAABB, LogCondition, StopCondition};
-use crate::utils::utils_shape_geometry::shape_collection::{BVHVisit, ProximaEngine, ProximaSceneFilterOutput, ShapeCollectionBVH, SignedDistanceAggregator, WitnessPointsCollection};
+use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShapeAABB};
+use crate::utils::utils_shape_geometry::shape_collection::{ProximaEngine, ShapeCollectionBVH};
 
 pub trait OptimaTensorFunction: OptimaTensorFunctionClone + Send {
     fn output_dimensions(&self) -> Vec<usize>;
@@ -408,7 +408,7 @@ impl OptimaTensorFunctionGenerics {
     pub fn derivative_diagnostics_generic<S: ?Sized, F>(s: &S, derivative_function: F, input_sampling_mode: InputSamplingMode, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, num_calls: usize)
         where S: OptimaTensorFunction,
               F: Fn(&S, &OptimaTensor, &OTFImmutVars, &mut OTFMutVars, Option<OTFDerivativeMode>, OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let mut rand_inputs = Self::diagnostics_input_sampling(num_calls, input_sampling_mode);
+        let rand_inputs = Self::diagnostics_input_sampling(num_calls, input_sampling_mode);
 
         let mut finite_difference_time = AveragingFloat::new();
         let mut finite_difference_results = vec![];
@@ -549,7 +549,7 @@ impl OptimaTensorFunctionGenerics {
             let leading_marks = Self::num_indentation_history_to_leading_marks(num_indentation_history);
 
             if *num_indentation < 200 {
-                let mut num_horizontal_marks = 200 - *num_indentation;
+                let num_horizontal_marks = 200 - *num_indentation;
                 let mut horizontal_string = "".to_string();
                 for _ in 0..num_horizontal_marks { horizontal_string.push('/'); }
                 let mut m = OptimaPrintMultiEntryCollection::new_empty();
@@ -1414,7 +1414,7 @@ impl OptimaTensor1D {
     }
     pub fn elementwise_multiplication(&self, other: &OptimaTensor) -> OptimaTensor {
         match other {
-            OptimaTensor::Vector(v) => {
+            OptimaTensor::Vector(_) => {
                 assert_eq!(self.vectorized_data().len(), other.vectorized_data().len());
                 let out_vec: Vec<f64> = self.vectorized_data()
                     .iter()
@@ -1431,7 +1431,7 @@ impl OptimaTensor1D {
     }
     pub fn elementwise_division(&self, other: &OptimaTensor) -> OptimaTensor {
         match other {
-            OptimaTensor::Vector(v) => {
+            OptimaTensor::Vector(_) => {
                 assert_eq!(self.vectorized_data().len(), other.vectorized_data().len());
                 let out_vec: Vec<f64> = self.vectorized_data()
                     .iter()
@@ -1584,7 +1584,7 @@ impl OptimaTensor2D {
                 let v2 = v.vectorized_data();
                 assert_eq!(v1.len(), v2.len());
                 let mut out = self.clone();
-                let mut out_vec = out.vectorized_data_mut();
+                let out_vec = out.vectorized_data_mut();
                 v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a * *b);
                 OptimaTensor::Matrix(out)
             }
@@ -1601,7 +1601,7 @@ impl OptimaTensor2D {
                 let v2 = v.vectorized_data();
                 assert_eq!(v1.len(), v2.len());
                 let mut out = self.clone();
-                let mut out_vec = out.vectorized_data_mut();
+                let out_vec = out.vectorized_data_mut();
                 v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a / *b);
                 OptimaTensor::Matrix(out)
             }
@@ -1810,7 +1810,7 @@ impl OptimaTensorND {
                 let v2 = v.vectorized_data();
                 assert_eq!(v1.len(), v2.len());
                 let mut out = self.clone();
-                let mut out_vec = out.vectorized_data_mut();
+                let out_vec = out.vectorized_data_mut();
                 v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a * *b);
                 OptimaTensor::TensorND(out)
             }
@@ -1827,7 +1827,7 @@ impl OptimaTensorND {
                 let v2 = v.vectorized_data();
                 assert_eq!(v1.len(), v2.len());
                 let mut out = self.clone();
-                let mut out_vec = out.vectorized_data_mut();
+                let out_vec = out.vectorized_data_mut();
                 v1.iter().zip(v2.iter()).enumerate().for_each(|(idx, (a, b))| out_vec[idx] = *a / *b);
                 OptimaTensor::TensorND(out)
             }

@@ -235,7 +235,7 @@ impl OptimaSE3Pose {
         let multiplied_translation = self_translation + other_translation;
         let multiplied_rotation = self_rotation.multiply(&other_rotation, conversion_if_necessary).expect("error");
 
-        let mut combined = Self::new_rotation_and_translation(RotationAndTranslation::new(multiplied_rotation, multiplied_translation));
+        let combined = Self::new_rotation_and_translation(RotationAndTranslation::new(multiplied_rotation, multiplied_translation));
         let res = combined.convert(&self.map_to_pose_type());
         return Ok(res);
     }

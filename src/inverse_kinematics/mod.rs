@@ -6,13 +6,13 @@ use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 use crate::nonlinear_optimization::{NonlinearOptimizer, NonlinearOptimizerType, OptimizationTermAssignment, OptimizationTermSpecification, OptimizerParameters};
 use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OTFDerivativeMode, OTFImmutVars, OTFImmutVarsObject, OTFImmutVarsObjectType, OTFMutVars};
-use crate::optima_tensor_function::robotics_functions::{OTFRobotCollisionProximityGeneric, OTFRobotJointStateDerivative, OTFRobotJointStateDerivative_, OTFRobotLinkTFSpec, RobotCollisionProximityGenericParams};
-use crate::optima_tensor_function::standard_functions::{OTFComposition, OTFLinearNormalizer, OTFQuadraticNormalizer, OTFTensorLinfNorm, OTFTensorPNorm, OTFWeightedSum};
+use crate::optima_tensor_function::robotics_functions::{OTFRobotCollisionProximityGeneric, OTFRobotJointStateDerivative, OTFRobotLinkTFSpec, RobotCollisionProximityGenericParams};
+use crate::optima_tensor_function::standard_functions::{OTFComposition, OTFQuadraticNormalizer, OTFTensorPNorm};
 use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateType};
 use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, RobotGeometricShapeScenePy, RobotGeometricShapeSceneQuery};
 use crate::utils::utils_console::{optima_print, OptimaDebug, PrintColor, PrintMode};
 use crate::utils::utils_robot::robot_generic_structures::{GenericRobotJointState, TimedGenericRobotJointState, TimedGenericRobotJointStateWindowMemoryContainer};
-use crate::utils::utils_robot::robot_set_link_specification::{RobotLinkTFGoalCollection, RobotLinkTFAllowableError, RobotLinkTFGoalErrorReportCollection, RobotLinkTFSpec, RobotLinkTFSpecAndAllowableError, RobotLinkTFSpecAndAllowableErrorCollection, RobotLinkTFSpecAndAllowableErrorCollectionPy, RobotLinkTFSpecCollection, RobotLinkTFSpecCollectionPy};
+use crate::utils::utils_robot::robot_set_link_specification::{RobotLinkTFGoalCollection, RobotLinkTFGoalErrorReportCollection, RobotLinkTFSpec, RobotLinkTFSpecAndAllowableErrorCollection, RobotLinkTFSpecAndAllowableErrorCollectionPy, RobotLinkTFSpecCollection, RobotLinkTFSpecCollectionPy};
 use crate::utils::utils_se3::optima_se3_pose::OptimaSE3PoseType;
 use crate::utils::utils_shape_geometry::geometric_shape::{LogCondition, StopCondition};
 use crate::utils::utils_traits::ToAndFromRonString;
@@ -104,7 +104,7 @@ impl OptimaIK {
             Some(p) => {p}
         };
 
-        let deriv = OTFRobotJointStateDerivative_::new(self.problem_size, derivative_order, None);
+        let deriv = OTFRobotJointStateDerivative::new(self.problem_size, derivative_order, None);
         let comp1 = OTFComposition::new(OTFTensorPNorm { p }, deriv);
         let comp2 = OTFComposition::new(OTFQuadraticNormalizer::new(normalization_value), comp1);
 
@@ -266,11 +266,6 @@ pub enum OptimaIKMode {
     Motion,
     Static,
     Custom
-}
-
-#[derive(Clone, Debug)]
-pub struct StaticIKOutput {
-
 }
 
 #[cfg(not(target_arch = "wasm32"))]

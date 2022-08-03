@@ -454,7 +454,7 @@ pub trait EnumTypeContainer<T, S> where T: EnumMapToType<S> {
 }
 impl <T, S> Clone for Box<dyn EnumTypeContainer<T, S>> where T: EnumMapToType<S> {
     fn clone(&self) -> Self {
-        self.clone()
+        unimplemented!();
     }
 }
 

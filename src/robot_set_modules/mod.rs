@@ -5,7 +5,7 @@ pub trait GetRobotSet {
 }
 impl Clone for Box<dyn GetRobotSet> {
     fn clone(&self) -> Self {
-        self.clone()
+        unimplemented!()
     }
 }
 

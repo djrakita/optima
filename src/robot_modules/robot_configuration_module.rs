@@ -176,6 +176,11 @@ impl RobotConfigurationModule {
             }
         }
     }
+    /// Note that setting a mobile base is done using `set_contiguous_chain`
+    pub fn set_mobile_base(&mut self, mobility_mode: ContiguousChainMobilityMode) -> Result<(), OptimaError> {
+        let world_idx = self.robot_model_module.world_link_idx();
+        self.set_contiguous_chain("mobile_base", world_idx, None, mobility_mode)
+    }
     /// Sets the given link as a "dead end" link.  A dead end link is a link such that it and all
     /// links that occur as successors in the kinematic chain will be inactive (essentially, removed)
     /// from the robot model.

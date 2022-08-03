@@ -54,7 +54,7 @@ impl RobotModelModule {
     /// ## Example
     /// ```
     /// use optima::robot_modules::robot_model_module::RobotModelModule;
-    /// let mut r = RobotModelModule::new_from_absolute_paths("ur5");
+    /// let mut r = RobotModelModule::new("ur5").expect("error");
     /// ```
     pub fn new(robot_name: &str) -> Result<Self, OptimaError> {
         let load_result = Self::load_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ModelModule });
@@ -248,7 +248,7 @@ impl RobotModelModule {
     /// ```
     /// In this case, we would have the following:
     /// ## Example
-    /// ```
+    /// ```text
     /// use optima::robot_modules::robot_model_module::RobotModelModule;
     /// let r = RobotModelModule::new_from_absolute_paths("fake_robot"); // pretend that fake_robot exists and its hierarchy matches the diagram.
     /// let l = r.get_link_tree_traveral_layer(2);

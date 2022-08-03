@@ -177,18 +177,21 @@ impl OptimaStemCellPath {
 /// python module, etc).
 ///
 /// # Example
-/// ```
+/// ```text
 /// use optima::utils::utils_files::optima_path::OptimaAssetLocation;
 /// use optima::utils::utils_files::optima_path::OptimaPath;
 ///
 /// // Initializes an OptimaPath linking to the embedded virtual path.
 /// let mut p = OptimaPath::new_asset_virtual_path().expect("error");
-/// p.append_file_location(&OptimaAssetLocation::RobotMeshes {robot_name: "ur5".to_string()});
+/// p.append_file_location(&OptimaAssetLocation::RobotInputMeshes {robot_name: "ur5".to_string()});
 /// p.append("0.dae");
-/// let d = p.load_dae().expect("error");
+/// let d = p.load_dae();
+/// println!("{:?}", d);
 /// ```
 /// Note that the virtual file system (VfsPath) variant does not support any
-/// writing operations; if tried, an `UnsupportedOperationError` will be returned.
+/// writing operations; if tried, an `UnsupportedOperationError` will be returned.  Also, in order
+/// for the VFS options to work, the --no-default-features flag must be used at compile time (because
+/// the do_not_embed_assets feature is on by default).
 #[derive(Clone, Debug)]
 pub enum OptimaPath {
     Path(PathBuf),

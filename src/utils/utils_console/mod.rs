@@ -70,36 +70,12 @@ pub fn optima_print(s: &str, mode: PrintMode, color: PrintColor, bolded: bool, n
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn optima_print_with_leading_marks(s: &str, mode: PrintMode, color: PrintColor, bolded: bool, num_indentation: usize, fill_character: Option<char>, leading_marks: Vec<(usize, &str)>) {
-    let mut string = "".to_string();
-    let fill_character = match fill_character {
-        None => { ' ' }
-        Some(c) => {c}
-    };
-    for i in 0..num_indentation {
-        string.insert(0, fill_character);
-    }
-    if bolded { string += format!("{}", style::Bold).as_str() }
-    if &color != &PrintColor::None {
-        let c = color.get_color_triple();
-        string += format!("{}", color::Fg(Rgb(c.0, c.1, c.2))).as_str();
-    }
-    string += s;
-    string += format!("{}", style::Reset).as_str();
-    match mode {
-        PrintMode::Println => { println!("{}", string); }
-        PrintMode::Print => { print!("{}", string); }
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 pub fn optima_print_new_line() {
     optima_print("\n", PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn optima_print_multi_entry(m: OptimaPrintMultiEntryCollection, num_indentation: usize, fill_character: Option<char>, leading_marks: Vec<(usize, &str)>) {
-    optima_print_new_line();
     for (i, entry) in m.entries.iter().enumerate() {
         let mode = PrintMode::Print;
         let num_indentation = if i == 0 { num_indentation } else { if entry.add_space_before {1} else {0} };
@@ -107,6 +83,8 @@ pub fn optima_print_multi_entry(m: OptimaPrintMultiEntryCollection, num_indentat
         let leading_marks = if i == 0 { leading_marks.clone() } else { vec![] };
         optima_print(&entry.line, mode, entry.color.clone(), entry.bolded, num_indentation, fill_character, leading_marks);
     }
+    optima_print_new_line();
+    // print!("\n");
 }
 
 #[derive(Clone)]
@@ -151,7 +129,6 @@ impl OptimaPrintMultiEntry {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_generic_data_structures::MemoryCell;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]

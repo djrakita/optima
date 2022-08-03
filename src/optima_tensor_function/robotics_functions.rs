@@ -1,13 +1,6 @@
-use std::fmt::format;
-#[cfg(not(target_arch = "wasm32"))]
-use pyo3::*;
-
-use std::marker::PhantomData;
-use itertools::izip;
-use nalgebra::{DMatrix, DVector, Vector6};
-use parry3d_f64::partitioning::QBVHDataGenerator;
+use nalgebra::{DMatrix, DVector};
 use serde::{Serialize, Deserialize};
-use crate::optima_tensor_function::{FD_PERTURBATION, OptimaTensor, OptimaTensorFunction, OptimaTensorFunctionGenerics, OTFDimensions, OTFImmutVars, OTFImmutVarsObjectType, OTFMutVars, OTFMutVarsObject, OTFMutVarsObjectType, OTFMutVarsParams, OTFMutVarsSessionKey, OTFResult, RecomputeVarIf};
+use crate::optima_tensor_function::{FD_PERTURBATION, OptimaTensor, OptimaTensorFunction,OTFImmutVars, OTFImmutVarsObjectType, OTFMutVars, OTFMutVarsObject, OTFMutVarsObjectType, OTFMutVarsParams, OTFMutVarsSessionKey, OTFResult, RecomputeVarIf};
 use crate::optima_tensor_function::standard_functions::OTFZeroFunction;
 use crate::robot_modules::robot_kinematics_module::{JacobianEndPoint, JacobianMode};
 use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
@@ -15,13 +8,11 @@ use crate::robot_set_modules::robot_set_kinematics_module::RobotSetFKResult;
 use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, RobotGeometricShapeSceneQuery};
 use crate::utils::utils_console::OptimaDebug;
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_generic_data_structures::AveragingFloat;
 use crate::utils::utils_math::finite_difference::FiniteDifferenceUtils;
 use crate::utils::utils_robot::robot_generic_structures::TimedGenericRobotJointState;
 use crate::utils::utils_robot::robot_set_link_specification::RobotLinkTFGoal;
-use crate::utils::utils_sampling::SimpleSamplers;
-use crate::utils::utils_shape_geometry::geometric_shape::{BVHCombinableShape, BVHCombinableShapeAABB, GeometricShapeSignature, LogCondition, StopCondition};
-use crate::utils::utils_shape_geometry::shape_collection::{BVH, BVHSceneFilterOutput, BVHVisit, ProximaBudget, ProximaEngine, ProximaFunctions, ProximaSceneFilterOutput, ProximityOutputMode, ShapeCollectionBVH, ShapeCollectionQueryPairsList, SignedDistanceAggregator, SignedDistanceLossFunction, WitnessPoints, WitnessPointsCollection, WitnessPointsType};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::shape_collection::{BVHVisit, ProximaBudget, ProximaEngine, ProximityOutputMode, ShapeCollectionQueryPairsList, SignedDistanceAggregator, SignedDistanceLossFunction, WitnessPoints, WitnessPointsCollection, WitnessPointsType};
 
 #[derive(Clone)]
 pub struct OTFRobotLinkTFSpec;
@@ -89,7 +80,7 @@ impl OptimaTensorFunction for OTFRobotLinkTFSpec {
         return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(out)));
     }
 
-    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let recompute_var_ifs = vec![RecomputeVarIf::IsAnyNewInput];
         let signatures = vec![OTFMutVarsObjectType::RobotSetFKDOFPerturbationsResult];
@@ -189,549 +180,13 @@ impl OptimaTensorFunction for OTFRobotLinkTFSpec {
     */
 }
 
-/*
-#[derive(Clone)]
-pub struct OTFRobotJointVelLinfNorm;
-impl OptimaTensorFunction for OTFRobotJointVelLinfNorm {
-    fn output_dimensions(&self) -> Vec<usize> {
-        vec![]
-    }
-
-    fn call_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
-        let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
-
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
-        let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
-
-        let prev = window_memory_container.c.object_ref(0);
-
-        let times = Some([*curr_time, prev.time()]);
-
-        // These are assumed to be vectors as they are robot joint states.
-        let curr_vector = input.unwrap_vector();
-        let prev_vector = prev.joint_state();
-
-        let res = RobotJointStateDerivativeUtils::joint_state_velocity_linfnorm(&curr_vector, &prev_vector, times);
-        return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(res)));
-    }
-
-    fn derivative_analytical_raw(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey) -> Result<OTFResult, OptimaError> {
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
-        let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
-
-        let object = immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
-        let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
-
-        let prev = window_memory_container.c.object_ref(0);
-
-        let times = Some([*curr_time, prev.time()]);
-
-        // These are assumed to be vectors as they are robot joint states.
-        let curr_vector = input.unwrap_vector();
-        let prev_vector = prev.joint_state();
-
-        let res = RobotJointStateDerivativeUtils::joint_state_velocity_linfnorm_derivative(&curr_vector, &prev_vector, times);
-        return Ok(OTFResult::Complete(OptimaTensor::new_from_vector(res)));
-
-    }
-}
-*/
-
 #[derive(Clone)]
 pub struct OTFRobotJointStateDerivative {
-    num_dofs: usize,
-    derivative_order: usize
-}
-impl OTFRobotJointStateDerivative {
-    pub fn new(num_dofs: usize, derivative_order: usize) -> Self {
-        assert!(derivative_order == 1 || derivative_order == 2 || derivative_order == 3);
-
-        Self {
-            num_dofs,
-            derivative_order
-        }
-    }
-}
-impl OptimaTensorFunction for OTFRobotJointStateDerivative {
-    fn output_dimensions(&self) -> Vec<usize> {
-        vec![self.num_dofs]
-    }
-
-    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
-        let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
-
-        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
-        let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
-
-        let out_vec = if self.derivative_order == 1 {
-            let prev0 = window_memory_container.c.object_ref(0);
-            let times = Some([*curr_time, prev0.time()]);
-
-            let curr_vector = input.unwrap_vector();
-            let prev_vector = prev0.joint_state();
-
-            RobotJointStateDerivativeUtils::joint_state_velocity(curr_vector, prev_vector, times)
-        } else if self.derivative_order == 2 {
-            let prev0 = window_memory_container.c.object_ref(0);
-            let prev1 = window_memory_container.c.object_ref(1);
-            let times = Some([*curr_time, prev0.time(), prev1.time()]);
-
-            let curr_vector = input.unwrap_vector();
-            let prev0_vector = prev0.joint_state();
-            let prev1_vector = prev1.joint_state();
-
-            RobotJointStateDerivativeUtils::joint_state_acceleration(curr_vector, prev0_vector, prev1_vector, times)
-        } else if self.derivative_order == 3 {
-            let prev0 = window_memory_container.c.object_ref(0);
-            let prev1 = window_memory_container.c.object_ref(1);
-            let prev2 = window_memory_container.c.object_ref(2);
-            let times = Some([*curr_time, prev0.time(), prev1.time(), prev2.time()]);
-
-            let curr_vector = input.unwrap_vector();
-            let prev0_vector = prev0.joint_state();
-            let prev1_vector = prev1.joint_state();
-            let prev2_vector = prev2.joint_state();
-
-            RobotJointStateDerivativeUtils::joint_state_jerk(curr_vector, prev0_vector, prev1_vector, prev2_vector, times)
-        } else {
-            unreachable!()
-        };
-
-        return Ok(OTFResult::Complete(OptimaTensor::new_from_vector(out_vec)));
-    }
-
-    fn derivative_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let mut matrix = DMatrix::identity(self.num_dofs, self.num_dofs);
-
-        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::TimedGenericRobotJointStateWindowMemoryContainer).expect("must have TimedGenericRobotJointStateWindowMemoryContainer");
-        let window_memory_container = object.unwrap_timed_generic_robot_joint_state_window_memory_container();
-
-        let object = _immut_vars.c.object_ref(&OTFImmutVarsObjectType::GenericRobotJointStateCurrTime).expect("must have GenericRobotJointStateCurrTime");
-        let curr_time = object.unwrap_generic_robot_joint_state_curr_time();
-
-        if self.derivative_order == 1 {
-            let prev0 = window_memory_container.c.object_ref(0);
-            let times = [*curr_time, prev0.time()];
-            let dt = RobotJointStateDerivativeUtils::joint_state_velocity_average_time(times);
-            matrix *= 1.0/dt;
-        } else if self.derivative_order == 2 {
-            let prev0 = window_memory_container.c.object_ref(0);
-            let prev1 = window_memory_container.c.object_ref(1);
-            let times = [*curr_time, prev0.time(), prev1.time()];
-            let dt = RobotJointStateDerivativeUtils::joint_state_acceleration_average_time(times);
-            matrix *= 1.0/(dt*dt);
-        } else if self.derivative_order == 3 {
-            let prev0 = window_memory_container.c.object_ref(0);
-            let prev1 = window_memory_container.c.object_ref(1);
-            let prev2 = window_memory_container.c.object_ref(2);
-            let times = [*curr_time, prev0.time(), prev1.time(), prev2.time()];
-            let dt = RobotJointStateDerivativeUtils::joint_state_jerk_average_time(times);
-            matrix *= 1.0/(dt*dt*dt);
-        } else {
-            unreachable!()
-        };
-
-        return Ok(OTFResult::Complete(OptimaTensor::new_from_matrix(matrix)));
-    }
-
-    fn derivative2_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 2));
-        return Ok(OTFResult::Complete(out));
-    }
-
-    fn derivative3_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 3));
-        return Ok(OTFResult::Complete(out));
-    }
-
-    fn derivative4_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let out = OptimaTensor::new_zeros(self.get_output_dimensions_from_derivative_order(_input, 4));
-        return Ok(OTFResult::Complete(out));
-    }
-
-    fn to_string(&self) -> String {
-        format!("OTFRobotJointStateDerivative_{}", self.derivative_order)
-    }
-}
-
-pub struct RobotJointStateDerivativeUtils;
-impl RobotJointStateDerivativeUtils {
-    pub fn joint_state_velocity(curr_state: &DVector<f64>,
-                                prev_state: &DVector<f64>,
-                                times: Option<[f64; 2]>) -> DVector<f64> {
-        let vel = Self::generic_joint_state_diff(curr_state, prev_state, match times {
-            None => { None }
-            Some(times) => { Some(Self::joint_state_velocity_average_time(times)) }
-        });
-        return vel;
-    }
-    pub fn joint_state_acceleration(curr_state: &DVector<f64>,
-                                    prev_state0: &DVector<f64>,
-                                    prev_state1: &DVector<f64>,
-                                    times: Option<[f64; 3]>) -> DVector<f64> {
-        let dt = match times {
-            None => { 1.0 }
-            Some(times) => {
-                Self::joint_state_acceleration_average_time(times)
-            }
-        };
-
-        let vel0 = Self::generic_joint_state_diff(curr_state, prev_state0, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        let vel1 = Self::generic_joint_state_diff(prev_state0, prev_state1, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        let accel = Self::generic_joint_state_diff(&vel0, &vel1, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-
-        return accel;
-    }
-    pub fn joint_state_jerk(curr_state: &DVector<f64>,
-                            prev_state0: &DVector<f64>,
-                            prev_state1: &DVector<f64>,
-                            prev_state2: &DVector<f64>,
-                            times: Option<[f64; 4]>) -> DVector<f64> {
-        let dt = match times {
-            None => { 1.0 }
-            Some(times) => {
-                Self::joint_state_jerk_average_time(times)
-            }
-        };
-        let vel0 = Self::generic_joint_state_diff(curr_state, prev_state0, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        let vel1 = Self::generic_joint_state_diff(prev_state0, prev_state1, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        let vel2 = Self::generic_joint_state_diff(prev_state1, prev_state2, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        let accel1 = Self::generic_joint_state_diff(&vel0, &vel1, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        let accel2 = Self::generic_joint_state_diff(&vel1, &vel2, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        let jerk = Self::generic_joint_state_diff(&accel1, &accel2, match times {
-            None => { None }
-            Some(times) => { Some(dt) }
-        });
-        return jerk;
-    }
-
-    pub fn joint_state_velocity_average_time(times: [f64; 2]) -> f64 {
-        times[0] - times[1]
-    }
-    pub fn joint_state_acceleration_average_time(times: [f64; 3]) -> f64 {
-        let mut sum = 0.0;
-        for i in 0..2 {
-            sum += times[i] - times[i+1]
-        }
-        sum / 2.0
-    }
-    pub fn joint_state_jerk_average_time(times: [f64; 4]) -> f64 {
-        let mut sum = 0.0;
-        for i in 0..3 {
-            sum += times[i] - times[i+1]
-        }
-        sum / 3.0
-    }
-
-    /*
-    pub fn joint_state_velocity_l2norm_squared(curr_state: &DVector<f64>,
-                                               prev_state: &DVector<f64>,
-                                               times: Option<[f64; 2]>) -> f64 {
-        let vec = Self::joint_state_velocity(curr_state, prev_state, times);
-        return vec.norm().powi(2);
-    }
-    pub fn joint_state_acceleration_l2norm_squared(curr_state: &DVector<f64>,
-                                                   prev_state0: &DVector<f64>,
-                                                   prev_state1: &DVector<f64>,
-                                                   times: Option<[f64; 3]>) -> f64 {
-        let vec = Self::joint_state_acceleration(curr_state, prev_state0, prev_state1, times);
-        return vec.norm().powi(2);
-    }
-    pub fn joint_state_jerk_l2norm_squared(curr_state: &DVector<f64>,
-                                           prev_state0: &DVector<f64>,
-                                           prev_state1: &DVector<f64>,
-                                           prev_state2: &DVector<f64>,
-                                           times: Option<[f64; 4]>) -> f64 {
-        let vec = Self::joint_state_jerk(curr_state, prev_state0, prev_state1, prev_state2, times);
-        return vec.norm().powi(2);
-    }
-
-    pub fn joint_state_velocity_l2norm_squared_derivative(curr_state: &DVector<f64>,
-                                                          prev_state: &DVector<f64>,
-                                                          times: Option<[f64; 2]>) -> DVector<f64> {
-        assert_eq!(curr_state.len(), prev_state.len());
-
-        let delta_time = match times {
-            None => { 1.0 }
-            Some(times) => { times[0] - times[1] }
-        };
-
-        let delta_time_2 = 2.0 / (delta_time * delta_time);
-
-        let mut out = DVector::zeros(curr_state.len());
-        curr_state.iter().zip(prev_state.iter()).enumerate().for_each(|(idx, (x, y))| out[idx] = delta_time_2 * (*x - *y));
-
-        return out;
-    }
-    pub fn joint_state_acceleration_l2norm_squared_derivative(curr_state: &DVector<f64>,
-                                                              prev_state0: &DVector<f64>,
-                                                              prev_state1: &DVector<f64>,
-                                                              times: Option<[f64; 3]>) -> DVector<f64> {
-        assert_eq!(curr_state.len(), prev_state0.len());
-        assert_eq!(prev_state0.len(), prev_state1.len());
-
-        let mut dt = match times {
-            None => { 1.0 }
-            Some(times) => {
-                let mut sum = 0.0;
-                for i in 0..2 {
-                    sum += times[i] - times[i+1]
-                }
-                sum / 2.0
-            }
-        };
-        let denom = dt.powi(4);
-        /*
-        let d0 = match times {
-            None => { 1.0 }
-            Some(times) => { times[0] - times[1] }
-        };
-        let d0_squared = d0 * d0;
-
-        let d1 = match times {
-            None => { 1.0 }
-            Some(times) => { times[1] - times[2] }
-        };
-
-        let d2 = match times {
-            None => { 1.0 }
-            Some(times) => { times[0] - times[2] }
-        };
-        let d2_squared = d2 * d2;
-
-        let denom = d0_squared * d1 * d2_squared;
-        */
-
-        let mut out = DVector::zeros(curr_state.len());
-        izip!(curr_state, prev_state0, prev_state1)
-            .enumerate()
-            .for_each(|(idx, (x, y, z))|  out[idx] = (2.0*(*x - 2.0 * *y + *z)) / denom );
-
-        out
-    }
-    pub fn joint_state_jerk_l2norm_squared_derivative(curr_state: &DVector<f64>,
-                                                      prev_state0: &DVector<f64>,
-                                                      prev_state1: &DVector<f64>,
-                                                      prev_state2: &DVector<f64>,
-                                                      times: Option<[f64; 4]>) -> DVector<f64> {
-        assert_eq!(curr_state.len(), prev_state0.len());
-        assert_eq!(prev_state0.len(), prev_state1.len());
-        assert_eq!(prev_state1.len(), prev_state2.len());
-
-        let mut dt = match times {
-            None => { 1.0 }
-            Some(times) => {
-                let mut sum = 0.0;
-                for i in 0..3 {
-                    sum += times[i] - times[i+1]
-                }
-                sum / 3.0
-            }
-        };
-        let denom = dt.powi(6);
-        /*
-        let d0 = match times {
-            None => { 1.0 }
-            Some(times) => { times[0] - times[1] }
-        };
-        let d0_squared = d0 * d0;
-
-        let d1 = match times {
-            None => { 1.0 }
-            Some(times) => { times[1] - times[2] }
-        };
-
-        let d2 = match times {
-            None => { 1.0 }
-            Some(times) => { times[2] - times[3] }
-        };
-
-        let d3 = match times {
-            None => { 1.0 }
-            Some(times) => { ((times[0] - times[1]) + (times[1] - times[2])) * 0.5  }
-        };
-        let d3_squared = d3 * d3;
-
-        let d4 = match times {
-            None => { 1.0 }
-            Some(times) => { ((times[1] - times[2]) + (times[2] - times[3])) * 0.5 }
-        };
-
-        let d5 = match times {
-            None => { 1.0 }
-            Some(times) => { (((times[0] - times[1]) + (times[1] - times[2])) * 0.5 + ((times[1] - times[2]) + (times[2] - times[3])) * 0.5) * 0.5 }
-        };
-        let d5_squared = d5*d5;
-
-        let denom = -(d0_squared * d1 * d2 * d3_squared * d4 * d5_squared);
-        */
-
-        let mut out = DVector::zeros(curr_state.len());
-        izip!(curr_state, prev_state0, prev_state1, prev_state2)
-            .enumerate()
-            .for_each(|(idx, (x, y, z, w))|  out[idx] = (2.0 * (-*w + *x - 3.0 * *y + 3.0 * *z)) / denom );
-
-        out
-    }
-
-    pub fn joint_state_velocity_linfnorm(curr_state: &DVector<f64>,
-                                         prev_state: &DVector<f64>,
-                                         times: Option<[f64; 2]>) -> f64 {
-        let vec = Self::joint_state_velocity(curr_state, prev_state, times);
-        let mut max = -f64::INFINITY;
-        for v in &vec {
-            let a = v.abs();
-            if a > max { max = a; }
-        }
-        return max;
-    }
-    pub fn joint_state_acceleration_linfnorm(curr_state: &DVector<f64>,
-                                             prev_state0: &DVector<f64>,
-                                             prev_state1: &DVector<f64>,
-                                             times: Option<[f64; 3]>) -> f64 {
-        let vec = Self::joint_state_acceleration(curr_state, prev_state0, prev_state1, times);
-        let mut max = -f64::INFINITY;
-        for v in &vec {
-            let a = v.abs();
-            if a > max { max = a; }
-        }
-        return max;
-    }
-    pub fn joint_state_jerk_linfnorm(curr_state: &DVector<f64>,
-                                     prev_state0: &DVector<f64>,
-                                     prev_state1: &DVector<f64>,
-                                     prev_state2: &DVector<f64>,
-                                     times: Option<[f64; 4]>) -> f64 {
-        let vec = Self::joint_state_jerk(curr_state, prev_state0, prev_state1, prev_state2, times);
-        let mut max = -f64::INFINITY;
-        for v in &vec {
-            let a = v.abs();
-            if a > max { max = a; }
-        }
-        return max;
-    }
-
-    pub fn joint_state_velocity_linfnorm_derivative(curr_state: &DVector<f64>,
-                                                    prev_state: &DVector<f64>,
-                                                    times: Option<[f64; 2]>) -> DVector<f64> {
-        let dt = match times {
-            None => { 1.0 }
-            Some(times) => { times[0] - times[1] }
-        };
-        let vec = Self::joint_state_velocity(curr_state, prev_state, times);
-        let mut out = DVector::zeros(curr_state.len());
-        let mut max = -f64::INFINITY;
-        let mut max_idx = usize::MAX;
-        for (i, v) in vec.iter().enumerate() {
-            let a = v.abs();
-            if a > max { max = a; max_idx = i; }
-        }
-        if vec[max_idx] > 0.0 { out[max_idx] = 1.0 / dt } else { out[max_idx] = -1.0 / dt };
-        return out;
-    }
-    pub fn joint_state_acceleration_linfnorm_derivative(curr_state: &DVector<f64>,
-                                                        prev_state0: &DVector<f64>,
-                                                        prev_state1: &DVector<f64>,
-                                                        times: Option<[f64; 3]>) -> DVector<f64> {
-        let dt = match times {
-            None => { 1.0 }
-            Some(times) => {
-                let mut sum = 0.0;
-                for i in 0..2 {
-                    sum += times[i] - times[i+1]
-                }
-                sum / 2.0
-            }
-        };
-        let vec = Self::joint_state_acceleration(curr_state, prev_state0, prev_state1, times);
-        let mut out = DVector::zeros(curr_state.len());
-        let mut max = -f64::INFINITY;
-        let mut max_idx = usize::MAX;
-        for (i, v) in vec.iter().enumerate() {
-            let a = v.abs();
-            if a > max { max = a; max_idx = i; }
-        }
-        if vec[max_idx] > 0.0 { out[max_idx] = 1.0 / dt } else { out[max_idx] = -1.0 / dt };
-        return out;
-    }
-    pub fn joint_state_jerk_linfnorm_derivative(curr_state: &DVector<f64>,
-                                                prev_state0: &DVector<f64>,
-                                                prev_state1: &DVector<f64>,
-                                                prev_state2: &DVector<f64>,
-                                                times: Option<[f64; 4]>) -> DVector<f64> {
-        let dt = match times {
-            None => { 1.0 }
-            Some(times) => {
-                let mut sum = 0.0;
-                for i in 0..3 {
-                    sum += times[i] - times[i+1]
-                }
-                sum / 3.0
-            }
-        };
-        let vec = Self::joint_state_jerk(curr_state, prev_state0, prev_state1, prev_state2, times);
-        let mut out = DVector::zeros(curr_state.len());
-        let mut max = -f64::INFINITY;
-        let mut max_idx = usize::MAX;
-        for (i, v) in vec.iter().enumerate() {
-            let a = v.abs();
-            if a > max { max = a; max_idx = i; }
-        }
-        if vec[max_idx] > 0.0 { out[max_idx] = 1.0 / dt } else { out[max_idx] = -1.0 / dt };
-        return out;
-    }
-    */
-
-    fn generic_joint_state_diff(a: &DVector<f64>,
-                                b: &DVector<f64>,
-                                delta_time: Option<f64>) -> DVector<f64> {
-        let delta_time = match delta_time {
-            None => { 1.0 }
-            Some(delta_time) => {
-                delta_time
-            }
-        };
-
-        assert!(delta_time > 0.0, "delta_time must be greater than 0.0");
-
-        let mut vel = (a - b) / delta_time;
-        return vel;
-    }
-}
-
-#[derive(Clone)]
-pub struct OTFRobotJointStateDerivative_ {
     num_dofs: usize,
     derivative_order: usize,
     window_size: usize
 }
-impl OTFRobotJointStateDerivative_ {
+impl OTFRobotJointStateDerivative {
     pub fn new(num_dofs: usize, derivative_order: usize, window_size: Option<usize>) -> Self {
         assert!(derivative_order >= 1);
         if let Some(w) = window_size { assert!(w > 1); }
@@ -746,7 +201,7 @@ impl OTFRobotJointStateDerivative_ {
         }
     }
 }
-impl OptimaTensorFunction for OTFRobotJointStateDerivative_ {
+impl OptimaTensorFunction for OTFRobotJointStateDerivative {
     fn output_dimensions(&self) -> Vec<usize> {
         vec![self.num_dofs]
     }
@@ -956,10 +411,10 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityProxima {
         return self.call_raw_with_necessary_vars(&robot_set_joint_state, robot_geometric_shape_scene, &mut proxima_engine, None, None);
     }
 
-    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::ProximaEngine], &vec![OTFMutVarsParams::None], &vec![RecomputeVarIf::Never], input, immut_vars, &session_key);
-        let mut proxima_engine = vars[0].unwrap_proxima_engine_mut();
+        let proxima_engine = vars[0].unwrap_proxima_engine_mut();
 
         let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
         let robot_set_joint_state = robot_geometric_shape_scene.robot_set().spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
@@ -1095,7 +550,7 @@ impl OptimaTensorFunction for OTFRobotCollisionProximityStandard {
         self.call_raw_with_necessary_vars(&robot_set_joint_state, robot_geometric_shape_scene, &inclusion_list)
     }
 
-    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+    fn derivative_finite_difference(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let session_key = mut_vars.register_session(input);
         let mut vars = mut_vars.get_vars(&vec![OTFMutVarsObjectType::AbstractBVH], &vec![OTFMutVarsParams::RobotCollisionProximityBVHMode(self.bvh_mode.clone())], &vec![RecomputeVarIf::Never], input, immut_vars, &session_key);
         let abstract_bvh = &mut vars[0];

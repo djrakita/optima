@@ -16,7 +16,7 @@ use crate::utils::utils_traits::SaveAndLoadable;
 /// objects that will be used to initialize many other robot set modules.
 ///
 /// # Example
-/// ```
+/// ```text
 /// use optima::robot_modules::robot_configuration_module::{ContiguousChainMobilityMode, RobotConfigurationModule};
 /// use optima::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 /// use optima::utils::utils_robot::robot_module_utils::RobotNames;
@@ -24,13 +24,13 @@ use crate::utils::utils_traits::SaveAndLoadable;
 ///
 /// let mut r = RobotSetConfigurationModule::new_empty();
 ///
-/// r.add_robot_configuration_from_names(RobotNames::new_base("ur5"))?;
-/// let mut sawyer_configuration = RobotConfigurationModule::new_from_names(RobotNames::new_base("sawyer"))?;
-/// sawyer_configuration.set_mobile_base_mode(ContiguousChainMobilityMode::PlanarTranslation {x_bounds: (-2.0, 2.0),y_bounds: (-2.0, 2.0)})?;
-/// sawyer_configuration.set_base_offset(&OptimaSE3Pose::new_from_euler_angles(0.,0.,0.,1.0,0.,0., &OptimaSE3PoseType::ImplicitDualQuaternion))?;
-/// r.add_robot_configuration(sawyer_configuration)?;
+/// r.add_robot_configuration_from_names(RobotNames::new_base("ur5")).expect("error");
+/// let mut sawyer_configuration = RobotConfigurationModule::new_from_names(RobotNames::new_base("sawyer")).expect("error");
+/// sawyer_configuration.set_mobile_base(ContiguousChainMobilityMode::PlanarTranslation {x_bounds: (-2.0, 2.0),y_bounds: (-2.0, 2.0)});
+/// sawyer_configuration.set_base_offset(&OptimaSE3Pose::new_from_euler_angles(0.,0.,0.,1.0,0.,0., &OptimaSE3PoseType::ImplicitDualQuaternion)).expect("error");
+/// r.add_robot_configuration(sawyer_configuration).expect("error");
 ///
-/// r.save_robot_set_configuration_module("test_set")?;
+/// r.save_robot_set_configuration_module("test_set").expect("error");
 /// ```
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(target_arch = "wasm32", derive(Clone, Debug, Serialize, Deserialize))]

@@ -9,7 +9,7 @@ use serde::{Serialize, Deserialize};
 use std::ops::{Add, Index, IndexMut, Mul};
 use std::vec;
 use crate::robot_modules::robot_configuration_module::{RobotConfigurationModule};
-use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
+use crate::utils::utils_console::{optima_print, optima_print_multi_entry, OptimaPrintMultiEntry, OptimaPrintMultiEntryCollection, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
@@ -335,6 +335,14 @@ impl RobotJointStateModule {
             optima_print(&format!("   > joint sub dof axis type: {:?}", joint_axis.axis_primitive_type()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
             optima_print(&format!("   > axis: {:?}", joint_axis.axis()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
             optima_print(&format!("   > joint value: {}", robot_joint_state[i]), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+        }
+    }
+    pub fn print_dof_summary(&self) {
+        for (i, ja) in self.ordered_dof_joint_axes.iter().enumerate() {
+            let mut m = OptimaPrintMultiEntryCollection::new_empty();
+            m.add(OptimaPrintMultiEntry::new_from_string(format!("DOF Joint Axis {} ---> ", i), PrintColor::Blue, true, false));
+            m.add(OptimaPrintMultiEntry::new_from_string(format!("{:?}", ja), PrintColor::None, false, false));
+            optima_print_multi_entry(m, 0, None, vec![]);
         }
     }
     pub fn robot_name(&self) -> &str {

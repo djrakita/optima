@@ -42,21 +42,12 @@ use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 /// use optima::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 /// use optima::utils::utils_shape_geometry::geometric_shape::{LogCondition, StopCondition};
 ///
-/// // Initializes a RobotSetConfigurationModule that will be used to create a RobotSet below.
-/// let mut r = RobotSetConfigurationModule::new_empty();
-///
-/// r.add_robot_configuration_from_names(RobotNames::new_base("ur5"))?;
-/// let mut sawyer_configuration = RobotConfigurationModule::new_from_names(RobotNames::new_base("sawyer"))?;
-/// sawyer_configuration.set_mobile_base_mode(ContiguousChainMobilityMode::PlanarTranslation {x_bounds: (-2.0, 2.0),y_bounds: (-2.0, 2.0)})?;
-/// sawyer_configuration.set_base_offset(&OptimaSE3Pose::new_from_euler_angles(0.,0.,0.,1.0,0.,0., &OptimaSE3PoseType::ImplicitDualQuaternion))?;
-/// r.add_robot_configuration(sawyer_configuration)?;
-///
 /// // Initializes a RobotSet.
-/// let robot_set = RobotSet::new_from_robot_set_configuration_module(r)?;
+/// let robot_set = RobotSet::new_single_robot("ur5", None);
 ///
 /// // Initializes a RobotScene with the robot set
-/// let mut scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, vec![])?;
-/// scene.add_environment_object(EnvObjSpawner::new("sphere", Some(0.7), None, None, None), false)?;
+/// let mut scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, vec![]).expect("error");
+/// scene.add_environment_object(EnvObjSpawner::new("sphere", Some(0.7), None, None, None), false).expect("error");
 /// let joint_state = scene.robot_set().robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::DOF);
 ///
 /// // Query input.
@@ -68,7 +59,7 @@ use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 /// };
 ///
 /// // Runs the Contact query on the scene and prints a summary of the result.
-/// let res = scene.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, true)?;
+/// let res = scene.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, true).expect("error");
 /// res.print_summary();
 ///
 /// ```

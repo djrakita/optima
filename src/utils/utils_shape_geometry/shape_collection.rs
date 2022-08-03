@@ -5,7 +5,6 @@ use nalgebra::{Vector3};
 use parry3d_f64::query::{Ray};
 use serde::{Serialize, Deserialize};
 use instant::{Duration};
-use itertools::izip;
 use crate::utils::utils_combinations::comb;
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string};
@@ -1455,7 +1454,7 @@ impl SignedDistanceAggregator {
                 for v in values_after_loss { out += v; }
             }
             SignedDistanceAggregator::Average => {
-                let mut num_values = values_after_loss.len() as f64;
+                let num_values = values_after_loss.len() as f64;
                 for v in values_after_loss { out += v; }
                 out /= num_values;
             }
@@ -1499,7 +1498,7 @@ impl WitnessPointsCollection {
     }
     pub fn compute_proximity_output(&self, mode: &ProximityOutputMode, loss: &SignedDistanceLossFunction, aggregator: &SignedDistanceAggregator) -> f64 {
         let mut values_after_loss = vec![];
-        for (i, wp) in self.collection().iter().enumerate() {
+        for wp in self.collection().iter() {
             values_after_loss.push(mode.get_value_after_loss(wp, loss));
         }
 
@@ -1679,8 +1678,8 @@ impl <T: BVHCombinableShape> BVH <T> {
         assert!(num_layers_a >= 1);
         assert!(num_layers_b >= 1);
 
-        let mut curr_layer_idx_a = num_layers_a - 1;
-        let mut curr_layer_idx_b = num_layers_b - 1;
+        let curr_layer_idx_a = num_layers_a - 1;
+        let curr_layer_idx_b = num_layers_b - 1;
 
         let mut out_vec = vec![];
         let mut num_visits = 0;
@@ -1781,7 +1780,7 @@ impl <T: BVHCombinableShape> BVH <T> {
 
             let new_node_idx = new_layer.len();
             let new_combinable_shape = T::combine(shapes);
-            let mut new_node = BVHCombinableShapeTreeNode {
+            let new_node = BVHCombinableShapeTreeNode {
                 combinable_shape: new_combinable_shape,
                 layer_idx,
                 children_idxs_in_child_layer: v.0.clone(),
@@ -1806,7 +1805,7 @@ impl <T: BVHCombinableShape> BVH <T> {
             for r in &remaining_idxs { shapes.push(&self.layers[child_layer_idx][*r].combinable_shape) }
             let new_combinable_shape = T::combine(shapes);
             let new_node_idx = new_layer.len();
-            let mut new_node = BVHCombinableShapeTreeNode {
+            let new_node = BVHCombinableShapeTreeNode {
                 combinable_shape: new_combinable_shape,
                 layer_idx,
                 children_idxs_in_child_layer: remaining_idxs.clone(),
@@ -1874,6 +1873,20 @@ pub struct BVHCombinableShapeTreeNode<T: BVHCombinableShape> {
     layer_idx: usize,
     children_idxs_in_child_layer: Vec<usize>,
     parent_idx_in_parent_layer: Option<usize>
+}
+impl <T: BVHCombinableShape> BVHCombinableShapeTreeNode<T> {
+    pub fn combinable_shape(&self) -> &T {
+        &self.combinable_shape
+    }
+    pub fn layer_idx(&self) -> usize {
+        self.layer_idx
+    }
+    pub fn children_idxs_in_child_layer(&self) -> &Vec<usize> {
+        &self.children_idxs_in_child_layer
+    }
+    pub fn parent_idx_in_parent_layer(&self) -> Option<usize> {
+        self.parent_idx_in_parent_layer
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -116,7 +116,7 @@ impl GeometricShape {
 
         let points: Vec<Point3<f64>> = trimesh_engine.vertices().iter().map(|v| NalgebraConversions::vector3_to_point3(v)).collect();
         let convex_shape = ConvexPolyhedron::from_convex_hull(&points).expect("error");
-        let mut f = trimesh_engine.compute_f();
+        let f = trimesh_engine.compute_f();
         // let f = convex_shape.bounding_sphere(&Isometry3::identity()).radius * 2.0;
 
         Self {
@@ -1111,6 +1111,8 @@ impl BVHCombinableShape for BVHCombinableShapeAABB {
     }
 }
 
+// TODO: Finish BVHCombinableShapeSphere
+/*
 pub struct BVHCombinableShapeSphere {
     ball: Ball,
     center: Vector3<f64>,
@@ -1150,3 +1152,4 @@ impl BVHCombinableShape for BVHCombinableShapeSphere {
         todo!()
     }
 }
+*/

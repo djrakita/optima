@@ -4,7 +4,6 @@ use pyo3::*;
 use nalgebra::{DVector, Vector3};
 use serde::{Serialize, Deserialize};
 use crate::robot_set_modules::robot_set::RobotSet;
-use crate::robot_set_modules::robot_set_joint_state_module::RobotSetJointState;
 use crate::robot_set_modules::robot_set_kinematics_module::RobotSetFKResult;
 use crate::utils::utils_generic_data_structures::{EnumBinarySearchTypeContainer, EnumMapToType, EnumTypeContainer};
 use crate::utils::utils_robot::robot_generic_structures::GenericRobotJointState;

@@ -1,4 +1,3 @@
-use nalgebra::DVector;
 use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OptimaTensorFunctionGenerics, OTFImmutVars, OTFMutVars, OTFMutVarsSessionKey, OTFResult};
 use crate::utils::utils_console::{optima_print_multi_entry, OptimaDebug, OptimaPrintMultiEntry, OptimaPrintMultiEntryCollection, PrintColor};
 use crate::utils::utils_errors::OptimaError;
@@ -390,7 +389,7 @@ impl OptimaTensorFunction for OTFTensorAveragedL2NormSquared {
     fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let o = OTFTensorL2NormSquared;
         let mut out_res = o.call(input, _immut_vars, _mut_vars, _debug).expect("error");
-        let mut out = out_res.unwrap_tensor_mut();
+        let out = out_res.unwrap_tensor_mut();
         out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
         return Ok(out_res);
     }
@@ -398,7 +397,7 @@ impl OptimaTensorFunction for OTFTensorAveragedL2NormSquared {
     fn derivative_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let o = OTFTensorL2NormSquared;
         let mut out_res = o.derivative(_input, _immut_vars, _mut_vars, None, _debug).expect("error");
-        let mut out = out_res.unwrap_tensor_mut();
+        let out = out_res.unwrap_tensor_mut();
         out.scalar_multiplication(1.0 / _input.vectorized_data().len() as f64);
         return Ok(out_res);
     }
@@ -406,7 +405,7 @@ impl OptimaTensorFunction for OTFTensorAveragedL2NormSquared {
     fn derivative2_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let o = OTFTensorL2NormSquared;
         let mut out_res = o.derivative2(_input, _immut_vars, _mut_vars, None, _debug).expect("error");
-        let mut out = out_res.unwrap_tensor_mut();
+        let out = out_res.unwrap_tensor_mut();
         out.scalar_multiplication(1.0 / _input.vectorized_data().len() as f64);
         return Ok(out_res);
     }
@@ -414,7 +413,7 @@ impl OptimaTensorFunction for OTFTensorAveragedL2NormSquared {
     fn derivative3_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let o = OTFTensorL2NormSquared;
         let mut out_res = o.derivative3(_input, _immut_vars, _mut_vars, None, _debug).expect("error");
-        let mut out = out_res.unwrap_tensor_mut();
+        let out = out_res.unwrap_tensor_mut();
         out.scalar_multiplication(1.0 / _input.vectorized_data().len() as f64);
         return Ok(out_res);
     }
@@ -422,7 +421,7 @@ impl OptimaTensorFunction for OTFTensorAveragedL2NormSquared {
     fn derivative4_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let o = OTFTensorL2NormSquared;
         let mut out_res = o.derivative4(_input, _immut_vars, _mut_vars, None, _debug).expect("error");
-        let mut out = out_res.unwrap_tensor_mut();
+        let out = out_res.unwrap_tensor_mut();
         out.scalar_multiplication(1.0 / _input.vectorized_data().len() as f64);
         return Ok(out_res);
     }
@@ -470,7 +469,7 @@ impl OptimaTensorFunction for OTFTensorAveragedL1Norm {
     fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let o = OTFTensorL1Norm;
         let mut out_res = o.call(input, _immut_vars, _mut_vars, _debug).expect("error");
-        let mut out = out_res.unwrap_tensor_mut();
+        let out = out_res.unwrap_tensor_mut();
         out.scalar_multiplication(1.0 / input.vectorized_data().len() as f64);
         return Ok(out_res);
     }
@@ -478,7 +477,7 @@ impl OptimaTensorFunction for OTFTensorAveragedL1Norm {
     fn derivative_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         let o = OTFTensorL1Norm;
         let mut out_res = o.derivative(_input, _immut_vars, _mut_vars, None, _debug).expect("error");
-        let mut out = out_res.unwrap_tensor_mut();
+        let out = out_res.unwrap_tensor_mut();
         out.scalar_multiplication(1.0 / _input.vectorized_data().len() as f64);
         return Ok(out_res);
     }
@@ -508,10 +507,9 @@ impl OptimaTensorFunction for OTFTensorPNorm {
     }
 
     fn derivative_analytical_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let start = instant::Instant::now();
         let vectorized = _input.vectorized_data();
         let mut out = OptimaTensor::new_zeros(_input.dimensions());
-        let mut out_vectorized = out.vectorized_data_mut();
+        let out_vectorized = out.vectorized_data_mut();
 
         let mut prod = 0.0;
         for v in vectorized { prod += v.abs().powf(self.p); }
@@ -781,7 +779,7 @@ impl OptimaTensorFunction for OTFZeroFunction {
         vec![]
     }
 
-    fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
+    fn call_raw(&self, _input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
         return Ok(OTFResult::Complete(OptimaTensor::new_from_scalar(0.0)));
     }
 

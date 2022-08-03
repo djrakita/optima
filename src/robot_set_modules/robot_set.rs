@@ -30,7 +30,7 @@ use crate::utils::utils_traits::SaveAndLoadable;
 /// // This example shows the initialization of a RobotSet of a ur5 and sawyer robot,
 /// // spawning of a robot_set_joint_state, and printing thet result of a forward kinematics computation
 /// // on the joint state.
-/// let robot_set = RobotSet::new_from_robot_names(vec![RobotNames::new_base("ur5"), RobotNames::new_base("sawyer")]).expect("error");
+/// let robot_set = RobotSet::new_from_robot_names(vec![RobotNames::new_base("ur5"), RobotNames::new_base("sawyer")]);
 /// let robot_set_joint_state = robot_set.robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::DOF);
 /// let fk_res = robot_set.robot_set_kinematics_module().compute_fk(&robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
 /// fk_res.print_summary();
