@@ -21,6 +21,8 @@ Cargo.lock
 .idea/
 index.html
 path_to_optima_toolbox_assets.json
-bin/
 pkg/
 env/
+
+src/bin/*
+!src/bin/print_robot_info.rs
