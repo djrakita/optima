@@ -182,7 +182,7 @@ impl PrintColor {
             PrintColor::Green => { return (0, 255, 0) }
             PrintColor::Red => { return (255, 0, 0) }
             PrintColor::Yellow => { return (255, 255, 0) }
-            PrintColor::Cyan => { return (0, 255, 255) }
+            PrintColor::Cyan => { return (0, 200, 200) }
             PrintColor::Magenta => { return (255, 0, 255) }
         }
     }
