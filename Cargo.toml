@@ -1,9 +1,8 @@
-
 [package]
 name = "optima"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
-description = "An easy to set up and easy to use toolbox for applied planning and optimization"
+description = "An easy to set up and easy optimization and planning toolbox, particularly for robotics."
 keywords = ["robotics", "planning", "optimization", "motion", "kinematics"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
