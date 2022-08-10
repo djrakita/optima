@@ -1,5 +1,4 @@
 
-
 //! # Introduction
 //!
 //! Optima is an easy to set up and easy to use robotics toolbox.  Its primary use-case is robot motion generation (e.g., trajectory optimization, motion planning, optimization-based inverse kinematics, etc), though its underlying structures are general and can apply to many planning and optimization problem domains.  The core library is written in Rust, though high quality support for other targets such as Python and Webassembly are afforded via Rust's flexible compiler.
@@ -22,12 +21,15 @@
 //! Further documentation including setup instructions, tutorials, etc. for Optima can be found at [https://djrakita.github.io/optima_toolbox/](https://djrakita.github.io/optima_toolbox/).
 
 pub mod inverse_kinematics;
-pub mod nonlinear_optimization;
+pub mod optimization;
 pub mod optima_tensor_function;
 pub mod robot_modules;
 pub mod robot_set_modules;
 pub mod scenes;
 pub mod utils;
+
+#[cfg(feature = "optima_bevy")]
+pub mod optima_bevy;
 
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::prelude::*;

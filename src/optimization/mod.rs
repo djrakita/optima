@@ -335,6 +335,7 @@ impl OpEnNonlinearOptimizer {
         let mut panoc = PANOCOptimizer::new(problem, &mut panoc_cache);
         if let Some(a) = &parameters.max_time { panoc = panoc.with_max_duration(a.clone()); }
         if let Some(a) = &parameters.max_iterations { panoc = panoc.with_max_iter(a.clone()); }
+        panoc = panoc.with_tolerance(parameters.open_tolerance);
 
         let mut u = init_condition.vectorized_data().to_vec();
         let status = panoc.solve(&mut u).unwrap();
@@ -714,7 +715,8 @@ pub struct OptimizerParameters {
     max_outer_iterations: Option<usize>,
     nlopt_ftol_rel: f64,
     nlopt_ftol_abs: f64,
-    nlopt_xtol_rel: f64
+    nlopt_xtol_rel: f64,
+    open_tolerance: f64
 }
 impl OptimizerParameters {
     pub fn new_empty() -> Self {
@@ -738,6 +740,9 @@ impl OptimizerParameters {
     pub fn set_xtol_rel(&mut self, val: f64) {
         self.nlopt_xtol_rel = val;
     }
+    pub fn set_open_tolerance(&mut self, tolerance: f64) {
+        self.open_tolerance = tolerance;
+    }
 }
 impl Default for OptimizerParameters {
     fn default() -> Self {
@@ -745,9 +750,10 @@ impl Default for OptimizerParameters {
             max_time: None,
             max_iterations: None,
             max_outer_iterations: None,
-            nlopt_ftol_rel: 0.00001,
-            nlopt_ftol_abs: 0.00001,
-            nlopt_xtol_rel: 0.00001
+            nlopt_ftol_rel: 0.0001,
+            nlopt_ftol_abs: 0.0001,
+            nlopt_xtol_rel: 0.0001,
+            open_tolerance: 0.0001
         }
     }
 }

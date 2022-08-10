@@ -400,58 +400,6 @@ impl RobotGeometricShapeScene {
 
         Ok(out_poses)
     }
-    /*
-    pub fn set_attachment_between_env_obj_and_robot_link(&mut self,
-                                                         env_obj_idx: usize,
-                                                         robot_idx_in_set: usize,
-                                                         link_idx_in_robot: usize,
-                                                         set_joint_state: &RobotSetJointState,
-                                                         pose_constraint_group_input: Option<&EnvObjPoseConstraintGroupInput>) -> Result<(), OptimaError> {
-        self.reset_skips_on_given_env_obj(env_obj_idx)?;
-
-        let poses = self.recover_poses(set_joint_state, pose_constraint_group_input)?;
-
-        let shape_idxs = self.get_shape_idxs_from_robot_idx_and_link_idx(robot_idx_in_set, link_idx_in_robot)?;
-        let shape_idx = shape_idxs[0];
-        let link_pose = poses.poses()[shape_idx].as_ref().unwrap();
-
-        let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx)?;
-        let shape_idx = shape_idxs[0];
-        let env_obj_pose = poses.poses()[shape_idx].as_ref().unwrap();
-
-        // set new constraint
-        let disp = link_pose.displacement(&env_obj_pose, true)?;
-        self.env_obj_idx_to_pose_constraint[env_obj_idx] = EnvObjPoseConstraint::RelativeOffset {
-            parent_signature: GeometricShapeSignature::RobotSetLink {
-                robot_idx_in_set,
-                link_idx_in_robot,
-                shape_idx_in_link: 0
-            },
-            offset: disp
-        };
-
-        // set skips such that the given env obj is now checked for collision against other env objects.
-
-
-        // set skips such that the given env obj is not checked against robot links that were close in
-        // distance at time of attachment.
-
-        Ok(())
-    }
-    pub fn reset_skips_on_given_env_obj(&mut self, env_obj_idx: usize) -> Result<(), OptimaError> {
-        OptimaError::new_check_for_idx_out_of_bound_error(env_obj_idx, self.env_obj_count, file!(), line!())?;
-
-        let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx)?.clone();
-        let num_shapes = self.shape_collection.shapes().len();
-        for given_env_obj_shape_idx in &shape_idxs {
-            for env_obj_shape_idx in 0..num_shapes {
-                self.shape_collection.reset_skip_to_base_from_idxs(*given_env_obj_shape_idx, env_obj_shape_idx)?;
-            }
-        }
-
-        Ok(())
-    }
-    */
     pub fn shape_collection_query<'a>(&'a self,
                                       input: &'a RobotGeometricShapeSceneQuery,
                                       stop_condition: StopCondition,

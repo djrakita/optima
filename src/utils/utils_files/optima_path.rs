@@ -107,6 +107,9 @@ impl OptimaStemCellPath {
     pub fn split_path_into_string_components_back_to_assets_dir(&self) -> Result<Vec<String>, OptimaError> {
         return self.optima_file_paths[0].split_path_into_string_components_back_to_asset_dir();
     }
+    pub fn split_path_into_string_components_back_to_given_dir(&self, dir: &str) -> Result<Vec<String>, OptimaError> {
+        return self.optima_file_paths[0].split_path_into_string_components_back_to_given_dir(dir);
+    }
     pub fn delete_file(&self) -> Result<(), OptimaError> {
         self.try_function_on_all_optima_file_paths(OptimaPath::delete_file, "delete_file")
     }
@@ -605,6 +608,39 @@ impl OptimaPath {
             }
         }
     }
+    pub fn split_path_into_string_components_back_to_given_dir(&self, dir: &str) -> Result<Vec<String>, OptimaError> {
+        return match self {
+            OptimaPath::Path(_) => {
+                let string_components = self.split_path_into_string_components();
+                let mut optima_assets_idx: Option<usize> = None;
+                for (i, s) in string_components.iter().enumerate() {
+                    if s == dir {
+                        optima_assets_idx = Some(i);
+                        break;
+                    }
+                }
+
+                if optima_assets_idx.is_none() {
+                    return Err(OptimaError::new_generic_error_str(&format!("dir {:?} was not found on the given path {:?}",dir, self), file!(), line!()));
+                }
+
+                let optima_assets_idx = optima_assets_idx.unwrap();
+                let num_string_components = string_components.len();
+
+                if optima_assets_idx == num_string_components - 1 { return Ok(vec![]); }
+
+                let mut out_vec = vec![];
+                for i in optima_assets_idx + 1..num_string_components {
+                    out_vec.push(string_components[i].clone());
+                }
+
+                Ok(out_vec)
+            }
+            OptimaPath::VfsPath(_) => {
+                Ok(self.split_path_into_string_components())
+            }
+        }
+    }
     #[allow(unused_must_use)]
     pub fn delete_file(&self) -> Result<(), OptimaError> {
         return match self {
@@ -874,6 +910,12 @@ pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Resu
             Err(OptimaError::new_generic_error_str("load_object_from_json_string() failed.  The given json_string is incompatible with the requested type.", file!(), line!()))
         }
     }
+}
+
+pub fn path_buf_from_string_components(components: &Vec<String>) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in components { out.push(c); }
+    out
 }
 
 #[derive(RustEmbed, Debug)]

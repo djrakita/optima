@@ -4,7 +4,7 @@ use pyo3::*;
 
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
-use crate::nonlinear_optimization::{NonlinearOptimizer, NonlinearOptimizerType, OptimizationTermAssignment, OptimizationTermSpecification, OptimizerParameters};
+use crate::optimization::{NonlinearOptimizer, NonlinearOptimizerType, OptimizationTermAssignment, OptimizationTermSpecification, OptimizerParameters};
 use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OTFDerivativeMode, OTFImmutVars, OTFImmutVarsObject, OTFImmutVarsObjectType, OTFMutVars};
 use crate::optima_tensor_function::robotics_functions::{OTFRobotCollisionProximityGeneric, OTFRobotJointStateDerivative, OTFRobotLinkTFSpec, RobotCollisionProximityGenericParams};
 use crate::optima_tensor_function::standard_functions::{OTFComposition, OTFQuadraticNormalizer, OTFTensorPNorm};
@@ -46,8 +46,8 @@ impl OptimaIK {
     pub fn new_motion_ik(robot_geometric_shape_scene: RobotGeometricShapeScene, nonlinear_optimizer_type: NonlinearOptimizerType, robot_collision_proximity_params: RobotCollisionProximityGenericParams, init_state: &RobotSetJointState, init_time: f64) -> Self {
         let mut out_self = Self::new_empty(robot_geometric_shape_scene, nonlinear_optimizer_type);
         out_self.add_robot_link_specification_term(OptimizationTermAssignment::Objective {weight: 1.0}, None);
-        out_self.add_joint_velocity_term(init_state, init_time, OptimizationTermAssignment::Objective {weight: 1.0}, None, 1.0);
-        out_self.add_joint_acceleration_term(init_state, init_time, OptimizationTermAssignment::Objective {weight: 1.0}, None, 20.0);
+        out_self.add_joint_velocity_term(init_state, init_time, OptimizationTermAssignment::Objective {weight: 1.0}, None, 6.0);
+        out_self.add_joint_acceleration_term(init_state, init_time, OptimizationTermAssignment::Objective {weight: 1.0}, None, 30.0);
         out_self.add_joint_jerk_term(init_state, init_time, OptimizationTermAssignment::Objective {weight: 1.0}, None, 2000.0);
         match robot_collision_proximity_params {
             RobotCollisionProximityGenericParams::None => {}

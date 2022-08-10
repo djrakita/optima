@@ -697,7 +697,7 @@ fn general_robot_jacobian_collision_proximity_gradient(witness_points_collection
 
         match signatures.0 {
             GeometricShapeSignature::RobotSetLink { robot_idx_in_set, link_idx_in_robot, .. } => {
-                let jacobian = robot_set.robot_set_kinematics_module().compute_jacobian(&robot_set_joint_state, robot_idx_in_set, None, link_idx_in_robot, &JacobianEndPoint::Global(witness_points.0.clone()), None, JacobianMode::Translational).expect("error");
+                let jacobian = robot_set.robot_set_kinematics_module().compute_jacobian(robot_set_joint_state, robot_idx_in_set, None, link_idx_in_robot, &JacobianEndPoint::Global(witness_points.0.clone()), None, JacobianMode::Translational).expect("error");
                 jacobian_option_pair[0] = Some(jacobian);
             }
             _ => { }

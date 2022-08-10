@@ -110,7 +110,7 @@ impl RobotSetJointStateModule {
         })
     }
     pub fn spawn_robot_set_joint_state_try_auto_type(&self, concatenated_state: DVector<f64>) -> Result<RobotSetJointState, OptimaError> {
-        if concatenated_state.len() != self.num_dofs || concatenated_state.len() != self.num_axes {
+        if concatenated_state.len() != self.num_dofs && concatenated_state.len() != self.num_axes {
             return Err(OptimaError::new_generic_error_str(&format!("Could not successfully make an auto \
             RobotSetJointState in try_new_auto_type().  The given state length was {} while either {} or {} was required.",
                                                             concatenated_state.len(), self.num_axes, self.num_dofs),
@@ -232,6 +232,34 @@ impl RobotSetJointStateModule {
                 count += 1;
             }
             optima_print("------------------------------------------------------------------------", PrintMode::Println, PrintColor::None, true, 0, None, vec![]);
+        }
+    }
+    pub fn print_robot_joint_state_summary(&self, robot_set_joint_state: &RobotSetJointState) {
+        // for (robot_idx_in_set, robot_joint_state) in robot_joint_states.iter().enumerate() {
+            // optima_print(&format!("Robot {} ---> ", robot_idx_in_set), PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
+            // self.robot_joint_state_modules[robot_idx_in_set].print_robot_joint_state_summary(robot_joint_state);
+        // }
+
+        // let robot_joint_states = self.split_robot_set_joint_state_into_robot_joint_states(robot_set_joint_state).expect("error");
+
+        let mut count = 0;
+        for (robot_idx_in_set, r) in self.robot_joint_state_modules.iter().enumerate() {
+            let joint_axes = match robot_set_joint_state.robot_set_joint_state_type {
+                RobotSetJointStateType::DOF => { r.ordered_dof_joint_axes() }
+                RobotSetJointStateType::Full => { r.ordered_joint_axes() }
+            };
+
+            for (_, joint_axis) in joint_axes.iter().enumerate() {
+                optima_print(&format!("Joint state index {} ---> ", count), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
+                optima_print(&format!("   > Robot Index in Robot Set: {}", robot_idx_in_set), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                optima_print(&format!("   > joint name: {}", r.robot_configuration_module().robot_model_module().joints()[joint_axis.joint_idx()].name()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                optima_print(&format!("   > joint index: {}", joint_axis.joint_idx()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                optima_print(&format!("   > joint sub dof index: {}", joint_axis.joint_sub_dof_idx()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                optima_print(&format!("   > joint sub dof axis type: {:?}", joint_axis.axis_primitive_type()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                optima_print(&format!("   > axis: {:?}", joint_axis.axis()), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                optima_print(&format!("   > joint value: {}", robot_set_joint_state[count]), PrintMode::Println, PrintColor::None, false, 0, None, vec![]);
+                count += 1;
+            }
         }
     }
     pub fn robot_joint_state_modules(&self) -> &Vec<RobotJointStateModule> {

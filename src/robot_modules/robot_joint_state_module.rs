@@ -348,6 +348,9 @@ impl RobotJointStateModule {
     pub fn robot_name(&self) -> &str {
         return self.robot_configuration_module.robot_name()
     }
+    pub fn robot_configuration_module(&self) -> &RobotConfigurationModule {
+        &self.robot_configuration_module
+    }
 }
 impl SaveAndLoadable for RobotJointStateModule {
     type SaveType = String;

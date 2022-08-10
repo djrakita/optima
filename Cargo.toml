@@ -1,3 +1,4 @@
+
 [package]
 name = "optima"
 version = "0.0.1"
@@ -43,6 +44,9 @@ optimization_engine = { version = "0.7.4", features = ["wasm"] }
 itertools = "0.10.2"
 factorial = "0.2.1"
 
+bevy = {version = "0.8.0", optional = true, features = ["dynamic"]} # NOTE! "dynamic" feature must be removed before release of code that cannot use
+bevy_stl = {git = "https://github.com/djrakita/bevy_stl", branch = "main", optional = true, features = ["wireframe"]}
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }
 
@@ -53,7 +57,8 @@ pbr = "1.0.4"
 nlopt = "0.5.4"
 
 [features]
-default = [ "do_not_embed_assets" ] # NOTE!  To turn off, must include --no-default-features.
+default = [ "do_not_embed_assets", "optima_bevy" ] # NOTE!  To turn off, must include --no-default-features.
+optima_bevy = [ "bevy", "bevy_stl" ]
 do_not_embed_assets = [ "exclude_all_robot_asset_embedding" ]
 only_use_embedded_assets = [] # NOTE!  This will only work if you include --no-default-features.
 exclude_all_robot_asset_embedding = []
@@ -78,8 +83,14 @@ crate-type = ["cdylib", "rlib"]
 targets = ["x86_64-apple-darwin", "wasm32-unknown-unknown"]
 # rustdoc-args = [ "--html-in-header", "./src/docs-header.html" ]
 
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.dev]
-opt-level = 2
+opt-level = 3
 
 [profile.release]
 opt-level = 3
+lto = "thin"
+
+

@@ -310,7 +310,7 @@ impl RobotModelModule {
     /// but this should not need to be used by end users.
     pub fn set_link_tree_traversal_info(&mut self) {
         self.link_tree_traversal_layers = vec![];
-        self.link_tree_traversal_layers.push( vec![ self.world_link_idx ] );
+        self.link_tree_traversal_layers.push( vec![ self.robot_base_link_idx ] );
 
         let num_links = self.links.len();
         let mut curr_layer = 1 as usize;

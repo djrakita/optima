@@ -136,6 +136,9 @@ impl RobotConfigurationModule {
         }
 
         for name_to_remove in &names_to_remove { self.remove_contiguous_chain(name_to_remove); }
+
+        robot_model_module.set_link_tree_traversal_info();
+
         self.robot_model_module = robot_model_module;
 
         Ok(())

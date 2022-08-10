@@ -4,6 +4,7 @@ use pyo3::*;
 
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
+use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
 use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 use crate::robot_set_modules::robot_set_kinematics_module::RobotSetKinematicsModule;
@@ -54,6 +55,13 @@ impl RobotSet {
             robot_set_mesh_file_manager_module,
             robot_set_kinematics_module
         }
+    }
+    pub fn new_from_robot_configuration_modules(robot_configuration_modules: Vec<RobotConfigurationModule>) -> Self {
+        let mut r = RobotSetConfigurationModule::new_empty();
+        for rr in robot_configuration_modules {
+            r.add_robot_configuration(rr).expect("error");
+        }
+        Self::new_from_robot_set_configuration_module(r)
     }
     /// Initializes a `RobotSet` using the set name that is found in the optima_assets/optima_robot_sets/
     /// directory.  `RobotSet` objects can be saved using the `RobotSetConfigurationModule` struct.
