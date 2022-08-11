@@ -16,7 +16,7 @@ serde = "1.0.136"
 serde_json = "1.0.79"
 urdf-rs = "0.6.2"
 vfs = { version="0.7.0", features=["embedded-fs"] }
-rust-embed = { version="6.2.0", features=["debug-embed", "interpolate-folder-path", "compression", "include-exclude"] }
+rust-embed = { version="6.4.0", features=["debug-embed", "interpolate-folder-path", "compression", "include-exclude"] }
 dae-parser = "0.8.5"
 collada = "0.14.0"
 stl_io = "0.6.0"

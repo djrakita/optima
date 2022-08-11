@@ -240,12 +240,6 @@ impl OptimaPath {
         }
     }
     pub fn new_asset_virtual_path() -> Result<Self, OptimaError> {
-        /*
-        let root_path = VfsPath::new(PhysicalFS::new(env::current_dir()
-            .expect("error")
-            .join("..")
-            .join("optima_assets")));
-        */
         let e: EmbeddedFS<AssetEmbed> = EmbeddedFS::new();
         let root_path = VfsPath::new(e);
         return Ok(Self::VfsPath(root_path));
