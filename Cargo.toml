@@ -77,8 +77,8 @@ name = "optima"
 # path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
-[package.metadata.docs.rs]
-targets = ["x86_64-apple-darwin", "wasm32-unknown-unknown"]
+# [package.metadata.docs.rs]
+# targets = ["x86_64-apple-darwin", "wasm32-unknown-unknown"]
 # rustdoc-args = [ "--html-in-header", "./src/docs-header.html" ]
 
 [profile.dev.package."*"]
