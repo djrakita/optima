@@ -34,7 +34,9 @@ impl OptimaStemCellPath {
         let mut optima_file_paths = vec![];
 
         if cfg!(target_arch = "wasm32") || cfg!(feature = "only_use_embedded_assets") {
+            #[cfg(not(feature = "do_not_embed_assets"))]
             let p_res = OptimaPath::new_asset_virtual_path();
+            #[cfg(not(feature = "do_not_embed_assets"))]
             if let Ok(p) = p_res { optima_file_paths.push(p); }
         } else if cfg!(feature = "do_not_embed_assets") {
             let p_res = OptimaPath::new_asset_physical_path_from_json_file();
@@ -42,7 +44,9 @@ impl OptimaStemCellPath {
         } else {
             let p_res1 = OptimaPath::new_asset_physical_path_from_json_file();
             if let Ok(p) = p_res1 { optima_file_paths.push(p); }
+            #[cfg(not(feature = "do_not_embed_assets"))]
             let p_res2 = OptimaPath::new_asset_virtual_path();
+            #[cfg(not(feature = "do_not_embed_assets"))]
             if let Ok(p) = p_res2 { optima_file_paths.push(p); }
         }
 
@@ -239,6 +243,7 @@ impl OptimaPath {
             else { return Self::new_asset_physical_path_from_json_file(); }
         }
     }
+    #[cfg(not(feature = "do_not_embed_assets"))]
     pub fn new_asset_virtual_path() -> Result<Self, OptimaError> {
         let e: EmbeddedFS<AssetEmbed> = EmbeddedFS::new();
         let root_path = VfsPath::new(e);
@@ -255,6 +260,7 @@ impl OptimaPath {
 
         return Ok(path);
     }
+    #[cfg(not(feature = "do_not_embed_assets"))]
     pub fn new_asset_virtual_path_from_string_components(components: &Vec<String>) -> Result<Self, OptimaError> {
         let mut path = Self::new_asset_virtual_path()?;
         for s in components { path.append(s); }
@@ -912,6 +918,7 @@ pub fn path_buf_from_string_components(components: &Vec<String>) -> PathBuf {
     out
 }
 
+#[cfg(not(feature = "do_not_embed_assets"))]
 #[derive(RustEmbed, Debug)]
 #[folder = "../optima_assets"]
 #[exclude = "*/.DS_Store"]
