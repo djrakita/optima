@@ -74,7 +74,7 @@ hubo = []
 
 [lib]
 name = "optima"
-path = "src/lib.rs"
+# path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.docs.rs]
