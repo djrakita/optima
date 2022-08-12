@@ -89,3 +89,12 @@ impl ViewportVisualsActions {
     }
 }
 
+pub struct ViewportVisualsSystems;
+impl ViewportVisualsSystems {
+    pub fn system_draw_robotics_grid(mut commands: Commands,
+                                     mut meshes: ResMut<Assets<Mesh>>,
+                                     mut materials: ResMut<Assets<StandardMaterial>>) {
+        ViewportVisualsActions::action_draw_robotics_grid(&mut commands, &mut meshes, &mut materials);
+    }
+}
+

@@ -24,6 +24,9 @@ impl CameraActions {
 
 pub struct CameraSystems;
 impl CameraSystems {
+    pub fn system_spawn_pan_orbit_camera(mut commands: Commands) {
+        CameraActions::action_spawn_pan_orbit_camera(&mut commands, Vec3::new(3.0, 0.3, 1.0));
+    }
     pub fn system_pan_orbit_camera(
         windows: Res<Windows>,
         mut ev_motion: EventReader<MouseMotion>,

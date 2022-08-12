@@ -1,4 +1,5 @@
 use vfs::*;
+#[cfg(not(feature = "do_not_embed_assets"))]
 use rust_embed::RustEmbed;
 use std::{fs, vec};
 use std::fs::{File, OpenOptions};
