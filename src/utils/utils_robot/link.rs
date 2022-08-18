@@ -78,7 +78,7 @@ impl Link {
     pub fn urdf_link(&self) -> &URDFLink {
         &self.urdf_link
     }
-    pub fn set_is_mobile_base_link(&mut self, is_mobile_base_link: bool) {
+    pub fn set_is_chain_base_link(&mut self, is_mobile_base_link: bool) {
         self.is_chain_base_link = is_mobile_base_link;
     }
     pub fn set_preceding_link_idx(&mut self, preceding_link_idx: Option<usize>) {

@@ -5,3 +5,5 @@ pub mod transform;
 pub mod robots;
 pub mod lights;
 pub mod engine;
+pub mod egui;
+pub mod gui;

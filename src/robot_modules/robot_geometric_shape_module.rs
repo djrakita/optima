@@ -190,10 +190,10 @@ impl RobotGeometricShapeModule {
             for j in 0..num_shapes {
                 // Retrieves and saves the average distance between the given pair of links.
                 let averaging_float = distance_average_array.data_cell(i, j)?;
-                robot_shape_collection.shape_collection.replace_average_distance_from_idxs(averaging_float.value(), i, j)?;
+                robot_shape_collection.shape_collection.set_average_distance_from_idxs(averaging_float.value(), i, j)?;
 
                 // Pairwise checks should never happen between the same shape.
-                if i == j { robot_shape_collection.shape_collection.replace_skip_from_idxs(true, i, j)?; }
+                if i == j { robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?; }
 
                 let shapes = robot_shape_collection.shape_collection.shapes();
                 let signature1 = shapes[i].signature();
@@ -205,7 +205,7 @@ impl RobotGeometricShapeModule {
                             GeometricShapeSignature::RobotLink { link_idx, shape_idx_in_link: _ } => {
                                 let link_idx2 = link_idx.clone();
                                 if link_idx1 == link_idx2 {
-                                    robot_shape_collection.shape_collection.replace_skip_from_idxs(true, i, j)?;
+                                    robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?;
                                 }
                             }
                             _ => { }
@@ -217,12 +217,12 @@ impl RobotGeometricShapeModule {
                 // Checks if links are always in intersecting.
                 let ratio_of_checks_in_collision = collision_counter_array.data_cell(i, j)? / count;
                 if count >= min_samples as f64 && ratio_of_checks_in_collision > 0.99 {
-                    robot_shape_collection.shape_collection.replace_skip_from_idxs(true, i, j)?;
+                    robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?;
                 }
 
                 // Checks if links are never in collision
                 if count >= 1000.0 && ratio_of_checks_in_collision == 0.0 {
-                    robot_shape_collection.shape_collection.replace_skip_from_idxs(true, i, j)?;
+                    robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?;
                 }
             }
         }
@@ -454,9 +454,46 @@ impl RobotGeometricShapeModule {
         return collection.shape_collection.bvh_scene_filter(bvh, &poses, visit);
     }
 
-    pub fn set_robot_joint_state_as_non_collision(&mut self, robot_joint_state: &RobotJointState) -> Result<(), OptimaError> {
+    pub fn set_robot_joint_state_as_non_collision(&mut self, robot_joint_state: &RobotJointState, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Result<(), OptimaError> {
+        let input = RobotShapeCollectionQuery::Contact {
+                robot_joint_state,
+                prediction: 0.01,
+                inclusion_list: &None
+            };
+
+            let res = self.shape_collection_query(&input,
+                                                  robot_link_shape_representation.clone(),
+                                                  StopCondition::None,
+                                                  LogCondition::LogAll,
+                                                  false)?;
+
+            let collection = self.robot_geometric_shape_collection_mut(robot_link_shape_representation).expect("error");
+
+            let outputs = res.outputs();
+            for output in outputs {
+                let signatures = output.signatures();
+                let contact = output.raw_output().unwrap_contact()?;
+                if let Some(contact) = &contact {
+
+                    // Does not mark as skip if the penetration depth is greater than 0.12 meters.
+                    if contact.dist <= 0.0 && contact.dist > -0.12 {
+                        let signature1 = &signatures[0];
+                        let signature2 = &signatures[1];
+                        let idx1 = collection.shape_collection.get_shape_idx_from_signature(signature1)?;
+                        let idx2 = collection.shape_collection.get_shape_idx_from_signature(signature2)?;
+                        collection.shape_collection.set_skip_from_idxs(true, idx1, idx2)?;
+                    }
+                }
+            }
+
+        self.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModule }).expect("error");
+
+        Ok(())
+    }
+    pub fn set_robot_joint_state_as_non_collision_all_robot_link_shape_representations(&mut self, robot_joint_state: &RobotJointState) -> Result<(), OptimaError> {
         let all_robot_link_shape_representations = Self::get_all_robot_link_shape_representations();
 
+        /*
         for robot_link_shape_representation in &all_robot_link_shape_representations {
             let input = RobotShapeCollectionQuery::Contact {
                 robot_joint_state,
@@ -484,13 +521,17 @@ impl RobotGeometricShapeModule {
                         let signature2 = &signatures[1];
                         let idx1 = collection.shape_collection.get_shape_idx_from_signature(signature1)?;
                         let idx2 = collection.shape_collection.get_shape_idx_from_signature(signature2)?;
-                        collection.shape_collection.replace_skip_from_idxs(true, idx1, idx2)?;
+                        collection.shape_collection.set_skip_from_idxs(true, idx1, idx2)?;
                     }
                 }
             }
         }
 
         self.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModule })?;
+        */
+        for robot_link_shape_representation in &all_robot_link_shape_representations {
+            self.set_robot_joint_state_as_non_collision(robot_joint_state, robot_link_shape_representation).expect("error");
+        }
 
         Ok(())
     }
@@ -656,7 +697,7 @@ impl RobotGeometricShapeModule {
     }
     pub fn set_robot_joint_state_as_non_collision_py(&mut self, robot_joint_state: Vec<f64>) {
         let robot_joint_state = self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(DVector::from_vec(robot_joint_state)).expect("error");
-        self.set_robot_joint_state_as_non_collision(&robot_joint_state).expect("error");
+        self.set_robot_joint_state_as_non_collision_all_robot_link_shape_representations(&robot_joint_state).expect("error");
     }
     pub fn reset_robot_geometric_shape_collection_py(&mut self, robot_link_shape_representation: &str) {
         self.reset_robot_geometric_shape_collection(RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error")).expect("error");

@@ -112,6 +112,22 @@ impl RobotGeometricShapeScene {
         let geometric_shapes = self.get_geometric_shapes_to_add_to_environment(&spawner.asset_name, spawner.scale, spawner.shape_representation)?;
         return self.add_env_obj_geometric_shapes_to_scene(&geometric_shapes, spawner.pose_constraint);
     }
+    pub fn remove_environment_object(&mut self, env_obj_idx: usize) {
+        let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx).expect("error").clone();
+        for shape_idx in shape_idxs {
+            self.shape_collection.remove_geometric_shape(shape_idx);
+        }
+    }
+    /*
+    pub fn remove_environment_object(&mut self, env_obj_idx: usize) {
+        let num_objs = self.env_obj_spawners.len();
+        if env_obj_idx >= num_objs { return; }
+
+        self.env_obj_spawners.remove(env_obj_idx);
+        let new_self = Self::new(self.robot_set.clone(), self.robot_link_shape_representation.clone(), self.env_obj_spawners.clone()).expect("error");
+        *self = new_self;
+    }
+    */
     fn get_path_to_mesh_file(&self, name: &str) -> Result<OptimaStemCellPath, OptimaError> {
         let mut path = OptimaStemCellPath::new_asset_path()?;
         path.append_file_location(&OptimaAssetLocation::SceneMeshFile {name: name.to_string()});
@@ -251,7 +267,7 @@ impl RobotGeometricShapeScene {
         for shape_idx in &mapping_vec {
             for env_obj_shape_idx in self.last_robot_link_shape_idx+1..num_shapes {
                 self.shape_collection.set_base_skip_from_idxs(true, *shape_idx, env_obj_shape_idx)?;
-                self.shape_collection.replace_skip_from_idxs(true, *shape_idx, env_obj_shape_idx)?;
+                self.shape_collection.set_skip_from_idxs(true, *shape_idx, env_obj_shape_idx)?;
             }
         }
 
@@ -297,8 +313,8 @@ impl RobotGeometricShapeScene {
         &self.shape_collection
     }
     pub fn get_shape_idxs_from_robot_idx_and_link_idx(&self, robot_idx_in_set: usize, link_idx_in_robot: usize) -> Result<&Vec<usize>, OptimaError> {
-        OptimaError::new_check_for_idx_out_of_bound_error(robot_idx_in_set, self.robot_and_link_idx_to_shape_idxs_mapping.len(), file!(), line!())?;
-        OptimaError::new_check_for_idx_out_of_bound_error(link_idx_in_robot, self.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set].len(), file!(), line!())?;
+        OptimaError::new_check_for_idx_out_of_bound_error(robot_idx_in_set, self.robot_and_link_idx_to_shape_idxs_mapping.len(), file!(), line!()).expect("error");
+        OptimaError::new_check_for_idx_out_of_bound_error(link_idx_in_robot, self.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set].len(), file!(), line!()).expect("error");
 
         return Ok(&self.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set][link_idx_in_robot]);
     }
@@ -325,15 +341,20 @@ impl RobotGeometricShapeScene {
                          pose_constraint_group_input: Option<&EnvObjPoseConstraintGroupInput>) -> Result<ShapeCollectionInputPoses, OptimaError> {
         let mut out_poses = ShapeCollectionInputPoses::new(&self.shape_collection);
 
-        let fk_res = self.robot_set.robot_set_kinematics_module().compute_fk(set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
+        let fk_res = self.robot_set.robot_set_kinematics_module().compute_fk(set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
         let robot_fk_results = fk_res.robot_fk_results();
+
+        let robot_configuration_modules = self.robot_set.robot_set_configuration_module().robot_configuration_modules();
 
         for (robot_idx_in_set, robot_fk_result) in robot_fk_results.iter().enumerate() {
             for (link_idx_in_robot, link_entry) in robot_fk_result.link_entries().iter().enumerate() {
                 if let Some(pose) = link_entry.pose() {
-                    let shape_idxs = self.get_shape_idxs_from_robot_idx_and_link_idx(robot_idx_in_set, link_idx_in_robot)?;
-                    for shape_idx in shape_idxs {
-                        out_poses.insert_or_replace_pose_by_idx(*shape_idx, pose.clone())?;
+                    let chain_base_link = robot_configuration_modules[robot_idx_in_set].robot_model_module().links()[link_idx_in_robot].is_chain_base_link();
+                    if !chain_base_link {
+                        let shape_idxs = self.get_shape_idxs_from_robot_idx_and_link_idx(robot_idx_in_set, link_idx_in_robot).expect("error");
+                        for shape_idx in shape_idxs {
+                            out_poses.insert_or_replace_pose_by_idx(*shape_idx, pose.clone()).expect("error");
+                        }
                     }
                 }
             }
@@ -553,6 +574,10 @@ impl RobotGeometricShapeScene {
         let poses = self.recover_poses(robot_set_joint_state, env_obj_pose_constraint_group_input).expect("error");
 
         return self.shape_collection.bvh_scene_filter(bvh, &poses, visit);
+    }
+
+    pub fn env_obj_spawners(&self) -> &Vec<EnvObjSpawner> {
+        &self.env_obj_spawners
     }
 
     pub fn print_summary(&self) {
@@ -779,6 +804,21 @@ impl EnvObjSpawner {
                 Some(p) => { Some(p.clone()) }
             }
         }
+    }
+    pub fn asset_name(&self) -> &str {
+        &self.asset_name
+    }
+    pub fn scale(&self) -> Option<f64> {
+        self.scale
+    }
+    pub fn shape_representation(&self) -> &Option<EnvObjShapeRepresentation> {
+        &self.shape_representation
+    }
+    pub fn decomposition_resolution(&self) -> &Option<ConvexDecompositionResolution> {
+        &self.decomposition_resolution
+    }
+    pub fn pose_constraint(&self) -> &Option<EnvObjPoseConstraint> {
+        &self.pose_constraint
     }
 }
 impl Default for EnvObjSpawner {

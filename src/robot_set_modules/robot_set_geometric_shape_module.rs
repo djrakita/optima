@@ -252,15 +252,15 @@ impl RobotSetGeometricShapeModule {
     fn setup_robot_set_shape_collections(&mut self, robot_set_configuration_module: &RobotSetConfigurationModule) -> Result<(), OptimaError> {
         let mut robot_geometric_shape_modules = vec![];
         for r in robot_set_configuration_module.robot_configuration_modules() {
-            let robot_geometric_shape_module = RobotGeometricShapeModule::new_from_names(RobotNames::new(r.robot_name(), None), false)?;
+            let robot_geometric_shape_module = RobotGeometricShapeModule::new_from_names(RobotNames::new(r.robot_name(), None), false).expect("error");
             robot_geometric_shape_modules.push(robot_geometric_shape_module);
         }
 
-        self.setup_from_robot_geometric_shape_modules(&robot_geometric_shape_modules)?;
+        self.setup_from_robot_geometric_shape_modules(&robot_geometric_shape_modules, robot_set_configuration_module)?;
 
         Ok(())
     }
-    fn setup_from_robot_geometric_shape_modules(&mut self, robot_geometric_shape_modules: &Vec<RobotGeometricShapeModule>) -> Result<(), OptimaError> {
+    fn setup_from_robot_geometric_shape_modules(&mut self, robot_geometric_shape_modules: &Vec<RobotGeometricShapeModule>, robot_set_configuration_module: &RobotSetConfigurationModule) -> Result<(), OptimaError> {
         let all_link_shape_representations = self.get_all_robot_link_shape_representations();
 
         for robot_link_shape_representation in &all_link_shape_representations {
@@ -316,6 +316,7 @@ impl RobotSetGeometricShapeModule {
             shape_collection.set_average_distances(average_distances.unwrap())?;
 
             let robot_set_shape_collection = RobotSetShapeCollection {
+                robot_set_configuration_module: robot_set_configuration_module.clone(),
                 robot_link_shape_representation: robot_link_shape_representation.clone(),
                 shape_collection,
                 robot_and_link_idx_to_shape_idxs_mapping
@@ -361,6 +362,7 @@ impl SaveAndLoadable for RobotSetGeometricShapeModule {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RobotSetShapeCollection {
+    robot_set_configuration_module: RobotSetConfigurationModule,
     robot_link_shape_representation: RobotLinkShapeRepresentation,
     shape_collection: ShapeCollection,
     robot_and_link_idx_to_shape_idxs_mapping: Vec<Vec<Vec<usize>>>
@@ -385,14 +387,20 @@ impl RobotSetShapeCollection {
         let mut out = ShapeCollectionInputPoses::new(&self.shape_collection);
         let mapping = &self.robot_and_link_idx_to_shape_idxs_mapping;
 
+        let robot_configuration_modules = self.robot_set_configuration_module.robot_configuration_modules();
+
         let robot_fk_results = robot_set_fk_result.robot_fk_results();
         for (robot_idx_in_set, fk) in robot_fk_results.iter().enumerate() {
             let link_entries = fk.link_entries();
             for (link_idx, link_entry) in link_entries.iter().enumerate() {
-                if let Some(pose) = link_entry.pose() {
-                    let shape_idxs = mapping.get(robot_idx_in_set).unwrap().get(link_idx).unwrap();
-                    for shape_idx in shape_idxs {
-                        out.insert_or_replace_pose_by_idx(*shape_idx, pose.clone())?;
+                let is_base_chain_link = robot_configuration_modules[robot_idx_in_set].robot_model_module().links()[link_idx].is_chain_base_link();
+
+                if !is_base_chain_link {
+                    if let Some(pose) = link_entry.pose() {
+                        let shape_idxs = mapping.get(robot_idx_in_set).unwrap().get(link_idx).unwrap();
+                        for shape_idx in shape_idxs {
+                            out.insert_or_replace_pose_by_idx(*shape_idx, pose.clone())?;
+                        }
                     }
                 }
             }
@@ -402,20 +410,22 @@ impl RobotSetShapeCollection {
     }
 }
 impl SaveAndLoadable for RobotSetShapeCollection {
-    type SaveType = (RobotLinkShapeRepresentation, String, Vec<Vec<Vec<usize>>>);
+    type SaveType = (String, RobotLinkShapeRepresentation, String, Vec<Vec<Vec<usize>>>);
 
     fn get_save_serialization_object(&self) -> Self::SaveType {
-        (self.robot_link_shape_representation.clone(), self.shape_collection.get_serialization_string(), self.robot_and_link_idx_to_shape_idxs_mapping.clone())
+        (self.robot_set_configuration_module.get_serialization_string(), self.robot_link_shape_representation.clone(), self.shape_collection.get_serialization_string(), self.robot_and_link_idx_to_shape_idxs_mapping.clone())
     }
 
     fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
         let load: Self::SaveType = load_object_from_json_string(json_str)?;
-        let shape_collection = ShapeCollection::load_from_json_string(&load.1)?;
+        let robot_set_configuration_module = RobotSetConfigurationModule::load_from_json_string(&load.0)?;
+        let shape_collection = ShapeCollection::load_from_json_string(&load.2)?;
 
         Ok(Self {
-            robot_link_shape_representation: load.0,
+            robot_set_configuration_module,
+            robot_link_shape_representation: load.1,
             shape_collection,
-            robot_and_link_idx_to_shape_idxs_mapping: load.2
+            robot_and_link_idx_to_shape_idxs_mapping: load.3
         })
     }
 }

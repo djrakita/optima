@@ -55,7 +55,7 @@ impl ShapeCollection {
             id: SimpleSamplers::uniform_sample((-1.0, 1.0))
         }
     }
-    pub fn add_geometric_shape(&mut self, geometric_shape: GeometricShape) {
+    pub fn add_geometric_shape(&mut self, geometric_shape: GeometricShape) -> usize {
         let add_idx = self.shapes.len();
         let sorted_idx = self.sorted_signatures_with_shape_idxs.binary_search_by(|x| geometric_shape.signature().partial_cmp(&x.0).unwrap() );
         let sorted_idx = match sorted_idx { Ok(idx) => {idx} Err(idx) => {idx} };
@@ -64,6 +64,14 @@ impl ShapeCollection {
         self.skips.append_new_row_and_column(Some(MemoryCell::new(false)));
         self.average_distances.append_new_row_and_column(Some(MemoryCell::new(1.0)));
         self.id = SimpleSamplers::uniform_sample((-1.0, 1.0));
+        return add_idx;
+    }
+    /// Shapes are removed by setting all pairs that include the given shape idx as a skip.
+    pub fn remove_geometric_shape(&mut self, shape_idx: usize) {
+        let num_shapes = self.shapes.len();
+        for i in 0..num_shapes {
+            self.set_skip_from_idxs(true, shape_idx, i).expect("error");
+        }
     }
     pub fn shapes(&self) -> &Vec<GeometricShape> {
         &self.shapes
@@ -97,7 +105,7 @@ impl ShapeCollection {
         }
         self.skips.adjust_data(|x| x.replace_base_value(skip), idx1, idx2 )
     }
-    pub fn replace_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+    pub fn set_skip_from_idxs(&mut self, skip: bool, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.skips.adjust_data(|x| x.replace_value(skip, false), idx1, idx2)
     }
     pub fn reset_skip_to_base_from_idxs(&mut self, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
@@ -107,7 +115,7 @@ impl ShapeCollection {
     pub fn set_base_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.average_distances.adjust_data(|x| x.replace_base_value(dis), idx1, idx2 )
     }
-    pub fn replace_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
+    pub fn set_average_distance_from_idxs(&mut self, dis: f64, idx1: usize, idx2: usize) -> Result<(), OptimaError> {
         self.average_distances.adjust_data(|x| x.replace_value(dis, false), idx1, idx2 )
     }
     pub fn reset_average_distance_to_base_from_idxs(&mut self, idx1: usize, idx2: usize) -> Result<(), OptimaError> {

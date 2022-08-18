@@ -22,21 +22,19 @@ use crate::utils::utils_shape_geometry::shape_collection::{ProximaEngine, ShapeC
 pub trait OptimaTensorFunction: OptimaTensorFunctionClone + Send {
     fn output_dimensions(&self) -> Vec<usize>;
     fn call(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let start = instant::Instant::now();
         let session_key = mut_vars.register_session(input);
         OptimaTensorFunctionGenerics::generic_debug_print_otf_beginning(self, 0, &debug,  input);
         let out = self.call_raw(input, immut_vars, mut_vars, &session_key, debug.clone());
-        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out, start.elapsed());
+        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out);
         mut_vars.close_session(&session_key);
         return out;
     }
     fn call_raw(&self, input: &OptimaTensor, _immut_vars: &OTFImmutVars, _mut_vars: &mut OTFMutVars, _session_key: &OTFMutVarsSessionKey, _debug: OptimaDebug) -> Result<OTFResult, OptimaError>;
 
     fn derivative(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let start = instant::Instant::now();
         OptimaTensorFunctionGenerics::generic_debug_print_otf_beginning(self, 1, &debug,  input);
         let out = OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative_analytical, Self::derivative_finite_difference, Self::derivative_test, input, immut_vars, mut_vars, mode, debug.clone());
-        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out, start.elapsed());
+        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out);
         return out;
     }
     fn derivative_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
@@ -65,10 +63,9 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone + Send {
     }
 
     fn derivative2(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let start = instant::Instant::now();
         OptimaTensorFunctionGenerics::generic_debug_print_otf_beginning(self, 2, &debug,  input);
         let out = OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative2_analytical, Self::derivative2_finite_difference, Self::derivative2_test, input, immut_vars, mut_vars, mode, debug.clone());
-        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out, start.elapsed());
+        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out);
         return out;
     }
     fn derivative2_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
@@ -97,10 +94,9 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone + Send {
     }
 
     fn derivative3(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let start = instant::Instant::now();
         OptimaTensorFunctionGenerics::generic_debug_print_otf_beginning(self, 3, &debug,  input);
         let out = OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative3_analytical, Self::derivative3_finite_difference, Self::derivative3_test, input, immut_vars, mut_vars, mode, debug.clone());
-        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out, start.elapsed());
+        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out);
         return out;
     }
     fn derivative3_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
@@ -129,10 +125,9 @@ pub trait OptimaTensorFunction: OptimaTensorFunctionClone + Send {
     }
 
     fn derivative4(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, mode: Option<OTFDerivativeMode>, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
-        let start = instant::Instant::now();
         OptimaTensorFunctionGenerics::generic_debug_print_otf_beginning(self, 4, &debug,  input);
         let out = OptimaTensorFunctionGenerics::derivative_generic(self, Self::derivative4_analytical, Self::derivative4_finite_difference, Self::derivative4_test, input, immut_vars, mut_vars, mode, debug.clone());
-        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out, start.elapsed());
+        OptimaTensorFunctionGenerics::generic_debug_print_otf_end(self, &debug, &out);
         return out;
     }
     fn derivative4_none_mode(&self, input: &OptimaTensor, immut_vars: &OTFImmutVars, mut_vars: &mut OTFMutVars, debug: OptimaDebug) -> Result<OTFResult, OptimaError> {
@@ -572,7 +567,7 @@ impl OptimaTensorFunctionGenerics {
             optima_print_multi_entry(m, *num_indentation, None, leading_marks.clone());
         }
     }
-    pub fn generic_debug_print_otf_end<F: OptimaTensorFunction + ?Sized>(otf: &F, debug: &OptimaDebug, output: &Result<OTFResult, OptimaError>, duration: instant::Duration) {
+    pub fn generic_debug_print_otf_end<F: OptimaTensorFunction + ?Sized>(otf: &F, debug: &OptimaDebug, output: &Result<OTFResult, OptimaError>) {
         if let OptimaDebug::True { num_indentation, num_indentation_history, .. } = debug {
             match output {
                 Ok(output) => {
@@ -590,7 +585,6 @@ impl OptimaTensorFunctionGenerics {
                             let mut m = OptimaPrintMultiEntryCollection::new_empty();
                             m.add(OptimaPrintMultiEntry::new_from_str("<< ", PrintColor::None, true, false));
                             m.add(OptimaPrintMultiEntry::new_from_str("Time: ", PrintColor::None, false, false));
-                            m.add(OptimaPrintMultiEntry::new_from_string(format!("{:?}", duration), PrintColor::Yellow, true, false));
                             optima_print_multi_entry(m, *num_indentation, None, leading_marks.clone());
 
                             let mut m = OptimaPrintMultiEntryCollection::new_empty();
