@@ -17,7 +17,7 @@ fn main() {
     let robot_set = RobotSet::new_from_robot_names(vec![RobotNames::new_base("ur5")]);
 
     // Initialize a `RobotGeometricShapeScene`.
-    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, vec![]).expect("error");
+    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, , vec![]).expect("error");
 
     // Spawn the robot joint state that the robot's motion will start at.
     let init_state = robot_geometric_shape_scene.robot_set().spawn_robot_set_joint_state(DVector::from_vec(vec![0.1; 6])).expect("error");

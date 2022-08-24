@@ -10,9 +10,10 @@ use serde::{Serialize, Deserialize};
 use crate::robot_modules::robot_configuration_module::ContiguousChainMobilityMode;
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_robot::urdf_joint::{JointTypeWrapper, URDFJoint};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseAll, OptimaSE3Pose, OptimaSE3PoseType};
-use crate::utils::utils_traits::ToAndFromRonString;
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString, ToAndFromRonString};
 
 /// A Joint holds all necessary information about a robot joint (specified by a robot URDF file)
 /// in order to do kinematic and dynamic computations on a robot model.
@@ -69,31 +70,31 @@ impl Joint {
     pub fn new_base_of_chain_connector_joint(mobile_base_mode: &ContiguousChainMobilityMode, joint_idx: usize, newly_created_link_idx: usize, child_link_idx: usize) -> Self {
         let mut joint_axes = vec![];
 
+        let name = format!("base_of_chain_connector_joint_with_child_link_{}", newly_created_link_idx);
+
         match mobile_base_mode {
             ContiguousChainMobilityMode::Static => {}
             ContiguousChainMobilityMode::Floating { x_bounds, y_bounds, z_bounds, xr_bounds, yr_bounds, zr_bounds } => {
-                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation, *z_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, *xr_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, *yr_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation, *z_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, *xr_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, *yr_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
             }
             ContiguousChainMobilityMode::PlanarTranslation { x_bounds, y_bounds } => {
-                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
             }
             ContiguousChainMobilityMode::PlanarRotation { zr_bounds } => {
-                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 0, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
             }
             ContiguousChainMobilityMode::PlanarTranslationAndRotation { x_bounds, y_bounds, zr_bounds } => {
-                joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
-                joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, *x_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, *y_bounds));
+                joint_axes.push(JointAxis::new(name.clone(), joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, *zr_bounds));
             }
         }
-
-        let name = format!("base_of_chain_connector_joint_with_child_link_{}", newly_created_link_idx);
 
         Self {
             name,
@@ -158,7 +159,7 @@ impl Joint {
         self.child_link_idx = child_link_idx;
     }
     pub fn print_summary(&self) {
-        optima_print(&format!(">> Joint index: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!("Joint index: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
         optima_print(&format!(" {} ", self.joint_idx), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
         optima_print(&format!("  Joint name: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
         optima_print(&format!(" {} ", self.name), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
@@ -167,6 +168,10 @@ impl Joint {
         optima_print(&format!("  Present: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
         let c = if self.present { PrintColor::Green } else { PrintColor::Red };
         optima_print(&format!(" {} ", self.present), PrintMode::Print, c, false, 0, None, vec![]);
+        optima_print(&format!("  Preceding link idx: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {:?} ", self.preceding_link_idx), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Child link idx: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {:?} ", self.child_link_idx), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
         if self.num_axes() > 0 {
             optima_print_new_line();
         }
@@ -215,25 +220,25 @@ impl Joint {
 
         match joint_type {
             JointTypeWrapper::Revolute => {
-                self.joint_axes.push(JointAxis::new(joint_idx, 0, axis, JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 0, axis, JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
             }
             JointTypeWrapper::Continuous => {
-                self.joint_axes.push(JointAxis::new(joint_idx, 0, axis, JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 0, axis, JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
             }
             JointTypeWrapper::Prismatic => {
-                self.joint_axes.push(JointAxis::new(joint_idx, 0, axis, JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 0, axis, JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
             }
             JointTypeWrapper::Fixed => {
                 /* Do Nothing */
             }
             JointTypeWrapper::Floating => {
-                self.joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
-                self.joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
-                self.joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
 
-                self.joint_axes.push(JointAxis::new(joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
-                self.joint_axes.push(JointAxis::new(joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
-                self.joint_axes.push(JointAxis::new(joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 3, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 4, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 5, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Translation, (lower_bound, upper_bound)));
             }
             JointTypeWrapper::Planar => {
                 /*
@@ -245,12 +250,12 @@ impl Joint {
                 self.dof_translation_axes.push( Vector3::new(v1[0], v1[1], v1[2]) );
                 self.dof_translation_axes.push( Vector3::new(v2[0], v2[1], v2[2]) );
                 */
-                todo!()
+                unimplemented!("I should get to this at some point...")
             }
             JointTypeWrapper::Spherical => {
-                self.joint_axes.push(JointAxis::new(joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
-                self.joint_axes.push(JointAxis::new(joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
-                self.joint_axes.push(JointAxis::new(joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 0, Vector3::new(1.,0.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 1, Vector3::new(0.,1.,0.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
+                self.joint_axes.push(JointAxis::new(self.name.clone(), joint_idx, 2, Vector3::new(0.,0.,1.), JointAxisPrimitiveType::Rotation, (lower_bound, upper_bound)));
             }
         }
     }
@@ -302,8 +307,8 @@ impl Joint {
 /// degree of freedom (e.g., in the case of a floating joint, it will have 6 DOFs).
 #[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone, Debug, Serialize, Deserialize))]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
-
 pub struct JointAxis {
+    joint_name: String,
     joint_idx: usize,
     joint_sub_dof_idx: usize,
     fixed_value: Option<f64>,
@@ -313,8 +318,9 @@ pub struct JointAxis {
     bounds: (f64, f64)
 }
 impl JointAxis {
-    pub fn new(joint_idx: usize, joint_sub_dof_idx: usize, axis: Vector3<f64>, axis_primitive_type: JointAxisPrimitiveType, bounds: (f64, f64)) -> Self {
+    pub fn new(joint_name: String, joint_idx: usize, joint_sub_dof_idx: usize, axis: Vector3<f64>, axis_primitive_type: JointAxisPrimitiveType, bounds: (f64, f64)) -> Self {
         Self {
+            joint_name,
             joint_idx,
             joint_sub_dof_idx,
             fixed_value: None,
@@ -347,6 +353,21 @@ impl JointAxis {
     }
     pub fn bounds(&self) -> (f64, f64) {
         self.bounds
+    }
+    pub fn joint_name(&self) -> &str {
+        &self.joint_name
+    }
+}
+impl SaveAndLoadable for JointAxis {
+    type SaveType = Self;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.clone()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        return Ok(load);
     }
 }
 

@@ -12,8 +12,9 @@ use crate::robot_set_modules::robot_set_configuration_module::RobotSetConfigurat
 use crate::utils::utils_console::{optima_print, optima_print_multi_entry, OptimaPrintMultiEntry, OptimaPrintMultiEntryCollection, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
+use crate::utils::utils_robot::joint::JointAxis;
 use crate::utils::utils_robot::robot_generic_structures::GenericRobotJointState;
-use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString, ToAndFromRonString};
 
 /// RobotSet analogue of the `RobotJointStateModule`.  The same concepts apply, just on a set of possibly
 /// multiple robots.
@@ -22,7 +23,9 @@ use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 pub struct RobotSetJointStateModule {
     num_dofs: usize,
     num_axes: usize,
-    robot_joint_state_modules: Vec<RobotJointStateModule>,
+    ordered_dof_joint_axes: Vec<RobotSetJointAxis>,
+    ordered_joint_axes: Vec<RobotSetJointAxis>,
+    robot_joint_state_modules: Vec<RobotJointStateModule>
 }
 impl RobotSetJointStateModule {
     pub fn new(robot_set_configuration_module: &RobotSetConfigurationModule) -> Self {
@@ -36,9 +39,32 @@ impl RobotSetJointStateModule {
             robot_joint_state_modules.push(ja.clone());
         }
 
+        let mut ordered_dof_joint_axes = vec![];
+        let mut ordered_joint_axes = vec![];
+        for (robot_idx_in_set, robot_joint_state_module) in robot_joint_state_modules.iter().enumerate() {
+            let a = robot_joint_state_module.ordered_dof_joint_axes();
+            for axis in a {
+                ordered_dof_joint_axes.push(RobotSetJointAxis {
+                    robot_idx_in_set,
+                    joint_axis: axis.clone()
+                })
+            }
+
+            let a = robot_joint_state_module.ordered_joint_axes();
+            for axis in a {
+                ordered_joint_axes.push(RobotSetJointAxis {
+                    robot_idx_in_set,
+                    joint_axis: axis.clone()
+                })
+            }
+
+        }
+
         Self {
             num_dofs,
             num_axes,
+            ordered_dof_joint_axes,
+            ordered_joint_axes,
             robot_joint_state_modules
         }
     }
@@ -265,22 +291,33 @@ impl RobotSetJointStateModule {
     pub fn robot_joint_state_modules(&self) -> &Vec<RobotJointStateModule> {
         &self.robot_joint_state_modules
     }
+    pub fn ordered_dof_joint_axes(&self) -> &Vec<RobotSetJointAxis> {
+        &self.ordered_dof_joint_axes
+    }
+    pub fn ordered_joint_axes(&self) -> &Vec<RobotSetJointAxis> {
+        &self.ordered_joint_axes
+    }
 }
 impl SaveAndLoadable for RobotSetJointStateModule {
-    type SaveType = (usize, usize, String);
+    type SaveType = (usize, usize, String, String, String);
 
     fn get_save_serialization_object(&self) -> Self::SaveType {
-        (self.num_dofs, self.num_axes, self.robot_joint_state_modules.get_serialization_string())
+        (self.num_dofs, self.num_axes, self.ordered_joint_axes.to_json_string(), self.ordered_joint_axes.to_json_string(), self.robot_joint_state_modules.get_serialization_string())
     }
 
     fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
         let load: Self::SaveType = load_object_from_json_string(json_str)?;
 
-        let robot_joint_state_modules = Vec::load_from_json_string(&load.2)?;
+        let ordered_dof_joint_axes = Vec::load_from_json_string(&load.2)?;
+        let ordered_joint_axes = Vec::load_from_json_string(&load.3)?;
+
+        let robot_joint_state_modules = Vec::load_from_json_string(&load.4)?;
 
         Ok(Self {
             num_dofs: load.0,
             num_axes: load.1,
+            ordered_dof_joint_axes,
+            ordered_joint_axes,
             robot_joint_state_modules
         })
     }
@@ -433,6 +470,32 @@ impl RobotSetJointStateType {
             RobotSetJointStateType::DOF => { RobotJointStateType::DOF }
             RobotSetJointStateType::Full => { RobotJointStateType::Full }
         }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RobotSetJointAxis {
+    robot_idx_in_set: usize,
+    joint_axis: JointAxis
+}
+impl RobotSetJointAxis {
+    pub fn robot_idx_in_set(&self) -> usize {
+        self.robot_idx_in_set
+    }
+    pub fn joint_axis(&self) -> &JointAxis {
+        &self.joint_axis
+    }
+}
+impl SaveAndLoadable for RobotSetJointAxis {
+    type SaveType = Self;
+
+    fn get_save_serialization_object(&self) -> Self::SaveType {
+        self.clone()
+    }
+
+    fn load_from_json_string(json_str: &str) -> Result<Self, OptimaError> where Self: Sized {
+        let load: Self::SaveType = load_object_from_json_string(json_str)?;
+        return Ok(load);
     }
 }
 

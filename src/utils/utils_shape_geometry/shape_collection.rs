@@ -122,6 +122,10 @@ impl ShapeCollection {
         self.average_distances.adjust_data(|x| x.reset_to_base_value(false), idx1, idx2 )
     }
 
+    pub fn replace_geometric_shape(&mut self, shape_idx: usize, geometric_shape: GeometricShape) {
+        self.shapes[shape_idx] = geometric_shape;
+    }
+
     pub fn set_skips(&mut self, skips: SquareArray2D<MemoryCell<bool>>) -> Result<(), OptimaError> {
         if skips.side_length() != self.skips.side_length() {
             return Err(OptimaError::new_generic_error_str(&format!("Tried to set skips with incorrect size matrix."), file!(), line!()));

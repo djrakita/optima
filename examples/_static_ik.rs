@@ -16,7 +16,7 @@ fn main() {
     let robot_set = RobotSet::new_from_robot_names(vec![RobotNames::new_base("ur5")]);
 
     // Initialize a `RobotGeometricShapeScene`.
-    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, vec![]).expect("error");
+    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, , vec![]).expect("error");
 
     // Initialize "static" IK solver.
     // The `NonlinearOptimizerType` enum many options.  Feel free to check them all out; here we

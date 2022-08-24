@@ -76,9 +76,13 @@ impl TrimeshEngine {
             *v = pose.multiply_by_point(v);
         }
     }
-    pub fn scale_vertices(&mut self, scale: f64) {
+    pub fn scale_vertices(&mut self, scale: &Vector3<f64>) {
         for v in &mut self.vertices {
-            *v = scale * *v;
+            // *v = scale * *v;
+
+            v[0] *= scale[0];
+            v[1] *= scale[1];
+            v[2] *= scale[2];
         }
     }
     pub fn vertices(&self) -> &Vec<Vector3<f64>> {

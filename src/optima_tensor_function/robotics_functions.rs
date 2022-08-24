@@ -465,7 +465,7 @@ impl OTFRobotCollisionProximityStandard {
                                     robot_geometric_shape_scene: &RobotGeometricShapeScene,
                                     inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<OTFResult, OptimaError> {
         let input = RobotGeometricShapeSceneQuery::Contact {
-            robot_set_joint_state: &robot_set_joint_state,
+            robot_set_joint_state: Some(&robot_set_joint_state),
             env_obj_pose_constraint_group_input: None,
             prediction: self.d_max,
             inclusion_list: &inclusion_list
@@ -509,7 +509,7 @@ impl OTFRobotCollisionProximityStandard {
                                              inclusion_list: &Option<&ShapeCollectionQueryPairsList>,
                                              max_number_of_jacobians: usize) -> Result<OTFResult, OptimaError> {
         let input = RobotGeometricShapeSceneQuery::Contact {
-            robot_set_joint_state: &robot_set_joint_state,
+            robot_set_joint_state: Some(&robot_set_joint_state),
             env_obj_pose_constraint_group_input: None,
             prediction: self.d_max,
             inclusion_list

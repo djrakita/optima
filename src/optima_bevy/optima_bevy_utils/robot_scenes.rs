@@ -1,0 +1,476 @@
+use std::path::PathBuf;
+use bevy::asset::Assets;
+use bevy::math::Vec3;
+use bevy::pbr::{AlphaMode, PbrBundle};
+use bevy::prelude::{AssetServer, Changed, Color, Commands, Entity, Query, Res, ResMut, StandardMaterial, Transform, Visibility};
+use bevy::ecs::component::Component;
+use bevy::reflect::Array;
+use bevy::window::Windows;
+use bevy_egui::{egui, EguiContext};
+use bevy_egui::egui::{Color32, Ui};
+use bevy_prototype_debug_lines::DebugLines;
+use itertools::Itertools;
+use crate::optima_bevy::optima_bevy_utils::egui::{EguiActions, EguiContainerMode, EguiEngine, EguiUtils};
+use crate::optima_bevy::optima_bevy_utils::engine::FrameCount;
+use crate::optima_bevy::optima_bevy_utils::generic_item::{GenericItemSignature};
+use crate::optima_bevy::optima_bevy_utils::gui::GuiGlobalInfo;
+use crate::optima_bevy::optima_bevy_utils::materials::{OptimaBevyMaterial, OptimaBevyMaterialComponent};
+use crate::optima_bevy::optima_bevy_utils::transform::TransformUtils;
+use crate::optima_tensor_function::OTFImmutVars;
+use crate::robot_set_modules::GetRobotSet;
+use crate::robot_set_modules::robot_set::RobotSet;
+use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateType};
+use crate::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
+use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, path_buf_from_string_components};
+use crate::utils::utils_robot::link::Link;
+use crate::utils::utils_robot::robot_generic_structures::GenericRobotJointState;
+use crate::utils::utils_se3::optima_rotation::OptimaRotationType;
+use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
+
+pub struct RobotSceneActions;
+impl RobotSceneActions {
+    pub fn action_spawn_robot_set(commands: &mut Commands,
+                                  asset_server: &Res<AssetServer>,
+                                  materials: &mut ResMut<Assets<StandardMaterial>>,
+                                  robot_set: &RobotSet,
+                                  robot_set_joint_state: &RobotSetJointState,
+                                  color: Color,
+                                  wireframe: bool,
+                                  robot_set_idx: usize,
+                                  global_offset: Option<Vec3>) {
+        let robot_set_configuration_module = robot_set.robot_set_configuration_module();
+        let robot_configuration_modules = robot_set_configuration_module.robot_configuration_modules();
+        let robot_set_mesh_file_manager = robot_set.robot_set_mesh_file_manager();
+        let robot_mesh_file_managers = robot_set_mesh_file_manager.robot_mesh_file_manager_modules();
+
+        let robot_set_fk_res = robot_set.robot_set_kinematics_module().compute_fk(robot_set_joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+
+        let global_offset_transform = match global_offset {
+            None => { Vec3::new(0.,0.,0.) }
+            Some(g) => { TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(g) }
+        };
+
+        for (robot_idx_in_set, robot_configuration_module) in robot_configuration_modules.iter().enumerate() {
+
+            let robot_mesh_file_manager = robot_mesh_file_managers.get(robot_idx_in_set).unwrap();
+
+            let links = robot_configuration_module.robot_model_module().links();
+            let paths_to_meshes = robot_mesh_file_manager.get_paths_to_meshes().expect("error");
+
+            for (link_idx_in_robot, link) in links.iter().enumerate() {
+                if link.present() {
+                    let path_to_mesh = paths_to_meshes.get(link_idx_in_robot).unwrap();
+                    if let Some(path_to_mesh) = path_to_mesh {
+                        let mut path_buf_back_to_optima_assets = PathBuf::new();
+                        path_buf_back_to_optima_assets.push("..");
+                        path_buf_back_to_optima_assets.push("..");
+                        let string_components = path_to_mesh.split_path_into_string_components_back_to_given_dir("optima_toolbox").unwrap();
+                        let path_buf_from_optima_toolbox = path_buf_from_string_components(&string_components);
+                        let combined_path_buf = path_buf_back_to_optima_assets.join(path_buf_from_optima_toolbox);
+                        let combined_path = combined_path_buf.to_str().unwrap().to_string();
+                        let path = if wireframe {
+                            combined_path + "#wireframe"
+                        } else {
+                            combined_path
+                        };
+
+                        let pose = robot_set_fk_res.get_pose_from_idxs(robot_idx_in_set, link_idx_in_robot);
+                        let mut transform = TransformUtils::util_convert_se3_pose_to_y_up_bevy_transform(pose);
+
+                        transform.translation += global_offset_transform;
+
+                        let mat = StandardMaterial {
+                            base_color: color,
+                            alpha_mode: AlphaMode::Opaque,
+                            ..Default::default()
+                        };
+
+                        commands.spawn_bundle(PbrBundle {
+                            mesh: asset_server.load(&path),
+                            material: materials.add(mat),
+                            transform,
+                            global_transform: Default::default(),
+                            visibility: Visibility::visible(),
+                            ..Default::default()
+                        }).insert(RobotLinkSpawn {
+                            robot_set_idx,
+                            robot_idx_in_set,
+                            link_idx_in_robot,
+                            global_offset: global_offset_transform.clone(),
+                        }).insert(GenericItemSignature::RobotLink {
+                            robot_set_idx,
+                            robot_idx_in_set,
+                            link_idx_in_robot
+                        }).insert(OptimaBevyMaterialComponent::new(OptimaBevyMaterial::Color(color.clone())));
+                    }
+                }
+            }
+        }
+
+        commands.spawn().insert(RobotSetJointStateBevyComponent {
+            robot_set_idx,
+            joint_state: robot_set_joint_state.clone()
+        });
+    }
+    pub fn action_spawn_robot_geometric_shape_scene(commands: &mut Commands,
+                                                    asset_server: &Res<AssetServer>,
+                                                    materials: &mut ResMut<Assets<StandardMaterial>>,
+                                                    robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                                    robot_set_joint_state: &RobotSetJointState,
+                                                    robot_color: Color,
+                                                    environment_color: Color,
+                                                    robot_wireframe: bool,
+                                                    environment_wireframe: bool,
+                                                    robot_geometric_shape_scene_idx: usize,
+                                                    global_offset: Option<Vec3>) {
+        Self::action_spawn_robot_set(commands, asset_server, materials, robot_geometric_shape_scene.get_robot_set(), robot_set_joint_state, robot_color, robot_wireframe, robot_geometric_shape_scene_idx, global_offset.clone());
+
+        let poses = robot_geometric_shape_scene.recover_poses(Some(robot_set_joint_state), None).expect("error");
+
+        let global_offset_transform = match global_offset {
+            None => { Vec3::new(0.,0.,0.) }
+            Some(g) => { TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(g) }
+        };
+
+        let env_object_spawners = robot_geometric_shape_scene.env_obj_info_blocks();
+        for (env_obj_idx, env_object_spawner) in env_object_spawners.iter().enumerate() {
+            let asset_name = env_object_spawner.asset_name.to_string();
+            let mut path = OptimaStemCellPath::new_asset_path().expect("error");
+            path.append_file_location(&OptimaAssetLocation::SceneMeshFile { name: asset_name.clone() });
+
+            let optima_paths = path.walk_directory_and_match(OptimaPathMatchingPattern::FilenameWithoutExtension(asset_name), OptimaPathMatchingStopCondition::All);
+            assert!(optima_paths.len() > 0, "mesh file was not found.");
+            let optima_path = optima_paths[optima_paths.len() - 1].clone();
+
+            let mut path_buf_back_to_optima_assets = PathBuf::new();
+            path_buf_back_to_optima_assets.push("..");
+            path_buf_back_to_optima_assets.push("..");
+            let string_components = optima_path.split_path_into_string_components_back_to_given_dir("optima_toolbox").unwrap();
+            let path_buf_from_optima_toolbox = path_buf_from_string_components(&string_components);
+            let combined_path_buf = path_buf_back_to_optima_assets.join(path_buf_from_optima_toolbox);
+            let combined_path = combined_path_buf.to_str().unwrap().to_string();
+            let path = if environment_wireframe {
+                combined_path + "#wireframe"
+            } else {
+                combined_path
+            };
+
+            let shape_idxs = robot_geometric_shape_scene.get_shape_idxs_from_env_obj_idx(env_obj_idx).expect("error");
+            let shape_idx = shape_idxs[0];
+            let pose = poses.poses()[shape_idx].clone().unwrap();
+            let mut transform = TransformUtils::util_convert_se3_pose_to_y_up_bevy_transform(&pose);
+            transform.scale = Vec3::new(env_object_spawner.scale[0] as f32, env_object_spawner.scale[1] as f32, env_object_spawner.scale[2] as f32);
+
+            transform.translation += global_offset_transform;
+
+            let mat = StandardMaterial {
+                base_color: environment_color,
+                alpha_mode: AlphaMode::Opaque,
+                ..Default::default()
+            };
+
+            commands.spawn_bundle(PbrBundle {
+                mesh: asset_server.load(&path),
+                material: materials.add(mat),
+                transform,
+                ..Default::default()
+            })
+                .insert(EnvObjSpawn {
+                robot_geometric_shape_scene_idx,
+                env_obj_idx,
+                global_offset: global_offset_transform.clone()
+            })
+                .insert(GenericItemSignature::EnvObj { robot_geometric_shape_scene_idx, env_obj_idx })
+                .insert(OptimaBevyMaterialComponent::new(OptimaBevyMaterial::Color(environment_color.clone())));
+        }
+    }
+    pub fn action_set_robot_set_joint_state(query: &mut Query<(&RobotLinkSpawn, &mut Transform)>,
+                                            robot_geometric_shape_scene: &RobotGeometricShapeScene,
+                                            robot_set_joint_state: &RobotSetJointStateBevyComponent) {
+        let fk_res = robot_geometric_shape_scene.robot_set().robot_set_kinematics_module().compute_fk(&robot_set_joint_state.joint_state, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+
+        for (robot_link_spawn, mut transform) in query.iter_mut() {
+            let robot_link_spawn_: &RobotLinkSpawn = &robot_link_spawn;
+
+            if robot_link_spawn_.robot_set_idx == robot_set_joint_state.robot_set_idx {
+                let pose = fk_res.get_pose_from_idxs(robot_link_spawn_.robot_idx_in_set, robot_link_spawn_.link_idx_in_robot);
+                let mut new_transform = TransformUtils::util_convert_se3_pose_to_y_up_bevy_transform(&pose);
+                new_transform.translation += robot_link_spawn_.global_offset;
+
+                let transform_: &mut Transform = &mut transform;
+                *transform_ = new_transform;
+            }
+        }
+    }
+    pub fn action_update_robot_set_joint_state_bevy_component(query: &mut Query<(&mut RobotSetJointStateBevyComponent)>,
+                                                              robot_set_joint_state: &RobotSetJointState,
+                                                              robot_set_idx: usize) {
+        for mut r in query.iter_mut() {
+            if r.robot_set_idx == robot_set_idx {
+                r.joint_state = robot_set_joint_state.clone();
+            }
+        }
+    }
+    pub fn action_set_env_obj_constraint(query: &mut Query<(&mut EnvObjSpawn)>,
+                                         robot_geometric_shape_scene: &mut RobotGeometricShapeScene) {
+
+    }
+    pub fn action_robot_set_joint_sliders_egui(ui: &mut Ui,
+                                               robot_set: &RobotSet,
+                                               query: &mut Query<(&mut RobotSetJointStateBevyComponent)>) {
+        let joint_axes = robot_set.robot_set_joint_state_module().ordered_joint_axes();
+
+        ui.heading("Robot Set Joint Sliders");
+
+        ui.group(|ui| {
+                egui::ScrollArea::vertical()
+                .id_source("robot_set_joint_sliders_scroll_area")
+                .show(ui, |ui| {
+                    for (_, mut robot_set_joint_state_bevy_component) in query.iter_mut().enumerate() {
+                        if ui.button("Reset State").clicked() {
+                            let zeros_state = robot_set.robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::Full);
+                            robot_set_joint_state_bevy_component.joint_state = zeros_state;
+                        }
+
+                        let id = format!("robot_set_joint_sliders_collapsing_header_robot_{}", robot_set_joint_state_bevy_component.robot_set_idx);
+                        egui::CollapsingHeader::new(format!("Robot Set {}", robot_set_joint_state_bevy_component.robot_set_idx))
+                            .id_source(id)
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                let robot_set_idx = robot_set_joint_state_bevy_component.robot_set_idx;
+                                let id = format!("robot_set_joint_sliders_scroll_area_robot_{}", robot_set_idx);
+                                egui::ScrollArea::vertical()
+                                .id_source(id)
+                                .show(ui, |ui| {
+                                    let mut robot_set_joint_state = &mut robot_set_joint_state_bevy_component.joint_state;
+                                    assert_eq!(robot_set_joint_state.joint_state().len(), joint_axes.len(), "check to make sure that the joint state is a Full joint state and not DOF.");
+                                    for (joint_axis_idx, robot_set_joint_axis) in joint_axes.iter().enumerate() {
+                                        ui.group(|ui| {
+                                            ui.visuals_mut().override_text_color = Some(Color32::from_rgb(0,0,255));
+                                            ui.label(format!("Joint Axis {}", joint_axis_idx));
+                                            ui.visuals_mut().override_text_color = None;
+                                            ui.label(format!(" -- Robot idx in set: {}", robot_set_joint_axis.robot_idx_in_set()));
+                                            ui.label(format!(" -- Joint Name: {}, Joint idx: {}", robot_set_joint_axis.joint_axis().joint_name(), robot_set_joint_axis.joint_axis().joint_idx()));
+                                            ui.label(format!(" -- Joint Sub-dof idx: {}", robot_set_joint_axis.joint_axis().joint_sub_dof_idx()));
+                                            ui.label(format!(" -- Type: {:?}, Axis: {:?}", robot_set_joint_axis.joint_axis().axis_primitive_type(), robot_set_joint_axis.joint_axis().axis_as_unit()));
+                                            match robot_set_joint_axis.joint_axis().fixed_value() {
+                                                None => {
+                                                    ui.horizontal(|ui| {
+                                                        if ui.button("+0.1").clicked() { robot_set_joint_state[joint_axis_idx] += 0.1; }
+                                                        if ui.button("-0.1").clicked() { robot_set_joint_state[joint_axis_idx] -= 0.1; }
+                                                        if ui.button("+0.01").clicked() { robot_set_joint_state[joint_axis_idx] += 0.01; }
+                                                        if ui.button("-0.01").clicked() { robot_set_joint_state[joint_axis_idx] -= 0.01; }
+                                                        if ui.button("Reset").clicked() { robot_set_joint_state[joint_axis_idx] = 0.0; }
+                                                    });
+
+                                                    ui.horizontal(|ui| {
+                                                        let bounds = robot_set_joint_axis.joint_axis().bounds();
+                                                        ui.add(egui::Slider::new(&mut robot_set_joint_state[joint_axis_idx], bounds.0..=bounds.1));
+                                                    });
+                                                }
+                                                Some(fixed_value) => {
+                                                    ui.visuals_mut().override_text_color = Some(Color32::from_rgb(100,100,100));
+                                                    ui.label(format!("Fixed at value {}", fixed_value));
+                                                }
+                                            }
+                                        });
+                                    }
+                                });
+                            });
+                    }
+                });
+            });
+    }
+    pub fn action_robot_set_link_info_egui(ui: &mut Ui,
+                                           robot_set: &RobotSet,
+                                           query: &Query<(&RobotSetJointStateBevyComponent)>,
+                                           lines: &mut ResMut<DebugLines>,
+                                           robot_link_info_vars: &mut ResMut<RobotLinkInfoVars>) {
+        let robot_configuration_modules = robot_set.robot_set_configuration_module().robot_configuration_modules();
+
+        ui.heading("Robot Set Link Info");
+
+        ui.horizontal(|ui| {
+            if ui.button("Show all frames").clicked() {
+                for rr in &mut robot_link_info_vars.link_frame_display { for r in rr { *r = true; } }
+            }
+
+            if ui.button("Show no frames").clicked() {
+                for rr in &mut robot_link_info_vars.link_frame_display { for r in rr { *r = false; } }
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("Frame size: ");
+            ui.add(egui::DragValue::new(&mut robot_link_info_vars.frame_display_size).clamp_range(0.0..=0.6).speed(0.01))
+        });
+
+        let mut f0 = |ui: &mut Ui, robot_idx_in_set: usize, link_idx_in_robot: usize, link: &Link, link_pose: &OptimaSE3Pose| {
+            let euler_angles_and_translation = link_pose.to_euler_angles_and_translation();
+            let e = euler_angles_and_translation.0;
+            let t = euler_angles_and_translation.1;
+            let bind = link_pose.rotation().convert(&OptimaRotationType::UnitQuaternion);
+            let quat = bind.unwrap_unit_quaternion().expect("error");
+            ui.group(|ui| {
+                ui.label(format!("Robot idx in set: {}", robot_idx_in_set));
+                ui.label(format!("Link idx: {}", link_idx_in_robot));
+                ui.label(format!("Link name: {}", link.name()));
+                ui.label(format!("x: {:.2}, y: {:.2}, z: {:.2}", t[0], t[1], t[2]));
+                ui.label(format!("rx: {:.2}, ry: {:.2}, rz: {:.2}", e[0], e[1], e[2]));
+                ui.label(format!("qi: {:.2}, qj: {:.2}, qk: {:.2}, qw: {:.2}", quat.i, quat.j, quat.k, quat.w));
+                // ui.label(format!("Quaternion: {:?}", quat));
+                let display_frame = &mut robot_link_info_vars.link_frame_display[robot_idx_in_set][link_idx_in_robot];
+                ui.horizontal(|ui| {
+                    ui.checkbox(display_frame, "Show Frame");
+                    ui.radio(false, "Highlight");
+                });
+
+                if *display_frame {
+                    let bind = link_pose.rotation().convert(&OptimaRotationType::RotationMatrix);
+                    let rot_mat = bind.unwrap_rotation_matrix().expect("error").matrix();
+
+                    let size = robot_link_info_vars.frame_display_size;
+                    let x_end = t + size * rot_mat.column(0);
+                    let y_end = t + size * rot_mat.column(1);
+                    let z_end = t + size * rot_mat.column(2);
+
+                    let center_bevy = TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(Vec3::new(t[0] as f32, t[1] as f32, t[2] as f32));
+                    let x_end_bevy = TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(Vec3::new(x_end[0] as f32, x_end[1] as f32, x_end[2] as f32));
+                    let y_end_bevy = TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(Vec3::new(y_end[0] as f32, y_end[1] as f32, y_end[2] as f32));
+                    let z_end_bevy = TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(Vec3::new(z_end[0] as f32, z_end[1] as f32, z_end[2] as f32));
+
+                    lines.line_colored(center_bevy, x_end_bevy, 0.0, Color::rgb(1.0, 0.0, 0.0));
+                    lines.line_colored(center_bevy, y_end_bevy, 0.0, Color::rgb(0.0, 1.0, 0.0));
+                    lines.line_colored(center_bevy, z_end_bevy, 0.0, Color::rgb(0.0, 0.0, 1.0));
+                }
+            });
+        };
+
+        egui::ScrollArea::vertical()
+            .id_source("robot_set_link_info_scroll_area")
+            .show(ui, |ui| {
+                for (_, robot_set_joint_state_bevy_component) in query.iter().enumerate() {
+                    let robot_set_joint_state = &robot_set_joint_state_bevy_component.joint_state;
+                    let robot_set_fk_res = robot_set.robot_set_kinematics_module().compute_fk(&robot_set_joint_state, &OptimaSE3PoseType::EulerAnglesAndTranslation).expect("error");
+
+                    egui::CollapsingHeader::new(format!("Robot Set {}", robot_set_joint_state_bevy_component.robot_set_idx)).default_open(true).show(ui, |ui| {
+                        for (robot_idx_in_set, robot_configuration_module) in robot_configuration_modules.iter().enumerate() {
+                            let links = robot_configuration_module.robot_model_module().links();
+                            for (link_idx_in_robot, link) in links.iter().enumerate() {
+                                let link_pose = robot_set_fk_res.get_pose_option_from_idxs(robot_idx_in_set, link_idx_in_robot);
+                                if let Some(pose) = link_pose {
+                                    f0(ui, robot_idx_in_set, link_idx_in_robot, link, pose);
+                                }
+                            }
+                        }
+                    });
+                }
+        });
+    }
+}
+
+pub struct RobotSceneSystems;
+impl RobotSceneSystems {
+    pub fn system_spawn_standard_robot_set(mut commands: Commands,
+                                           asset_server: Res<AssetServer>,
+                                           mut materials: ResMut<Assets<StandardMaterial>>,
+                                           immut_vars: Res<OTFImmutVars>,
+                                           frame_count: Res<FrameCount>) {
+        if frame_count.0 == 1 {
+            let robot_set = immut_vars.ref_robot_set();
+            let robot_set_joint_state = robot_set.robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::Full);
+            RobotSceneActions::action_spawn_robot_set(&mut commands, &asset_server, &mut materials, robot_set, &robot_set_joint_state, Color::rgba(0.6, 0.6, 0.7, 1.0), false, 0, None);
+        }
+    }
+    pub fn system_spawn_standard_robot_geometric_shape_scene(mut commands: Commands,
+                                                             asset_server: Res<AssetServer>,
+                                                             mut materials: ResMut<Assets<StandardMaterial>>,
+                                                             immut_vars: Res<OTFImmutVars>,
+                                                             frame_count: Res<FrameCount>) {
+        if frame_count.0 == 1 {
+            let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+            let robot_set_joint_state = robot_geometric_shape_scene.robot_set().robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::Full);
+            RobotSceneActions::action_spawn_robot_geometric_shape_scene(&mut commands, &asset_server, &mut materials, robot_geometric_shape_scene, &robot_set_joint_state, Color::rgba(0.6, 0.6, 0.7, 1.0), Color::rgba(0.8, 0.2, 0.8, 1.0), false, false, 0, None);
+        }
+    }
+    pub fn system_set_robot_set_joint_states(immut_vars: Res<OTFImmutVars>,
+                                             mut query: Query<(&mut RobotSetJointStateBevyComponent), (Changed<RobotSetJointStateBevyComponent>)>,
+                                             mut query2: Query<(&RobotLinkSpawn, &mut Transform)>) {
+        let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
+        for r in query.iter_mut() {
+            RobotSceneActions::action_set_robot_set_joint_state(&mut query2, robot_geometric_shape_scene, & *r);
+        }
+    }
+    pub fn system_robot_set_joint_sliders_egui(mut query: Query<(&mut RobotSetJointStateBevyComponent)>, 
+                                               immut_vars: Res<OTFImmutVars>, 
+                                               windows: Res<Windows>,
+                                               mut egui_context: ResMut<EguiContext>,
+                                               mut egui_engine: ResMut<EguiEngine>,
+                                               mut gui_global_info: ResMut<GuiGlobalInfo>) {
+        let robot_set = immut_vars.ref_robot_set();
+        
+        let f = |ui: &mut Ui| { RobotSceneActions::action_robot_set_joint_sliders_egui(ui, robot_set, &mut query); };
+        
+        EguiActions::action_egui_generic(f, &EguiContainerMode::LeftPanel { resizable: true, default_width: 300.0 }, "sliders", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
+    }
+    pub fn system_robot_set_link_info_egui(query: Query<(&RobotSetJointStateBevyComponent)>,
+                                           immut_vars: Res<OTFImmutVars>,
+                                           mut lines: ResMut<DebugLines>,
+                                           mut robot_link_info_vars: ResMut<RobotLinkInfoVars>,
+                                           windows: Res<Windows>,
+                                           mut egui_context: ResMut<EguiContext>,
+                                           mut egui_engine: ResMut<EguiEngine>,
+                                           mut gui_global_info: ResMut<GuiGlobalInfo>) {
+        let robot_set = immut_vars.ref_robot_set();
+
+        let f = |ui: &mut Ui| { RobotSceneActions::action_robot_set_link_info_egui(ui, robot_set, &query, &mut lines, &mut robot_link_info_vars); };
+
+        EguiActions::action_egui_generic(f, &EguiContainerMode::LeftPanel { resizable: true, default_width: 300.0 }, "link_info", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
+
+    }
+}
+
+#[derive(Component)]
+pub struct RobotLinkSpawn {
+    pub robot_set_idx: usize,
+    pub robot_idx_in_set: usize,
+    pub link_idx_in_robot: usize,
+    /// Global offset is already in bevy y up space.
+    pub global_offset: Vec3
+}
+
+#[derive(Component)]
+pub struct EnvObjSpawn {
+    pub robot_geometric_shape_scene_idx: usize,
+    pub env_obj_idx: usize,
+    /// Global offset is already in bevy y up space.
+    pub global_offset: Vec3
+}
+
+#[derive(Component)]
+pub struct RobotSetJointStateBevyComponent {
+    robot_set_idx: usize,
+    joint_state: RobotSetJointState,
+}
+
+pub struct RobotLinkInfoVars {
+    pub frame_display_size: f64,
+    pub link_frame_display: Vec<Vec<bool>>
+}
+impl RobotLinkInfoVars {
+    pub fn new(robot_set: &RobotSet) -> Self {
+        let mut link_frame_display = vec![];
+
+        let robot_configuration_modules = robot_set.robot_set_configuration_module().robot_configuration_modules();
+        for (robot_idx_in_set, robot_configuration_module) in robot_configuration_modules.iter().enumerate() {
+            link_frame_display.push(vec![]);
+            let links = robot_configuration_module.robot_model_module().links();
+            for _ in links { link_frame_display[robot_idx_in_set].push(false); }
+        }
+
+        Self {
+            frame_display_size: 0.1,
+            link_frame_display
+        }
+    }
+}

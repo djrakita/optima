@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use bevy::prelude::{Res, ResMut, Windows};
-use bevy_egui::egui::{Color32, Id, Ui, Visuals};
+use bevy_egui::egui::{Align, Color32, Direction, Id, Layout, Ui, Visuals};
 use bevy_egui::{egui, EguiContext};
 use bevy_egui::egui::panel::{Side, TopBottomSide};
 use crate::optima_bevy::optima_bevy_utils::gui::GuiGlobalInfo;
@@ -11,12 +11,18 @@ impl EguiActions {
     pub fn action_is_cursor_over_egui_window(gui_global_info: &mut ResMut<GuiGlobalInfo>,
                                              ui: &mut Ui,
                                              windows: &Res<Windows>,
+                                             standard_check: bool,
                                              top_buffer: f64,
                                              bottom_buffer: f64,
                                              right_buffer: f64,
                                              left_buffer: f64) {
         if !gui_global_info.is_hovering_over_gui {
-            let res = EguiUtils::is_cursor_over_egui_window(ui, windows, top_buffer, bottom_buffer, right_buffer, left_buffer);
+            let res = if standard_check {
+                ui.ui_contains_pointer()
+            } else {
+                EguiUtils::is_cursor_over_egui_window(ui, windows, top_buffer, bottom_buffer, right_buffer, left_buffer)
+            };
+
             if res {
                 gui_global_info.is_hovering_over_gui = true;
             }
@@ -30,19 +36,21 @@ impl EguiActions {
                                                egui_engine: &mut ResMut<EguiEngine>,
                                                gui_global_info: &mut ResMut<GuiGlobalInfo>) {
         match egui_container_mode {
-            EguiContainerMode::LeftPanel { resizable } => {
+            EguiContainerMode::LeftPanel { resizable, default_width } => {
                 egui::SidePanel::new(Side::Left, id_source)
                     .resizable(*resizable)
+                    .default_width(*default_width)
                     .show(egui_context.ctx_mut(), |ui| {
-                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, 1000.0, 1000.0, 50.0, 1000.0);
+                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, false, 1000.0, 1000.0, 20.0, 1000.0);
                         f(ui);
                 });
             }
-            EguiContainerMode::RightPanel { resizable } => {
+            EguiContainerMode::RightPanel { resizable, default_width } => {
                 egui::SidePanel::new(Side::Right, id_source)
                     .resizable(*resizable)
+                    .default_width(*default_width)
                     .show(egui_context.ctx_mut(), |ui| {
-                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, 1000.0, 1000.0, 1000.0, 30.0);
+                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, false, 1000.0, 1000.0, 1000.0, 20.0);
                         f(ui);
                 });
             }
@@ -50,7 +58,7 @@ impl EguiActions {
                 egui::TopBottomPanel::new(TopBottomSide::Top, id_source)
                     .resizable(*resizable)
                     .show(egui_context.ctx_mut(), |ui| {
-                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, 1000.0, 60.0, 1000.0, 1000.0);
+                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, false, 1000.0, 20.0, 1000.0, 1000.0);
                         f(ui);
                 });
             }
@@ -58,7 +66,7 @@ impl EguiActions {
                 egui::TopBottomPanel::new(TopBottomSide::Bottom, id_source)
                     .resizable(*resizable)
                     .show(egui_context.ctx_mut(), |ui| {
-                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, 30.0, 1000.0, 1000.0, 1000.0);
+                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, false, 20.0, 1000.0, 1000.0, 1000.0);
                         f(ui);
                 });
             }
@@ -68,7 +76,7 @@ impl EguiActions {
                     .resizable(*resizable)
                     .open(&mut egui_engine.egui_window_state_container.get_window_state_mut_ref(id_source).open)
                     .show(egui_context.ctx_mut(), |ui| {
-                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, 40.0, 40.0, 40.0, 40.0);
+                        Self::action_is_cursor_over_egui_window(gui_global_info, ui, windows, false, 40.0, 40.0, 40.0, 40.0);
                         f(ui);
                     });
             }
@@ -77,8 +85,8 @@ impl EguiActions {
 }
 
 pub enum EguiContainerMode {
-    LeftPanel { resizable: bool },
-    RightPanel { resizable: bool },
+    LeftPanel { resizable: bool, default_width: f32 },
+    RightPanel { resizable: bool, default_width: f32 },
     TopPanel { resizable: bool },
     BottomPanel { resizable: bool },
     FloatingWindow { title: String, resizable: bool }
@@ -89,47 +97,15 @@ impl EguiSystems {
     pub fn init_egui_system(mut egui_context: ResMut<EguiContext>) {
         let mut visuals = Visuals::dark();
         let bg = visuals.widgets.noninteractive.bg_fill;
-        visuals.widgets.noninteractive.bg_fill = Color32::from_rgba_premultiplied(bg.r(), bg.g(), bg.b(), 100);
+        visuals.widgets.noninteractive.bg_fill = Color32::from_rgba_premultiplied(bg.r(), bg.g(), bg.b(), 150);
         egui_context.ctx_mut().set_visuals(visuals);
-    }
-    pub fn system_egui_test(windows: Res<Windows>,
-                            mut egui_context: ResMut<EguiContext>,
-                            mut egui_engine: ResMut<EguiEngine>,
-                            mut gui_global_info: ResMut<GuiGlobalInfo>,
-                            robot_set: Res<RobotSet>) {
-
-        let f = |ui: &mut Ui| {
-            ui.add(egui::Slider::new(&mut 0.0, 0.0..=1.0));
-            ui.group(|ui| {
-                ui.visuals_mut().override_text_color = Some(Color32::from_rgb(255,0,0));
-                ui.visuals_mut().dark_mode = true;
-                ui.label("test");
-            });
-            ui.label("test");
-        };
-        let f2 = |ui: &mut Ui| {
-            ui.add(egui::Slider::new(&mut 0.0, 0.0..=1.0));
-            ui.group(|ui| {
-                ui.visuals_mut().override_text_color = Some(Color32::from_rgb(255,0,0));
-                ui.visuals_mut().dark_mode = true;
-                ui.label("test");
-            });
-            ui.label("test");
-        };
-
-        EguiActions::action_egui_generic(f, &EguiContainerMode::RightPanel { resizable: false }, "test", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
-        EguiActions::action_egui_generic(f2, &EguiContainerMode::LeftPanel { resizable: false }, "test2", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
-        EguiActions::action_egui_generic(f2, &EguiContainerMode::TopPanel { resizable: false }, "test3", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
-        EguiActions::action_egui_generic(f2, &EguiContainerMode::BottomPanel { resizable: false }, "test4", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
-        EguiActions::action_egui_generic(f2, &EguiContainerMode::FloatingWindow { title: "Test".to_string(), resizable: false }, "test5", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
-
     }
 }
 
 pub struct EguiUtils;
 impl EguiUtils {
     pub fn is_cursor_over_egui_window(ui: &mut Ui, windows: &Res<Windows>, top_buffer: f64, bottom_buffer: f64, right_buffer: f64, left_buffer: f64) -> bool {
-        let rect = ui.min_rect();
+        let rect = ui.available_rect_before_wrap();
         let primary_window = windows.get_primary();
         if let Some(primary_window) = primary_window {
             let cursor = primary_window.cursor_position();
@@ -148,6 +124,9 @@ impl EguiUtils {
             }
         }
         return false;
+    }
+    pub fn get_default_layout() -> Layout {
+        egui::Layout::centered_and_justified(Direction::LeftToRight).with_cross_align(Align::Center).with_cross_justify(true)
     }
 }
 
@@ -190,6 +169,3 @@ impl Default for EguiWindowState {
         }
     }
 }
-
-
-

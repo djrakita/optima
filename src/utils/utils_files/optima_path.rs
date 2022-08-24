@@ -903,7 +903,6 @@ pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Resu
     let o_res = serde_json::from_str(json_str);
     return match o_res {
         Ok(o) => {
-            // optima_print(json_str, PrintMode::Println, PrintColor::Green, false);
             Ok(o)
         }
         Err(_) => {

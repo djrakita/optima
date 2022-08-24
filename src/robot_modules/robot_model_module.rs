@@ -388,7 +388,9 @@ impl RobotModelModule {
 
                 if child_link_idx == self.world_link_idx { self.robot_base_link_idx = new_link_idx; }
 
+                // self.links[child_link_idx].set_preceding_link_idx(Some(new_link_idx));
                 self.links[child_link_idx].set_preceding_link_idx(Some(new_link_idx));
+                self.links[child_link_idx].set_preceding_joint_idx(Some(new_joint_idx));
 
                 self.set_link_tree_traversal_info();
                 self.assign_all_link_chains();

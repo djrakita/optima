@@ -79,7 +79,7 @@ impl RobotConfigurationModule {
             // Set all links as not present.
             let num_links = robot_model_module.links().len();
             for link_idx in 0..num_links {
-                robot_model_module.set_link_as_not_present(link_idx)?;
+                robot_model_module.set_link_as_not_present(link_idx).expect("error");
             }
         }
 
@@ -182,6 +182,9 @@ impl RobotConfigurationModule {
     /// Note that setting a mobile base is done using `set_contiguous_chain`
     pub fn set_mobile_base(&mut self, mobility_mode: ContiguousChainMobilityMode) -> Result<(), OptimaError> {
         let world_idx = self.robot_model_module.world_link_idx();
+        // let children_link_idxs = self.robot_model_module.links()[world_idx].children_link_idxs();
+        // assert!(children_link_idxs.len() > 0);
+        // self.set_contiguous_chain("mobile_base", children_link_idxs[0], None, mobility_mode)
         self.set_contiguous_chain("mobile_base", world_idx, None, mobility_mode)
     }
     /// Sets the given link as a "dead end" link.  A dead end link is a link such that it and all

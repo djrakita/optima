@@ -41,15 +41,15 @@ impl Link {
     /// Here, the `child_link_idx` will be the link that the chain connects to.  For example,
     /// if the child_link_idx is the world_link_idx of the `RobotModelModule`, this will essentially
     /// create a mobile base link for the whole robot model.
-    pub fn new_base_of_chain_link(link_idx: usize, child_link_idx: usize, newly_created_joint_idx: usize, world_link_idx: usize) -> Self {
+    pub fn new_base_of_chain_link(link_idx: usize, child_link_idx: usize, _newly_created_joint_idx: usize, _world_link_idx: usize) -> Self {
         let name = format!("base_of_chain_link_with_child_link_{}", child_link_idx);
         Self {
             name,
             present: true,
             link_idx,
-            preceding_link_idx: if child_link_idx == world_link_idx { None } else { Some(world_link_idx) } ,
+            preceding_link_idx: None ,
             children_link_idxs: vec![child_link_idx],
-            preceding_joint_idx: Some(newly_created_joint_idx),
+            preceding_joint_idx: None,
             is_chain_base_link: true,
             urdf_link: URDFLink::new_empty()
         }
@@ -104,6 +104,12 @@ impl Link {
             false => { PrintColor::Red }
         };
         optima_print(&format!(" {} ", self.present), PrintMode::Print, color, false, 0, None, vec![]);
+        optima_print(&format!("  Preceding Joint: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {:?} ", self.preceding_joint_idx), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Preceding link idx: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {:?} ", self.preceding_link_idx()), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
+        optima_print(&format!("  Children link idxs: "), PrintMode::Print, PrintColor::Blue, true, 0, None, vec![]);
+        optima_print(&format!(" {:?} ", self.children_link_idxs), PrintMode::Print, PrintColor::None, false, 0, None, vec![]);
     }
     pub fn set_present(&mut self, present: bool) {
         self.present = present;

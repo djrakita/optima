@@ -1,3 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+use pyo3::*;
+
 use std::ops::{Add, Div, Mul, Sub};
 use std::vec;
 use nalgebra::{DMatrix, DVector};
@@ -1970,7 +1973,10 @@ pub fn linearly_interpolate_optima_tensors(a: &OptimaTensor, b: &OptimaTensor, m
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#[derive(Clone)]
+/// `OTFImmutVars` is a generic container for variables that will be immutable when the optima
+/// tensor function is called.
+#[cfg_attr(not(target_arch = "wasm32"), pyclass, derive(Clone))]
+// #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone))]
 pub struct OTFImmutVars {
     c: Box<dyn EnumTypeContainer<OTFImmutVarsObject, OTFImmutVarsObjectType>>
 }
@@ -2021,7 +2027,17 @@ impl OTFImmutVars {
         return robot_geometric_shape_scene;
     }
 }
-unsafe impl Send for OTFImmutVars { }
+unsafe impl Send for OTFImmutVars {}
+unsafe impl Sync for OTFImmutVars {}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[pymethods]
+impl OTFImmutVars {
+    #[new]
+    pub fn new_py() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Clone)]
 pub enum OTFImmutVarsObject {

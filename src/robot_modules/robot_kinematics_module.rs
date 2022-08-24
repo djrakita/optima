@@ -406,11 +406,13 @@ impl RobotKinematicsModule {
             return Ok(());
         }
 
+        // println!("{:?}, {:?}", preceding_link_option, preceding_joint_option);
+
         let preceding_joint_idx = preceding_joint_option.unwrap();
         let preceding_joint = &self.robot_configuration_module.robot_model_module().joints()[preceding_joint_idx];
         let is_joint_with_all_standard_axes = preceding_joint.is_joint_with_all_standard_axes();
 
-        let full_state_idxs = self.robot_joint_state_module.map_joint_idx_to_joint_state_idxs(preceding_joint_idx, &RobotJointStateType::Full)?;
+        let full_state_idxs = self.robot_joint_state_module.map_joint_idx_to_joint_state_idxs(preceding_joint_idx, &RobotJointStateType::Full).expect("error");
 
         let out_pose = output.link_entries[preceding_link_idx].pose.clone();
         if out_pose.is_none() { return Ok(()); }
