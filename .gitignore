@@ -27,3 +27,4 @@ env/
 src/bin/*
 !src/bin/print_robot_info.rs
 !src/bin/preprocess_all_robots.rs
+!src/bin/preprocess_robot.rs

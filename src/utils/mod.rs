@@ -12,3 +12,4 @@ pub mod utils_wasm;
 pub mod utils_algorithms;
 pub mod utils_combinations;
 pub mod utils_math;
+pub mod utils_enums;

@@ -252,7 +252,7 @@ impl RobotSetGeometricShapeModule {
     fn setup_robot_set_shape_collections(&mut self, robot_set_configuration_module: &RobotSetConfigurationModule) -> Result<(), OptimaError> {
         let mut robot_geometric_shape_modules = vec![];
         for r in robot_set_configuration_module.robot_configuration_modules() {
-            let robot_geometric_shape_module = RobotGeometricShapeModule::new_from_names(RobotNames::new(r.robot_name(), None), false).expect("error");
+            let robot_geometric_shape_module = RobotGeometricShapeModule::new_from_names(RobotNames::new(r.robot_name(), None), false, false, false).expect("error");
             robot_geometric_shape_modules.push(robot_geometric_shape_module);
         }
 

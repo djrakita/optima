@@ -7,10 +7,12 @@ use std::io::{Read, Write};
 use std::path::{PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
+use serde_json::Serializer;
 use urdf_rs::Robot;
 use walkdir::WalkDir;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
+use crate::utils::utils_traits::ToAndFromJsonString;
 
 /// An `OptimaStemCellPath` has the same functionality as an `OptimaPath`, but it
 /// will try to automatically select whether it should use a physical or virtual file path based on
@@ -141,7 +143,7 @@ impl OptimaStemCellPath {
         }
         return vec![];
     }
-    pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
+    pub fn save_object_to_file_as_json<T: Serialize + DeserializeOwned>(&self, object: &T) -> Result<(), OptimaError> {
         self.try_function_on_all_optima_file_paths_with_one_param(OptimaPath::save_object_to_file_as_json, object, "save_object_to_file_as_json")
     }
     pub fn load_object_from_json_file<T: DeserializeOwned>(&self) -> Result<T, OptimaError> {
@@ -451,9 +453,14 @@ impl OptimaPath {
             }
         }
     }
-    pub fn save_object_to_file_as_json<T: Serialize>(&self, object: &T) -> Result<(), OptimaError> {
+    pub fn save_object_to_file_as_json<T: Serialize + DeserializeOwned>(&self, object: &T) -> Result<(), OptimaError> {
         return match self {
-            OptimaPath::Path(p) => {
+            OptimaPath::Path(_) => {
+                let s = object.to_json_string();
+                self.write_string_to_file(&s).expect("error");
+                Ok(())
+                /*
+                /*
                 let parent_option = p.parent();
                 match parent_option {
                     None => { return Err(OptimaError::new_generic_error_str("Could not get parent of path in save_object_to_file_as_json.", file!(), line!())) }
@@ -468,16 +475,34 @@ impl OptimaPath {
                     .write(true)
                     .create(true)
                     .open(p);
-
+                */
                 match &mut file_res {
                     Ok(f) => {
-                        serde_json::to_writer(f, object).expect("error");
+                        // let start = instant::Instant::now();
+                        // let mut ser = Serializer::new(f);
+                        // println!("{:?}", start.elapsed());
+
+                        // let start = instant::Instant::now();
+                        let s = object.to_json_string();
+                        // println!("{:?}", start.elapsed());
+
+                        // println!("{:?}", s);
+
+                        self.write_string_to_file(&s);
+
+                        // let start = instant::Instant::now();
+                        // object.serialize(&mut ser).expect("error");
+                        // println!("{:?}", start.elapsed());
+
+                        // println!("got here");
+                        // serde_json::to_writer(f, object).expect("error");
                         Ok(())
                     }
                     Err(e) => {
                         Err(OptimaError::new_generic_error_str(e.to_string().as_str(), file!(), line!()))
                     }
                 }
+                */
             }
             OptimaPath::VfsPath(_) => {
                 Err(OptimaError::new_unsupported_operation_error("save_object_to_file_as_json()",
@@ -903,6 +928,7 @@ pub fn load_object_from_json_string<T: DeserializeOwned>(json_str: &str) -> Resu
     let o_res = serde_json::from_str(json_str);
     return match o_res {
         Ok(o) => {
+            // optima_print(json_str, PrintMode::Println, PrintColor::Green, false);
             Ok(o)
         }
         Err(_) => {

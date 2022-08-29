@@ -9,6 +9,7 @@ use std::vec;
 use nalgebra::{DVector, Vector3};
 use parry3d_f64::query::Ray;
 use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 use crate::robot_modules::robot_configuration_module::RobotConfigurationModule;
 use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
 use crate::robot_modules::robot_kinematics_module::{RobotFKResult, RobotKinematicsModule};
@@ -45,7 +46,7 @@ pub struct RobotGeometricShapeModule {
 }
 impl RobotGeometricShapeModule {
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn new(robot_configuration_module: RobotConfigurationModule, force_preprocessing: bool) -> Result<Self, OptimaError> {
+    pub fn new(robot_configuration_module: RobotConfigurationModule, force_preprocessing: bool, check_for_links_always_in_collision: bool, check_for_links_never_in_collision: bool) -> Result<Self, OptimaError> {
         let robot_joint_state_module = RobotJointStateModule::new(robot_configuration_module.clone());
         let robot_kinematics_module = RobotKinematicsModule::new(robot_configuration_module.clone());
         let robot_mesh_file_manager_module = RobotMeshFileManagerModule::new_from_name(robot_configuration_module.robot_name())?;
@@ -56,14 +57,14 @@ impl RobotGeometricShapeModule {
                 robot_mesh_file_manager_module,
                 robot_shape_collections: vec![]
             };
-            out_self.preprocessing()?;
+            out_self.preprocessing(check_for_links_always_in_collision, check_for_links_never_in_collision).expect("error");
             Ok(out_self)
         } else {
             let robot_name = robot_kinematics_module.robot_name().to_string();
             let res = Self::load_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name, t: RobotModuleJsonType::ShapeGeometryModule });
             match res {
                 Ok(res) => { Ok(res) }
-                Err(_) => { Self::new(robot_configuration_module, true) }
+                Err(_) => { Self::new(robot_configuration_module, true, check_for_links_always_in_collision, check_for_links_never_in_collision) }
             }
         }
     }
@@ -89,12 +90,12 @@ impl RobotGeometricShapeModule {
             }
         }
     }
-    pub fn new_from_names(robot_names: RobotNames, force_preprocessing: bool) -> Result<Self, OptimaError> {
+    pub fn new_from_names(robot_names: RobotNames, force_preprocessing: bool, check_for_links_always_in_collision: bool, check_for_links_never_in_collision: bool) -> Result<Self, OptimaError> {
         let robot_configuration_module = RobotConfigurationModule::new_from_names(robot_names)?;
-        Self::new(robot_configuration_module, force_preprocessing)
+        Self::new(robot_configuration_module, force_preprocessing, check_for_links_always_in_collision, check_for_links_never_in_collision)
     }
     #[cfg(not(target_arch = "wasm32"))]
-    fn preprocessing(&mut self) -> Result<(), OptimaError> {
+    fn preprocessing(&mut self, check_for_links_always_in_collision: bool, check_for_links_never_in_collision: bool) -> Result<(), OptimaError> {
         let robot_link_shape_representations = vec![
             RobotLinkShapeRepresentation::Cubes,
             RobotLinkShapeRepresentation::ConvexShapes,
@@ -105,14 +106,16 @@ impl RobotGeometricShapeModule {
         ];
 
         for robot_link_shape_representation in &robot_link_shape_representations {
-            self.preprocessing_robot_geometric_shape_collection(robot_link_shape_representation)?;
+            self.preprocessing_robot_geometric_shape_collection(robot_link_shape_representation, check_for_links_always_in_collision, check_for_links_never_in_collision).expect("error");
         }
 
         Ok(())
     }
     #[cfg(not(target_arch = "wasm32"))]
     fn preprocessing_robot_geometric_shape_collection(&mut self,
-                                                      robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Result<(), OptimaError> {
+                                                      robot_link_shape_representation: &RobotLinkShapeRepresentation,
+                                                      check_for_links_always_in_collision: bool,
+                                                      check_for_links_never_in_collision: bool) -> Result<(), OptimaError> {
         optima_print(&format!("Setup on {:?}...", robot_link_shape_representation), PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
         // Base model modules must be used as these computations apply to all derived configuration
         // variations of this model, not just particular configurations.
@@ -144,8 +147,8 @@ impl RobotGeometricShapeModule {
         // distance information between links.
         let start = Instant::now();
         let mut count = 0.0;
-        let max_samples = 100_000;
-        let min_samples = 70;
+        let max_samples = 50_000;
+        let min_samples = 30;
 
         let mut pb = get_default_progress_bar(1000);
 
@@ -153,23 +156,23 @@ impl RobotGeometricShapeModule {
         for i in 0..max_samples {
             count += 1.0;
             let sample = base_robot_joint_state_module.sample_joint_state(&RobotJointStateType::Full);
-            let fk_res = base_robot_kinematics_module.compute_fk(&sample, &OptimaSE3PoseType::ImplicitDualQuaternion)?;
-            let poses = robot_shape_collection.recover_poses(&fk_res)?;
+            let fk_res = base_robot_kinematics_module.compute_fk(&sample, &OptimaSE3PoseType::ImplicitDualQuaternion).expect("error");
+            let poses = robot_shape_collection.recover_poses(&fk_res).expect("error");
             let input = ShapeCollectionQuery::Distance { poses: &poses, inclusion_list: &None };
 
-            let res = robot_shape_collection.shape_collection.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false)?;
+            let res = robot_shape_collection.shape_collection.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, false).expect("error");
 
             let outputs = res.outputs();
             for output in outputs {
                 let signatures = output.signatures();
                 let signature1 = &signatures[0];
                 let signature2 = &signatures[1];
-                let shape_idx1 = robot_shape_collection.shape_collection.get_shape_idx_from_signature(signature1)?;
-                let shape_idx2 = robot_shape_collection.shape_collection.get_shape_idx_from_signature(signature2)?;
-                let dis = output.raw_output().unwrap_distance()?;
-                distance_average_array.adjust_data(|x| x.add_new_value(dis.clone()), shape_idx1, shape_idx2 )?;
+                let shape_idx1 = robot_shape_collection.shape_collection.get_shape_idx_from_signature(signature1).expect("error");
+                let shape_idx2 = robot_shape_collection.shape_collection.get_shape_idx_from_signature(signature2).expect("error");
+                let dis = output.raw_output().unwrap_distance().expect("error");
+                distance_average_array.adjust_data(|x| x.add_new_value(dis.clone()), shape_idx1, shape_idx2 ).expect("error");
                 if dis <= 0.0 {
-                    collision_counter_array.adjust_data(|x| *x += 1.0, shape_idx1, shape_idx2)?;
+                    collision_counter_array.adjust_data(|x| *x += 1.0, shape_idx1, shape_idx2).expect("error");
                 }
             }
 
@@ -214,15 +217,20 @@ impl RobotGeometricShapeModule {
                     _ => { }
                 }
 
-                // Checks if links are always in intersecting.
-                let ratio_of_checks_in_collision = collision_counter_array.data_cell(i, j)? / count;
-                if count >= min_samples as f64 && ratio_of_checks_in_collision > 0.99 {
-                    robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?;
+                if check_for_links_always_in_collision {
+                    // Checks if links are always in intersecting.
+                    let ratio_of_checks_in_collision = collision_counter_array.data_cell(i, j)? / count;
+                    if count >= min_samples as f64 && ratio_of_checks_in_collision > 0.99 {
+                        robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?;
+                    }
                 }
 
-                // Checks if links are never in collision
-                if count >= 1000.0 && ratio_of_checks_in_collision == 0.0 {
-                    robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?;
+                if check_for_links_never_in_collision {
+                    // Checks if links are never in collision
+                    let ratio_of_checks_in_collision = collision_counter_array.data_cell(i, j)? / count;
+                    if count >= 1000.0 && ratio_of_checks_in_collision == 0.0 {
+                        robot_shape_collection.shape_collection.set_skip_from_idxs(true, i, j)?;
+                    }
                 }
             }
         }
@@ -472,16 +480,16 @@ impl RobotGeometricShapeModule {
             let outputs = res.outputs();
             for output in outputs {
                 let signatures = output.signatures();
-                let contact = output.raw_output().unwrap_contact()?;
+                let contact = output.raw_output().unwrap_contact().expect("error");
                 if let Some(contact) = &contact {
 
                     // Does not mark as skip if the penetration depth is greater than 0.12 meters.
-                    if contact.dist <= 0.0 && contact.dist > -0.12 {
+                    if contact.dist <= 0.0 && contact.dist > -0.17 {
                         let signature1 = &signatures[0];
                         let signature2 = &signatures[1];
-                        let idx1 = collection.shape_collection.get_shape_idx_from_signature(signature1)?;
-                        let idx2 = collection.shape_collection.get_shape_idx_from_signature(signature2)?;
-                        collection.shape_collection.set_skip_from_idxs(true, idx1, idx2)?;
+                        let idx1 = collection.shape_collection.get_shape_idx_from_signature(signature1).expect("error");
+                        let idx2 = collection.shape_collection.get_shape_idx_from_signature(signature2).expect("error");
+                        collection.shape_collection.set_skip_from_idxs(true, idx1, idx2).expect("error");
                     }
                 }
             }
@@ -489,6 +497,15 @@ impl RobotGeometricShapeModule {
         self.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModule }).expect("error");
 
         Ok(())
+    }
+    pub fn set_skip_between_link_pair(&mut self, signature1: &GeometricShapeSignature, signature2: &GeometricShapeSignature, robot_link_shape_representation: &RobotLinkShapeRepresentation) {
+        let collection = self.robot_geometric_shape_collection_mut(robot_link_shape_representation).expect("error");
+
+        let idx1 = collection.shape_collection.get_shape_idx_from_signature(signature1).expect("error");
+        let idx2 = collection.shape_collection.get_shape_idx_from_signature(signature2).expect("error");
+        collection.shape_collection.set_skip_from_idxs(true, idx1, idx2).expect("error");
+
+        self.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModule }).expect("error");
     }
     pub fn set_robot_joint_state_as_non_collision_all_robot_link_shape_representations(&mut self, robot_joint_state: &RobotJointState) -> Result<(), OptimaError> {
         let all_robot_link_shape_representations = Self::get_all_robot_link_shape_representations();
@@ -536,39 +553,50 @@ impl RobotGeometricShapeModule {
         Ok(())
     }
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn reset_robot_geometric_shape_collection(&mut self, robot_link_shape_representation: RobotLinkShapeRepresentation) -> Result<(), OptimaError> {
-        let response = ConsoleInputUtils::get_console_input_string("About to reset robot geometric shape collections.  Confirm? (y or n).", PrintColor::Blue)?;
+    pub fn reset_robot_geometric_shape_collection(&mut self, robot_link_shape_representation: RobotLinkShapeRepresentation, console_confirmation: bool) -> Result<(), OptimaError> {
+        let response = if console_confirmation {
+            ConsoleInputUtils::get_console_input_string("About to reset robot geometric shape collections.  Confirm? (y or n).", PrintColor::Blue).expect("error")
+        } else {
+            "y".to_string()
+        };
+
         if response == "y" {
             let permanent = Self::load_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModulePermanent })?;
             for (i, r) in self.robot_shape_collections.iter_mut().enumerate() {
-            if &r.robot_link_shape_representation == &robot_link_shape_representation {
-                *r = permanent.robot_shape_collections[i].clone();
-                self.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModule })?;
-                return Ok(());
-            }
+                    if &r.robot_link_shape_representation == &robot_link_shape_representation {
+                        *r = permanent.robot_shape_collections[i].clone();
+                        self.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: self.robot_kinematics_module.robot_configuration_module().robot_name().to_string(), t: RobotModuleJsonType::ShapeGeometryModule })?;
+                        return Ok(());
+                    }
+                }
         }
-        }
+
         Ok(())
     }
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn reset_all_robot_geometric_shape_collections(&mut self) -> Result<(), OptimaError> {
-        let response = ConsoleInputUtils::get_console_input_string("About to reset all robot geometric shape collections.  Confirm? (y or n).", PrintColor::Blue)?;
+    pub fn reset_all_robot_geometric_shape_collections(&mut self, console_confirmation: bool) -> Result<(), OptimaError> {
+        let response = if console_confirmation {
+            ConsoleInputUtils::get_console_input_string("About to reset all robot geometric shape collections.  Confirm? (y or n).", PrintColor::Blue)?
+        } else {
+            "y".to_string()
+        };
+
         if response == "y" {
             let all = Self::get_all_robot_link_shape_representations();
             for r in &all {
-                self.reset_robot_geometric_shape_collection(r.clone())?;
+                self.reset_robot_geometric_shape_collection(r.clone(), false)?;
             }
         }
         Ok(())
     }
     fn stop_at_min_sample_duration(&self, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Duration {
         match robot_link_shape_representation {
-            RobotLinkShapeRepresentation::Cubes => { Duration::from_secs(20) }
-            RobotLinkShapeRepresentation::ConvexShapes => { Duration::from_secs(30) }
-            RobotLinkShapeRepresentation::SphereSubcomponents => { Duration::from_secs(30) }
-            RobotLinkShapeRepresentation::CubeSubcomponents => { Duration::from_secs(30) }
-            RobotLinkShapeRepresentation::ConvexShapeSubcomponents => { Duration::from_secs(60) }
-            RobotLinkShapeRepresentation::TriangleMeshes => { Duration::from_secs(120) }
+            RobotLinkShapeRepresentation::Cubes => { Duration::from_secs(5) }
+            RobotLinkShapeRepresentation::ConvexShapes => { Duration::from_secs(10) }
+            RobotLinkShapeRepresentation::SphereSubcomponents => { Duration::from_secs(10) }
+            RobotLinkShapeRepresentation::CubeSubcomponents => { Duration::from_secs(10) }
+            RobotLinkShapeRepresentation::ConvexShapeSubcomponents => { Duration::from_secs(10) }
+            RobotLinkShapeRepresentation::TriangleMeshes => { Duration::from_secs(30) }
         }
     }
 }
@@ -603,7 +631,7 @@ impl SaveAndLoadable for RobotGeometricShapeModule {
 impl RobotGeometricShapeModule {
     #[new]
     pub fn new_py(robot_name: &str, configuration_name: Option<&str>) -> RobotGeometricShapeModule {
-        return Self::new_from_names(RobotNames::new(robot_name, configuration_name), false).expect("error");
+        return Self::new_from_names(RobotNames::new(robot_name, configuration_name), false, false, false).expect("error");
     }
     #[args(robot_link_shape_representation = "\"Cubes\"", stop_condition = "\"Intersection\"", log_condition = "\"BelowMinDistance(0.5)\"", sort_outputs = "true", include_full_output_json_string = "true")]
     pub fn intersection_test_query_py(&self,
@@ -700,10 +728,10 @@ impl RobotGeometricShapeModule {
         self.set_robot_joint_state_as_non_collision_all_robot_link_shape_representations(&robot_joint_state).expect("error");
     }
     pub fn reset_robot_geometric_shape_collection_py(&mut self, robot_link_shape_representation: &str) {
-        self.reset_robot_geometric_shape_collection(RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error")).expect("error");
+        self.reset_robot_geometric_shape_collection(RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).expect("error"), false).expect("error");
     }
     pub fn reset_all_robot_geometric_shape_collections_py(&mut self) {
-        self.reset_all_robot_geometric_shape_collections().expect("error");
+        self.reset_all_robot_geometric_shape_collections(false).expect("error");
     }
 }
 
@@ -895,7 +923,7 @@ impl <'a> RobotShapeCollectionQuery<'a> {
 /// - `CubeSubcomponents`: decomposes each link into convex subcomponents and wraps each in a best fitting cube.
 /// - `ConvexShapeSubcomponents`: decomposes each link into convex subcomponents.
 /// - `TriangleMeshes`: directly uses the given meshes as geometry.
-#[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialOrd, PartialEq, Ord, Eq, Serialize, Deserialize, EnumIter)]
 pub enum RobotLinkShapeRepresentation {
     Cubes,
     ConvexShapes,

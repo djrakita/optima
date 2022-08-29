@@ -6,7 +6,7 @@ use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaStemCell
 /// Convenience struct that groups together utility functions for robot modules.
 pub struct RobotModuleUtils;
 impl RobotModuleUtils {
-    pub fn save_to_json_file_generic<T: Serialize>(save_obj: &T, robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<(), OptimaError> {
+    pub fn save_to_json_file_generic<T: Serialize + DeserializeOwned>(save_obj: &T, robot_name: &str, robot_module_json_type: RobotModuleJsonType) -> Result<(), OptimaError> {
         let mut o = OptimaStemCellPath::new_asset_path()?;
         o.append_file_location(&OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: robot_module_json_type });
         return o.save_object_to_file_as_json(save_obj);

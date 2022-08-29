@@ -177,7 +177,7 @@ impl OptimaPath {
         let extension_option = self.extension();
         return match &extension_option {
             None => {
-                Err(OptimaError::new_generic_error_str("Could not load file {:?} as TrimeshEngine", file!(), line!()))
+                Err(OptimaError::new_generic_error_str(&format!("Could not load file {:?} as TrimeshEngine", self), file!(), line!()))
             }
             Some(extension) => {
                 if extension == "stl" || extension == "STL" {
@@ -185,7 +185,7 @@ impl OptimaPath {
                 } else if extension == "dae" || extension == "DAE" {
                     self.load_dae_to_trimesh_engine()
                 } else {
-                    Err(OptimaError::new_generic_error_str("Could not load file {:?} as TrimeshEngine", file!(), line!()))
+                    Err(OptimaError::new_generic_error_str(&format!("Could not load file {:?} as TrimeshEngine", self), file!(), line!()))
                 }
             }
         }

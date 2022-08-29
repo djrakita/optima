@@ -6,6 +6,8 @@ use pyo3::*;
 use wasm_bindgen::prelude::*;
 
 use serde::{Serialize, Deserialize};
+use crate::optima_bevy::scripts::bevy_robot_self_collisions_calibrator;
+use crate::robot_modules::robot::Robot;
 use crate::utils::utils_console::{ConsoleInputUtils, get_default_progress_bar, optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::robot_modules::robot_mesh_file_manager_module::RobotMeshFileManagerModule;
@@ -89,12 +91,16 @@ impl RobotPreprocessingModule {
             return Err(OptimaError::new_unsupported_operation_error("preprocess_robot", "Cannot preprocess robot using only_use_embedded_assets feature.", file!(), line!()));
         }
 
-        self.preprocess_robot_model_module_json(robot_name)?;
-        self.copy_link_meshes_to_assets_folder(robot_name)?;
-        self.preprocess_robot_link_meshes(robot_name)?;
-        self.preprocess_robot_link_convex_shapes(robot_name)?;
-        self.preprocess_robot_link_convex_shape_subcomponents(robot_name)?;
-        self.preprocess_robot_shape_geometry_module(robot_name)?;
+        self.preprocess_robot_model_module_json(robot_name).expect("error");
+        self.copy_link_meshes_to_assets_folder(robot_name).expect("error");
+        self.preprocess_robot_link_meshes(robot_name).expect("error");
+        self.preprocess_robot_link_convex_shapes(robot_name).expect("error");
+        self.preprocess_robot_link_convex_shape_subcomponents(robot_name).expect("error");
+        self.preprocess_robot_shape_geometry_module(robot_name).expect("error");
+
+        let robot = Robot::new_from_names(RobotNames::new_base(robot_name));
+        #[cfg(feature="optima_bevy")]
+        bevy_robot_self_collisions_calibrator(&robot);
 
         println!();
         optima_print(&format!("Successfully preprocessed robot {}!", robot_name), PrintMode::Println, PrintColor::Green, true, 0, None, vec![]);
@@ -256,7 +262,7 @@ impl RobotPreprocessingModule {
 
         if !directory_path.exists() || !directory_path_permanent.exists() || self.replace_robot_link_convex_shapes || self.replace_robot_link_convex_shape_subcomponents {
             optima_print("Preprocessing robot shape geometry module...", PrintMode::Println, PrintColor::Blue, true, 0, None, vec![]);
-            let robot_shape_geometry_module = RobotGeometricShapeModule::new_from_names(RobotNames::new_base(robot_name), true)?;
+            let robot_shape_geometry_module = RobotGeometricShapeModule::new_from_names(RobotNames::new_base(robot_name), true, true, true).expect("error");
             robot_shape_geometry_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModule })?;
             robot_shape_geometry_module.save_as_asset(OptimaAssetLocation::RobotModuleJson { robot_name: robot_name.to_string(), t: RobotModuleJsonType::ShapeGeometryModulePermanent })?;
         }
@@ -267,8 +273,8 @@ impl Default for RobotPreprocessingModule {
     fn default() -> Self {
         Self {
             replace_robot_model_module_json: true,
-            replace_robot_link_convex_shapes: false,
-            replace_robot_link_convex_shape_subcomponents: false
+            replace_robot_link_convex_shapes: true,
+            replace_robot_link_convex_shape_subcomponents: true
         }
     }
 }

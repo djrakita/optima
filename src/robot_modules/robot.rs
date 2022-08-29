@@ -61,7 +61,7 @@ impl Robot {
         &self.robot_kinematics_module
     }
     pub fn generate_robot_geometric_shape_module(&self) -> Result<RobotGeometricShapeModule, OptimaError> {
-        return RobotGeometricShapeModule::new(self.robot_configuration_module.clone(), false);
+        return RobotGeometricShapeModule::new(self.robot_configuration_module.clone(), false, false, false);
     }
     pub fn spawn_robot_joint_state(&self, v: DVector<f64>) -> Result<RobotJointState, OptimaError> {
         self.robot_joint_state_module.spawn_robot_joint_state_try_auto_type(v)
