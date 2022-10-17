@@ -1,13 +1,10 @@
-use bevy::asset::AssetServer;
 use bevy::ecs::component::Component;
-use bevy::prelude::{Assets, Color, Handle, Query, Res, ResMut, StandardMaterial};
-use bevy::ecs::query::Changed;
-use bevy::pbr::AlphaMode;
+use bevy::prelude::{Assets, Color, Handle, Query, ResMut, StandardMaterial};
 use crate::optima_bevy::optima_bevy_utils::generic_item::GenericItemSignature;
 
 pub struct MaterialSystems;
 impl MaterialSystems {
-    pub fn update_optima_bevy_material_components_from_change_requests(mut material_change_request_container: ResMut<MaterialChangeRequestContainer>,
+    pub fn update_optima_bevy_material_components_from_change_requests(material_change_request_container: ResMut<MaterialChangeRequestContainer>,
                                                                        mut query: Query<(&mut OptimaBevyMaterialComponent, &GenericItemSignature)>) {
         for (mut optima_bevy_material_component_, signature_) in &mut query {
             let optima_bevy_material_component: &mut OptimaBevyMaterialComponent = &mut optima_bevy_material_component_;
@@ -39,7 +36,7 @@ impl MaterialSystems {
             }
         }
     }
-    pub fn update_optima_bevy_material_components_from_auto_update(mut query: Query<(&mut OptimaBevyMaterialComponent)>) {
+    pub fn update_optima_bevy_material_components_from_auto_update(mut query: Query<&mut OptimaBevyMaterialComponent>) {
         for mut q in query.iter_mut() {
             match &mut q.material_auto_update_mode {
                 MaterialAutoUpdateMode::ResetInNFrames { n } => {

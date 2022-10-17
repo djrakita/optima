@@ -3,17 +3,15 @@ use std::sync::Mutex;
 use bevy::asset::Assets;
 use bevy::math::Vec3;
 use bevy::pbr::{AlphaMode, PbrBundle};
-use bevy::prelude::{AssetServer, Changed, Color, Commands, Entity, KeyCode, Query, Res, ResMut, StandardMaterial, Transform, Visibility};
+use bevy::prelude::{AssetServer, Changed, Color, Commands, KeyCode, Query, Res, ResMut, StandardMaterial, Transform, Visibility};
 use bevy::ecs::component::Component;
 use bevy::input::Input;
-use bevy::reflect::Array;
 use bevy::window::Windows;
 use bevy_egui::{egui, EguiContext};
 use bevy_egui::egui::{Color32, Ui};
 use bevy_prototype_debug_lines::DebugLines;
-use itertools::Itertools;
 use rayon::prelude::*;
-use crate::optima_bevy::optima_bevy_utils::egui::{EguiActions, EguiContainerMode, EguiSelectionBlockContainer, EguiSelectionMode, EguiUtils, EguiWindowStateContainer};
+use crate::optima_bevy::optima_bevy_utils::egui::{EguiActions, EguiContainerMode, EguiSelectionBlockContainer, EguiSelectionMode, EguiWindowStateContainer};
 use crate::optima_bevy::optima_bevy_utils::engine::FrameCount;
 use crate::optima_bevy::optima_bevy_utils::generic_item::{GenericItemSignature};
 use crate::optima_bevy::optima_bevy_utils::gui::GuiGlobalInfo;
@@ -24,15 +22,14 @@ use crate::robot_modules::robot::Robot;
 use crate::robot_modules::robot_geometric_shape_module::{RobotGeometricShapeModule, RobotLinkShapeRepresentation, RobotShapeCollectionQuery};
 use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set::RobotSet;
-use crate::robot_set_modules::robot_set_geometric_shape_module::{RobotSetShapeCollectionQuery};
 use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateType};
-use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, RobotGeometricShapeSceneQuery};
+use crate::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, path_buf_from_string_components};
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::robot_generic_structures::GenericRobotJointState;
 use crate::utils::utils_se3::optima_rotation::OptimaRotationType;
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
-use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeQueryGroupOutput, GeometricShapeSignature, LogCondition, StopCondition};
+use crate::utils::utils_shape_geometry::geometric_shape::{GeometricShapeSignature, LogCondition, StopCondition};
 
 pub struct RobotSceneActions;
 impl RobotSceneActions {
@@ -131,7 +128,7 @@ impl RobotSceneActions {
                                                     global_offset: Option<Vec3>) {
         Self::action_spawn_robot_set(commands, asset_server, materials, robot_geometric_shape_scene.get_robot_set(), robot_set_joint_state, robot_color, robot_wireframe, robot_geometric_shape_scene_idx, global_offset.clone());
 
-        let poses = robot_geometric_shape_scene.recover_poses(Some(robot_set_joint_state), None).expect("error");
+        let poses = robot_geometric_shape_scene.recover_poses(Some(robot_set_joint_state), None, &RobotLinkShapeRepresentation::Cubes).expect("error");
 
         let global_offset_transform = match global_offset {
             None => { Vec3::new(0., 0., 0.) }
@@ -161,7 +158,7 @@ impl RobotSceneActions {
                 combined_path
             };
 
-            let shape_idxs = robot_geometric_shape_scene.get_shape_idxs_from_env_obj_idx(env_obj_idx).expect("error");
+            let shape_idxs = robot_geometric_shape_scene.get_shape_idxs_from_env_obj_idx(env_obj_idx, &RobotLinkShapeRepresentation::Cubes).expect("error");
             let shape_idx = shape_idxs[0];
             let pose = poses.poses()[shape_idx].clone().unwrap();
             let mut transform = TransformUtils::util_convert_se3_pose_to_y_up_bevy_transform(&pose);
@@ -208,7 +205,7 @@ impl RobotSceneActions {
             }
         }
     }
-    pub fn action_update_robot_set_joint_state_bevy_component(query: &mut Query<(&mut RobotSetJointStateBevyComponent)>,
+    pub fn action_update_robot_set_joint_state_bevy_component(query: &mut Query<&mut RobotSetJointStateBevyComponent>,
                                                               robot_set_joint_state: &RobotSetJointState,
                                                               robot_set_idx: usize) {
         for mut r in query.iter_mut() {
@@ -217,11 +214,14 @@ impl RobotSceneActions {
             }
         }
     }
-    pub fn action_set_env_obj_constraint(query: &mut Query<(&mut EnvObjSpawn)>,
+    /*
+    pub fn action_set_env_obj_constraint(query: &mut Query<&mut EnvObjSpawn>,
                                          robot_geometric_shape_scene: &mut RobotGeometricShapeScene) {}
+
+    */
     pub fn action_robot_set_joint_sliders_egui(ui: &mut Ui,
                                                robot_set: &RobotSet,
-                                               query: &mut Query<(&mut RobotSetJointStateBevyComponent)>) {
+                                               query: &mut Query<&mut RobotSetJointStateBevyComponent>) {
         let joint_axes = robot_set.robot_set_joint_state_module().ordered_joint_axes();
 
         ui.heading("Robot Set Joint Sliders");
@@ -246,7 +246,7 @@ impl RobotSceneActions {
                                 egui::ScrollArea::vertical()
                                     .id_source(id)
                                     .show(ui, |ui| {
-                                        let mut robot_set_joint_state = &mut robot_set_joint_state_bevy_component.joint_state;
+                                        let robot_set_joint_state = &mut robot_set_joint_state_bevy_component.joint_state;
                                         assert_eq!(robot_set_joint_state.joint_state().len(), joint_axes.len(), "check to make sure that the joint state is a Full joint state and not DOF.");
                                         for (joint_axis_idx, robot_set_joint_axis) in joint_axes.iter().enumerate() {
                                             ui.group(|ui| {
@@ -287,7 +287,7 @@ impl RobotSceneActions {
     }
     pub fn action_robot_set_link_info_egui(ui: &mut Ui,
                                            robot_set: &RobotSet,
-                                           query: &Query<(&RobotSetJointStateBevyComponent)>,
+                                           query: &Query<&RobotSetJointStateBevyComponent>,
                                            lines: &mut ResMut<DebugLines>,
                                            robot_link_info_vars: &mut ResMut<RobotLinkInfoVars>,
                                            material_change_request_container: &mut ResMut<MaterialChangeRequestContainer>) {
@@ -385,7 +385,7 @@ impl RobotSceneActions {
     pub fn action_robot_self_collision_calibrator_egui(ui: &mut Ui,
                                                        robot: &Res<Robot>,
                                                        robot_geometric_shape_module: &mut ResMut<RobotGeometricShapeModule>,
-                                                       query: &Query<(&RobotSetJointStateBevyComponent)>) {
+                                                       query: &Query<&RobotSetJointStateBevyComponent>) {
         if query.iter().len() != 1 { return; }
 
         let robot_link_shape_representations = vec![
@@ -396,7 +396,7 @@ impl RobotSceneActions {
             RobotLinkShapeRepresentation::ConvexShapeSubcomponents,
         ];
 
-        let mut res_vec = Mutex::new(vec![]);
+        let res_vec = Mutex::new(vec![]);
 
         for robot_set_joint_state_bevy_component in query.iter() {
             let robot_set_joint_state = &robot_set_joint_state_bevy_component.joint_state;
@@ -460,14 +460,14 @@ impl RobotSceneSystems {
         }
     }
     pub fn system_set_robot_set_joint_states(immut_vars: Res<OTFImmutVars>,
-                                             mut query: Query<(&mut RobotSetJointStateBevyComponent), (Changed<RobotSetJointStateBevyComponent>)>,
+                                             mut query: Query<&mut RobotSetJointStateBevyComponent, Changed<RobotSetJointStateBevyComponent>>,
                                              mut query2: Query<(&RobotLinkSpawn, &mut Transform)>) {
         let robot_geometric_shape_scene = immut_vars.ref_robot_geometric_shape_scene();
         for r in query.iter_mut() {
             RobotSceneActions::action_set_robot_set_joint_state(&mut query2, robot_geometric_shape_scene, &*r);
         }
     }
-    pub fn system_robot_set_joint_sliders_egui(mut query: Query<(&mut RobotSetJointStateBevyComponent)>,
+    pub fn system_robot_set_joint_sliders_egui(mut query: Query<&mut RobotSetJointStateBevyComponent>,
                                                immut_vars: Res<OTFImmutVars>,
                                                windows: Res<Windows>,
                                                mut egui_context: ResMut<EguiContext>,
@@ -479,7 +479,7 @@ impl RobotSceneSystems {
 
         EguiActions::action_egui_container_generic(f, &EguiContainerMode::LeftPanel { resizable: true, default_width: 300.0 }, "sliders", &windows, &mut egui_context, &mut egui_window_state_container, &mut gui_global_info);
     }
-    pub fn system_robot_set_link_info_egui(query: Query<(&RobotSetJointStateBevyComponent)>,
+    pub fn system_robot_set_link_info_egui(query: Query<&RobotSetJointStateBevyComponent>,
                                            immut_vars: Res<OTFImmutVars>,
                                            mut lines: ResMut<DebugLines>,
                                            mut robot_link_info_vars: ResMut<RobotLinkInfoVars>,
@@ -496,7 +496,7 @@ impl RobotSceneSystems {
     }
     pub fn system_robot_self_collision_calibrator_egui(robot: Res<Robot>,
                                                        mut robot_geometric_shape_module: ResMut<RobotGeometricShapeModule>,
-                                                       query: Query<(&RobotSetJointStateBevyComponent)>,
+                                                       query: Query<&RobotSetJointStateBevyComponent>,
                                                        windows: Res<Windows>,
                                                        mut egui_selection_block_container: ResMut<EguiSelectionBlockContainer>,
                                                        mut egui_context: ResMut<EguiContext>,

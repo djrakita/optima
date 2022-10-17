@@ -1,9 +1,7 @@
 extern crate optima;
 
 use std::env;
-use optima::robot_modules::robot::Robot;
 use optima::robot_modules::robot_preprocessing_module::RobotPreprocessingModule;
-use optima::utils::utils_robot::robot_module_utils::RobotNames;
 
 fn main () {
     let args: Vec<String> = env::args().collect();

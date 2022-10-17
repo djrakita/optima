@@ -1,21 +1,18 @@
 use bevy::app::App;
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContext, EguiPlugin};
-use bevy_egui::egui::Ui;
+use bevy_egui::{EguiPlugin};
 use bevy_prototype_debug_lines::DebugLinesPlugin;
-use serde::{Serialize, Deserialize};
 use crate::optima_bevy::optima_bevy_utils::camera::CameraSystems;
-use crate::optima_bevy::optima_bevy_utils::egui::{EguiActions, EguiContainerMode, EguiSelectionBlockContainer, EguiSelectionMode, EguiSystems, EguiWindowStateContainer};
+use crate::optima_bevy::optima_bevy_utils::egui::{EguiSelectionBlockContainer, EguiSystems, EguiWindowStateContainer};
 use crate::optima_bevy::optima_bevy_utils::engine::{EngineSystems, FrameCount};
 use crate::optima_bevy::optima_bevy_utils::gui::{GuiGlobalInfo, GuiSystems};
 use crate::optima_bevy::optima_bevy_utils::lights::LightSystems;
-use crate::optima_bevy::optima_bevy_utils::materials::{MaterialChangeRequest, MaterialChangeRequestContainer, MaterialChangeRequestType, MaterialSystems, OptimaBevyMaterial};
+use crate::optima_bevy::optima_bevy_utils::materials::{MaterialChangeRequestContainer, MaterialSystems};
 use crate::optima_bevy::optima_bevy_utils::robot_scenes::{RobotLinkInfoVars, RobotSceneSystems};
 use crate::optima_bevy::optima_bevy_utils::viewport_visuals::ViewportVisualsSystems;
 use crate::optima_tensor_function::{OTFImmutVars, OTFImmutVarsObject};
 use crate::robot_modules::robot::Robot;
-use crate::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
 use crate::robot_set_modules::robot_set::RobotSet;
 use crate::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
 
@@ -128,7 +125,7 @@ fn optima_bevy_spawn_robot_and_robot_geometric_shape_module(app: &mut App, robot
     app.insert_resource(robot_geometric_shape_module.clone());
 
     let robot_set = RobotSet::new_from_robot_configuration_modules(vec![robot.robot_configuration_module().clone()]);
-    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::Cubes, None, vec![]).expect("error");
+    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, None).expect("error");
 
     optima_bevy_spawn_robot_geometric_shape_scene(app, &robot_geometric_shape_scene);
 }

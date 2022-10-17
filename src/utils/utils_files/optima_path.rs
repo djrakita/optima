@@ -7,7 +7,6 @@ use std::io::{Read, Write};
 use std::path::{PathBuf};
 use serde::de::DeserializeOwned;
 use serde::{Serialize, Deserialize};
-use serde_json::Serializer;
 use urdf_rs::Robot;
 use walkdir::WalkDir;
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};

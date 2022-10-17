@@ -6,7 +6,6 @@ use bevy_egui::{egui, EguiContext};
 use bevy_egui::egui::panel::{Side, TopBottomSide};
 use strum::IntoEnumIterator;
 use crate::optima_bevy::optima_bevy_utils::gui::GuiGlobalInfo;
-use crate::robot_set_modules::robot_set::RobotSet;
 use crate::utils::utils_enums::EnumUtils;
 use crate::utils::utils_traits::ToAndFromRonString;
 
@@ -131,7 +130,7 @@ impl EguiActions {
 
         ui.group(|ui| {
             for selection_choice in &selection_choices_as_ron_strings {
-                let mut currently_selected = selection_block.selections.contains(selection_choice);
+                let currently_selected = selection_block.selections.contains(selection_choice);
                 let mut currently_selected_copy = currently_selected.clone();
                 let selection_code = match &selection_mode {
                     EguiSelectionMode::RadioButtons => {
@@ -207,7 +206,7 @@ impl EguiActions {
         assert!(selection_choices_as_ron_strings.len() > 0);
 
         let selection_block = egui_selection_block_container.get_selection_mut_ref(name);
-        let mut selected = if selection_block.selections.len() > 0 {
+        let selected = if selection_block.selections.len() > 0 {
             selection_block.selections[0].clone()
         } else {
             selection_block.insert_selection_by_string(selection_choices_as_ron_strings[0].clone());

@@ -1,8 +1,8 @@
 extern crate optima;
 
-use optima::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
+use nalgebra::Vector3;
 use optima::robot_set_modules::robot_set::RobotSet;
-use optima::scenes::robot_geometric_shape_scene::{EnvObjPoseConstraint, EnvObjShapeRepresentation, EnvObjInfoBlock, RobotGeometricShapeScene};
+use optima::scenes::robot_geometric_shape_scene::{EnvObjInfoBlock, EnvObjPoseConstraint, RobotGeometricShapeScene};
 use optima::utils::utils_robot::robot_module_utils::RobotNames;
 use optima::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 
@@ -12,12 +12,16 @@ fn main() {
 
     // We use the `RobotSet` to initialize a `RobotGeometricShapeScene`.  By default, the
     // environment is empty.
-    let mut robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, None, vec![]).expect("error");
+    let mut robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, None).expect("error");
 
     // This line adds a "sphere" object to the environment, scaled down to a size of 0.1.
     // Note that any mesh directory in `optima_toolbox/optima_assets/optima_scenes/mesh_files`
     // can be loaded in.
-    let env_obj_idx = robot_geometric_shape_scene.add_environment_object(EnvObjInfoBlock::new("sphere", Some(0.1), Some(EnvObjShapeRepresentation::BestFitConvexShape), None, None), false).expect("error");
+    let env_obj_idx = robot_geometric_shape_scene.add_environment_object(EnvObjInfoBlock {
+        asset_name: "sphere".to_string(),
+        scale: Vector3::new(0.1, 0.1, 0.1),
+        ..Default::default()
+    }, false).expect("error");
 
     // Adding the object to the scene above returns the index of the added environment object.
     // Indices are assigned in order, so the first returned index will be 0.

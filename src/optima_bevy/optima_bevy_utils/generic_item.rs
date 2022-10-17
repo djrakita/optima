@@ -1,4 +1,3 @@
-use crate::optima_bevy::optima_bevy_utils::materials::OptimaBevyMaterialComponent;
 use bevy::ecs::component::Component;
 
 #[derive(Component, Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]

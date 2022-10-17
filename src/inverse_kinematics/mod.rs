@@ -5,9 +5,10 @@ use pyo3::*;
 use nalgebra::DVector;
 use serde::{Serialize, Deserialize};
 use crate::optimization::{NonlinearOptimizer, NonlinearOptimizerType, OptimizationTermAssignment, OptimizationTermSpecification, OptimizerParameters};
-use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OTFDerivativeMode, OTFImmutVars, OTFImmutVarsObject, OTFImmutVarsObjectType, OTFMutVars};
+use crate::optima_tensor_function::{OptimaTensor, OTFDerivativeMode, OTFImmutVars, OTFImmutVarsObject, OTFImmutVarsObjectType, OTFMutVars};
 use crate::optima_tensor_function::robotics_functions::{OTFRobotCollisionProximityGeneric, OTFRobotJointStateDerivative, OTFRobotLinkTFSpec, RobotCollisionProximityGenericParams};
 use crate::optima_tensor_function::standard_functions::{OTFComposition, OTFQuadraticNormalizer, OTFTensorPNorm};
+use crate::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
 use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateType};
 use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene, RobotGeometricShapeScenePy, RobotGeometricShapeSceneQuery};
 use crate::utils::utils_console::{optima_print, OptimaDebug, PrintColor, PrintMode};
@@ -220,7 +221,7 @@ impl OptimaIK {
                 prediction: 0.01,
                 inclusion_list: &None
             };
-            let res = geometric_shape_scene.shape_collection_query(&input, StopCondition::Intersection, LogCondition::Intersection, false).expect("error");
+            let res = geometric_shape_scene.shape_collection_query(&input, RobotLinkShapeRepresentation::Cubes, StopCondition::Intersection, LogCondition::Intersection, false).expect("error");
             let in_collision = res.intersection_found();
             if in_collision {
                 optima_print(&format!("current solution was in collision.  Rejecting this solution, and trying again."), PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);

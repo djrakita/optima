@@ -7,10 +7,11 @@ use nalgebra::{DMatrix, DVector};
 use ndarray::{Array, ArrayD};
 use serde::{Serialize, Deserialize};
 use crate::optima_tensor_function::robotics_functions::RobotCollisionProximityBVHMode;
+use crate::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
 use crate::robot_set_modules::GetRobotSet;
 use crate::robot_set_modules::robot_set::RobotSet;
 use crate::robot_set_modules::robot_set_kinematics_module::{RobotSetFKDOFPerturbationsResult, RobotSetFKResult};
-use crate::scenes::robot_geometric_shape_scene::{RobotGeometricShapeScene};
+use crate::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
 use crate::utils::utils_console::{optima_print, optima_print_multi_entry, optima_print_new_line, OptimaDebug, OptimaPrintMultiEntry, OptimaPrintMultiEntryCollection, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_generic_data_structures::{AveragingFloat, EnumBinarySearchTypeContainer, EnumHashMapTypeContainer, EnumMapToType, EnumTypeContainer, EnumTypeContainerType, SimpleDataType, WindowMemoryContainer};
@@ -2394,6 +2395,7 @@ pub enum OTFMutVarsParams {
     None,
     SimpleDataType(SimpleDataType),
     RobotCollisionProximityBVHMode(RobotCollisionProximityBVHMode),
+    RobotLinkShapeRepresentation(RobotLinkShapeRepresentation),
     VecOfParams(Vec<OTFMutVarsParams>)
 }
 impl OTFMutVarsParams {
@@ -2406,6 +2408,12 @@ impl OTFMutVarsParams {
     pub fn unwrap_robot_collision_proximity_bvh_mode(&self) -> &RobotCollisionProximityBVHMode {
         return match self {
             OTFMutVarsParams::RobotCollisionProximityBVHMode(r) => { r }
+            _ => { panic!("wrong type") }
+        }
+    }
+    pub fn unwrap_robot_link_shape_representation(&self) -> &RobotLinkShapeRepresentation {
+        return match self {
+            OTFMutVarsParams::RobotLinkShapeRepresentation(r) => { r }
             _ => { panic!("wrong type") }
         }
     }
@@ -2515,17 +2523,19 @@ impl OTFMutVarsObjectType {
                 OTFMutVarsObject::RobotSetFKDOFPerturbationsResult(res)
             }
             OTFMutVarsObjectType::ProximaEngine => {
+                let param = params[0].unwrap_robot_link_shape_representation();
                 let object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
                 let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
-                let proxima_engine = robot_geometric_shape_scene.spawn_proxima_engine(None);
+                let proxima_engine = robot_geometric_shape_scene.spawn_proxima_engine(None, param);
                 OTFMutVarsObject::ProximaEngine(proxima_engine)
             }
             OTFMutVarsObjectType::BVHAABB => {
+                let param = params[0].unwrap_robot_link_shape_representation();
                 let object = immut_vars.object_ref(&OTFImmutVarsObjectType::RobotGeometricShapeScene).expect("needs RobotGeometricShapeScene");
                 let robot_geometric_shape_scene = object.unwrap_robot_geometric_shape_scene();
                 let robot_set = robot_geometric_shape_scene.robot_set();
                 let robot_set_joint_state = robot_set.spawn_robot_set_joint_state(input.unwrap_vector().clone()).expect("error");
-                let bvh = robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, None, 2);
+                let bvh = robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, param, None, 2);
                 OTFMutVarsObject::BVHAABB(bvh)
             }
             OTFMutVarsObjectType::None => { OTFMutVarsObject::None }

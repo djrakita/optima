@@ -1,9 +1,9 @@
 extern crate optima;
 
 use optima::inverse_kinematics::OptimaIK;
+use optima::optima_tensor_function::OTFImmutVars;
 use optima::optima_tensor_function::robotics_functions::RobotCollisionProximityGenericParams;
 use optima::optimization::{NonlinearOptimizerType, OptimizerParameters};
-use optima::robot_modules::robot_geometric_shape_module::RobotLinkShapeRepresentation;
 use optima::robot_set_modules::robot_set::RobotSet;
 use optima::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
 use optima::utils::utils_console::OptimaDebug;
@@ -16,7 +16,7 @@ fn main() {
     let robot_set = RobotSet::new_from_robot_names(vec![RobotNames::new_base("ur5")]);
 
     // Initialize a `RobotGeometricShapeScene`.
-    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, , vec![]).expect("error");
+    let robot_geometric_shape_scene = RobotGeometricShapeScene::new(robot_set, None).expect("error");
 
     // Initialize "static" IK solver.
     // The `NonlinearOptimizerType` enum many options.  Feel free to check them all out; here we
@@ -24,7 +24,8 @@ fn main() {
     // This solver can optionally exhibit a collision avoidance objective.  This is controlled
     // by the `RobotCollisionProximityGenericParams` enum.  Here, it is None (i.e., no collision
     // avoidance objective will be present).
-    let mut optima_ik = OptimaIK::new_static_ik(robot_geometric_shape_scene, NonlinearOptimizerType::OpEn, RobotCollisionProximityGenericParams::None);
+    let mut immut_vars = OTFImmutVars::new();
+    let mut optima_ik = OptimaIK::new_static_ik(&mut immut_vars, robot_geometric_shape_scene, NonlinearOptimizerType::OpEn, RobotCollisionProximityGenericParams::None);
 
     // Initialize a `RobotLinkTFSpecAndAllowableErrorCollection`.  This will be used to specify
     // which links should be at what location or orientation, as well as what errors will be
@@ -64,7 +65,7 @@ fn main() {
     // We also specified here that the solver should reject any solution that is in a collision;
     // If a solution is found in a collision, it will throw away the result and try again (up to the
     // maximum number of tries).
-    let res = optima_ik.solve_static_ik(robot_link_tf_spec_and_allowable_error_collection, &OptimizerParameters::default(), None, Some(100), true, OptimaDebug::False);
+    let res = optima_ik.solve_static_ik(&mut immut_vars, robot_link_tf_spec_and_allowable_error_collection, &OptimizerParameters::default(), None, Some(100), true, OptimaDebug::False);
 
     // This prints the result.  Because, by default, the static ik solver in `OptimaIK` uses
     // random initial conditions, the result will be different each time this script is

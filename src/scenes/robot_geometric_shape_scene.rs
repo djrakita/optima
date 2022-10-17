@@ -1,11 +1,11 @@
-use std::vec;
-use bevy::utils::default;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use bevy::utils::default;
+use std::vec;
 use nalgebra::{DVector, Vector3};
 use parry3d_f64::query::Ray;
 use serde::{Serialize, Deserialize};
@@ -15,7 +15,6 @@ use crate::robot_set_modules::robot_set::{RobotSet};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::robot_set_modules::robot_set::{RobotSetPy};
 use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateType};
-use crate::scenes::GetRobotGeometricShapeScene;
 use crate::utils::utils_console::{optima_print, optima_print_new_line, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaAssetLocation, OptimaStemCellPath};
@@ -38,7 +37,7 @@ use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 /// use optima::robot_set_modules::robot_set::RobotSet;
 /// use optima::robot_set_modules::robot_set_configuration_module::RobotSetConfigurationModule;
 /// use optima::robot_set_modules::robot_set_joint_state_module::RobotSetJointStateType;
-/// use optima::scenes::robot_geometric_shape_scene::{EnvObjInfoBlock, EnvObjInfoBlock, RobotGeometricShapeScene, RobotGeometricShapeSceneQuery};
+/// use optima::scenes::robot_geometric_shape_scene::{EnvObjInfoBlock, RobotGeometricShapeScene, RobotGeometricShapeSceneQuery};
 /// use optima::utils::utils_robot::robot_module_utils::RobotNames;
 /// use optima::utils::utils_se3::optima_se3_pose::{OptimaSE3Pose, OptimaSE3PoseType};
 /// use optima::utils::utils_shape_geometry::geometric_shape::{LogCondition, StopCondition};
@@ -47,7 +46,7 @@ use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 /// let robot_set = RobotSet::new_single_robot("ur5", None);
 ///
 /// // Initializes a RobotScene with the robot set
-/// let mut scene = RobotGeometricShapeScene::new(robot_set, RobotLinkShapeRepresentation::ConvexShapes, None, vec![]).expect("error");
+/// let mut scene = RobotGeometricShapeScene::new(robot_set, None).expect("error");
 /// scene.add_environment_object(EnvObjInfoBlock::new_default("sphere"), false).expect("error");
 /// let joint_state = scene.robot_set().robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::DOF);
 ///
@@ -60,7 +59,7 @@ use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 /// };
 ///
 /// // Runs the Contact query on the scene and prints a summary of the result.
-/// let res = scene.shape_collection_query(&input, StopCondition::None, LogCondition::LogAll, true).expect("error");
+/// let res = scene.shape_collection_query(&input, RobotLinkShapeRepresentation::ConvexShapes, StopCondition::None, LogCondition::LogAll, true).expect("error");
 /// res.print_summary();
 ///
 /// ```
@@ -68,63 +67,116 @@ use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen, derive(Clone, Debug, Serialize, Deserialize))]
 pub struct RobotGeometricShapeScene {
     robot_set: RobotSet,
-    robot_link_shape_representation: RobotLinkShapeRepresentation,
-    shape_collection: ShapeCollection,
+    // robot_link_shape_representation: RobotLinkShapeRepresentation,
+    // shape_collection: ShapeCollection,
+    shape_collections: Vec<RobotGeometricShapeSceneShapeCollection>,
     curr_robot_set_joint_state: RobotSetJointState,
-    robot_and_link_idx_to_shape_idxs_mapping: Vec<Vec<Vec<usize>>>,
-    env_obj_idx_to_shape_idxs_mapping: Vec<Vec<usize>>,
-    last_robot_link_shape_idx: usize,
-    env_obj_count: usize,
+    // robot_and_link_idx_to_shape_idxs_mapping: Vec<Vec<Vec<usize>>>,
+    // env_obj_idx_to_shape_idxs_mapping: Vec<Vec<usize>>,
+    // last_robot_link_shape_idx: usize,
+    // env_obj_count: usize,
     env_obj_info_blocks: Vec<EnvObjInfoBlock>
 }
 impl RobotGeometricShapeScene {
-    pub fn new(robot_set: RobotSet, robot_link_shape_representation: RobotLinkShapeRepresentation, robot_set_joint_state: Option<RobotSetJointState>, env_obj_info_blocks: Vec<EnvObjInfoBlock>) -> Result<Self, OptimaError> {
+    pub fn new(robot_set: RobotSet, robot_set_joint_state: Option<RobotSetJointState>) -> Result<Self, OptimaError> {
         let curr_robot_set_joint_state = match robot_set_joint_state {
             None => { robot_set.robot_set_joint_state_module().spawn_zeros_robot_set_joint_state(RobotSetJointStateType::Full) }
             Some(r) => {r}
         };
 
-        let robot_set_geometric_shape_module = robot_set.generate_robot_set_geometric_shape_module()?;
-        let robot_set_shape_collection = robot_set_geometric_shape_module.robot_set_shape_collection(&robot_link_shape_representation)?;
-        
+        let robot_set_geometric_shape_module = robot_set.generate_robot_set_geometric_shape_module().expect("error");
+        // let robot_set_shape_collection = robot_set_geometric_shape_module.robot_set_shape_collection(&robot_link_shape_representation).expect("error");
+        /*
         let shape_collection = robot_set_shape_collection.shape_collection().clone();
         let robot_and_link_idx_to_shape_idxs_mapping = robot_set_shape_collection.robot_and_link_idx_to_shape_idxs_mapping().clone();
 
         let last_robot_link_shape_idx = robot_set_shape_collection.shape_collection().shapes().len() - 1;
+        */
 
-        let mut out_self = Self {
+        let mut shape_collections = vec![];
+
+        let robot_link_shape_representations = Self::get_all_robot_link_shape_representations();
+        for robot_link_shape_representation in &robot_link_shape_representations {
+            let robot_set_shape_collection = robot_set_geometric_shape_module.robot_set_shape_collection(&robot_link_shape_representation)?;
+
+            let shape_collection = robot_set_shape_collection.shape_collection().clone();
+            let robot_and_link_idx_to_shape_idxs_mapping = robot_set_shape_collection.robot_and_link_idx_to_shape_idxs_mapping().clone();
+
+            let last_robot_link_shape_idx = robot_set_shape_collection.shape_collection().shapes().len() - 1;
+
+            shape_collections.push(RobotGeometricShapeSceneShapeCollection {
+                robot_link_shape_representation: robot_link_shape_representation.clone(),
+                shape_collection,
+                robot_and_link_idx_to_shape_idxs_mapping,
+                env_obj_idx_to_shape_idxs_mapping: vec![],
+                last_robot_link_shape_idx
+            });
+        }
+
+        let out_self = Self {
             robot_set,
-            robot_link_shape_representation,
-            shape_collection,
+            // robot_link_shape_representation,
+            // shape_collection,
+            shape_collections,
             curr_robot_set_joint_state,
-            robot_and_link_idx_to_shape_idxs_mapping,
-            env_obj_idx_to_shape_idxs_mapping: vec![],
-            last_robot_link_shape_idx,
-            env_obj_count: 0,
+            // robot_and_link_idx_to_shape_idxs_mapping: vec![],
+            // env_obj_idx_to_shape_idxs_mapping: vec![],
+            // last_robot_link_shape_idx,
+            // env_obj_count: 0,
             env_obj_info_blocks: vec![]
         };
 
+        /*
         for s in env_obj_info_blocks { out_self.add_environment_object(s, false)?; }
+        */
 
         Ok(out_self)
     }
+    pub fn robot_geometric_shape_scene_shape_collection(&self, shape_representation: &RobotLinkShapeRepresentation) -> &RobotGeometricShapeSceneShapeCollection {
+        for s in &self.shape_collections {
+            if &s.robot_link_shape_representation == shape_representation { return s }
+        }
+        unreachable!()
+    }
+    pub fn robot_geometric_shape_scene_shape_collection_mut_ref(&mut self, shape_representation: &RobotLinkShapeRepresentation) -> &mut RobotGeometricShapeSceneShapeCollection {
+        for s in &mut self.shape_collections {
+            if &s.robot_link_shape_representation == shape_representation { return s }
+        }
+        unreachable!()
+    }
+    fn get_all_robot_link_shape_representations() -> Vec<RobotLinkShapeRepresentation> {
+        let robot_link_shape_representations = vec![
+            RobotLinkShapeRepresentation::Cubes,
+            RobotLinkShapeRepresentation::ConvexShapes,
+            RobotLinkShapeRepresentation::SphereSubcomponents,
+            RobotLinkShapeRepresentation::CubeSubcomponents,
+            RobotLinkShapeRepresentation::ConvexShapeSubcomponents,
+            RobotLinkShapeRepresentation::TriangleMeshes
+        ];
+        robot_link_shape_representations
+    }
+
     /// Adds an environment object to the scene.  Returns environment object index.
     pub fn add_environment_object(&mut self,
                                   env_obj_info_block: EnvObjInfoBlock,
                                   force_preprocessing: bool) -> Result<usize, OptimaError> {
         self.env_obj_info_blocks.push( env_obj_info_block.clone());
-
         self.preprocess_object_shape_if_necessary(&env_obj_info_block.asset_name, &env_obj_info_block.decomposition_resolution, force_preprocessing).expect("error");
         let geometric_shapes = self.get_geometric_shapes_to_add_to_environment(&env_obj_info_block.asset_name, &env_obj_info_block.scale, &env_obj_info_block.shape_representation).expect("error");
         return self.add_env_obj_geometric_shapes_to_scene(&geometric_shapes, &env_obj_info_block.pose_constraint);
     }
 
     pub fn remove_environment_object(&mut self, env_obj_idx: usize) {
-        let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx).expect("error").clone();
-        for shape_idx in shape_idxs {
-            self.shape_collection.remove_geometric_shape(shape_idx);
+        let robot_link_shape_representations = Self::get_all_robot_link_shape_representations();
+        for robot_link_shape_representation in &robot_link_shape_representations {
+            let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx, robot_link_shape_representation).expect("error").clone();
+            let r = self.robot_geometric_shape_scene_shape_collection_mut_ref(robot_link_shape_representation);
+            for shape_idx in shape_idxs {
+                r.shape_collection.remove_geometric_shape(shape_idx);
+            }
         }
     }
+
     /*
     pub fn remove_environment_object(&mut self, env_obj_idx: usize) {
         let num_objs = self.env_obj_spawners.len();
@@ -212,7 +264,7 @@ impl RobotGeometricShapeScene {
 
         if scale != &Vector3::new(1.,1.,1.) { for t in &mut base_trimesh_engines { t.scale_vertices(scale); } }
 
-        let add_idx = self.env_obj_count;
+        let add_idx = self.env_obj_info_blocks.len();
 
         let mut base_shapes = vec![];
         for (i, t) in base_trimesh_engines.iter().enumerate() {
@@ -249,29 +301,33 @@ impl RobotGeometricShapeScene {
         Ok(out_vec)
     }
     fn add_env_obj_geometric_shapes_to_scene(&mut self, shapes: &Vec<GeometricShape>, pose_constraint: &EnvObjPoseConstraint) -> Result<usize, OptimaError> {
-        let env_obj_idx = self.env_obj_count.clone();
+        let env_obj_idx = self.env_obj_info_blocks.len()-1;
 
-        let mut mapping_vec = vec![];
-        for s in shapes.iter() {
-            let shape_idx = self.shape_collection.shapes().len();
-            self.shape_collection.add_geometric_shape(s.clone());
-            mapping_vec.push(shape_idx);
-        }
+        let robot_link_shape_representations = Self::get_all_robot_link_shape_representations();
+        for robot_link_shape_representation in &robot_link_shape_representations {
+            let robot_geometric_scene_shape_collection = self.robot_geometric_shape_scene_shape_collection_mut_ref(&robot_link_shape_representation);
 
-        let num_shapes = self.shape_collection.shapes().len();
-
-        for shape_idx in &mapping_vec {
-            for env_obj_shape_idx in self.last_robot_link_shape_idx+1..num_shapes {
-                self.shape_collection.set_base_skip_from_idxs(true, *shape_idx, env_obj_shape_idx)?;
-                self.shape_collection.set_skip_from_idxs(true, *shape_idx, env_obj_shape_idx)?;
+            let mut mapping_vec = vec![];
+            for s in shapes.iter() {
+                let shape_idx = robot_geometric_scene_shape_collection.shape_collection.shapes().len();
+                robot_geometric_scene_shape_collection.shape_collection.add_geometric_shape(s.clone());
+                mapping_vec.push(shape_idx);
             }
-        }
 
-        self.env_obj_idx_to_shape_idxs_mapping.push(mapping_vec);
+            let num_shapes = robot_geometric_scene_shape_collection.shape_collection.shapes().len();
+
+            for shape_idx in &mapping_vec {
+                for env_obj_shape_idx in robot_geometric_scene_shape_collection.last_robot_link_shape_idx + 1..num_shapes {
+                    robot_geometric_scene_shape_collection.shape_collection.set_base_skip_from_idxs(true, *shape_idx, env_obj_shape_idx)?;
+                    robot_geometric_scene_shape_collection.shape_collection.set_skip_from_idxs(true, *shape_idx, env_obj_shape_idx)?;
+                }
+            }
+
+            robot_geometric_scene_shape_collection.env_obj_idx_to_shape_idxs_mapping.push(mapping_vec);
+        }
 
         self.env_obj_info_blocks[env_obj_idx].pose_constraint = pose_constraint.clone();
 
-        self.env_obj_count += 1;
         Ok(env_obj_idx)
     }
     fn check_if_pose_constraint_will_cause_cycle(&self, env_obj_idx: usize, pose_constraint: &EnvObjPoseConstraint) -> bool {
@@ -299,22 +355,16 @@ impl RobotGeometricShapeScene {
     pub fn robot_set(&self) -> &RobotSet {
         &self.robot_set
     }
-    pub fn robot_link_shape_representation(&self) -> &RobotLinkShapeRepresentation {
-        &self.robot_link_shape_representation
+    pub fn get_shape_idxs_from_robot_idx_and_link_idx(&self, robot_idx_in_set: usize, link_idx_in_robot: usize, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Result<&Vec<usize>, OptimaError> {
+        // OptimaError::new_check_for_idx_out_of_bound_error(robot_idx_in_set, self.robot_and_link_idx_to_shape_idxs_mapping.len(), file!(), line!()).expect("error");
+        // OptimaError::new_check_for_idx_out_of_bound_error(link_idx_in_robot, self.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set].len(), file!(), line!()).expect("error");
+        let r = self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation);
+        return Ok(&r.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set][link_idx_in_robot]);
     }
-    pub fn shape_collection(&self) -> &ShapeCollection {
-        &self.shape_collection
-    }
-    pub fn get_shape_idxs_from_robot_idx_and_link_idx(&self, robot_idx_in_set: usize, link_idx_in_robot: usize) -> Result<&Vec<usize>, OptimaError> {
-        OptimaError::new_check_for_idx_out_of_bound_error(robot_idx_in_set, self.robot_and_link_idx_to_shape_idxs_mapping.len(), file!(), line!()).expect("error");
-        OptimaError::new_check_for_idx_out_of_bound_error(link_idx_in_robot, self.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set].len(), file!(), line!()).expect("error");
-
-        return Ok(&self.robot_and_link_idx_to_shape_idxs_mapping[robot_idx_in_set][link_idx_in_robot]);
-    }
-    pub fn get_shape_idxs_from_env_obj_idx(&self, env_obj_idx: usize) -> Result<&Vec<usize>, OptimaError> {
-        OptimaError::new_check_for_idx_out_of_bound_error(env_obj_idx, self.env_obj_idx_to_shape_idxs_mapping.len(), file!(), line!())?;
-
-        return Ok(&self.env_obj_idx_to_shape_idxs_mapping[env_obj_idx])
+    pub fn get_shape_idxs_from_env_obj_idx(&self, env_obj_idx: usize, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Result<&Vec<usize>, OptimaError> {
+        // OptimaError::new_check_for_idx_out_of_bound_error(env_obj_idx, self.env_obj_idx_to_shape_idxs_mapping.len(), file!(), line!()).expect("error");
+        let r = self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation);
+        return Ok(&r.env_obj_idx_to_shape_idxs_mapping[env_obj_idx])
     }
     pub fn set_curr_robot_set_joint_state(&mut self, robot_set_joint_state: &RobotSetJointState) {
         self.curr_robot_set_joint_state = robot_set_joint_state.clone();
@@ -341,7 +391,7 @@ impl RobotGeometricShapeScene {
     pub fn get_curr_env_obj_pose_constraint_group(&self) -> EnvObjPoseConstraintGroup {
         let mut env_obj_pose_constraint_group = EnvObjPoseConstraintGroup::new_empty_some(self);
         for (env_obj_idx, env_obj_info_block) in self.env_obj_info_blocks.iter().enumerate() {
-            env_obj_pose_constraint_group.inject_new_pose_constraint(env_obj_idx, env_obj_info_block.pose_constraint.clone());
+            env_obj_pose_constraint_group.inject_new_pose_constraint(env_obj_idx, env_obj_info_block.pose_constraint.clone()).expect("error");
         }
         env_obj_pose_constraint_group
     }
@@ -353,18 +403,24 @@ impl RobotGeometricShapeScene {
     pub fn set_scale_of_environment_obj(&mut self, env_obj_idx: usize, new_scale: Vector3<f64>) {
         self.env_obj_info_blocks[env_obj_idx].scale = new_scale;
         let geometric_shapes = self.get_geometric_shapes_to_add_to_environment(&self.env_obj_info_blocks[env_obj_idx].asset_name, &self.env_obj_info_blocks[env_obj_idx].scale, &self.env_obj_info_blocks[env_obj_idx].shape_representation).expect("error");
-        let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx).expect("error").clone();
+        let robot_link_shape_representations = Self::get_all_robot_link_shape_representations();
+        for robot_link_shape_representation in &robot_link_shape_representations {
+            let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx, robot_link_shape_representation).expect("error").clone();
 
-        assert_eq!(shape_idxs.len(), geometric_shapes.len());
+            assert_eq!(shape_idxs.len(), geometric_shapes.len());
 
-        for (geometric_shape, shape_idx) in geometric_shapes.iter().zip(shape_idxs.iter()) {
-            self.shape_collection.replace_geometric_shape(*shape_idx, geometric_shape.clone());
+            let r = self.robot_geometric_shape_scene_shape_collection_mut_ref(robot_link_shape_representation);
+            for (geometric_shape, shape_idx) in geometric_shapes.iter().zip(shape_idxs.iter()) {
+                r.shape_collection.replace_geometric_shape(*shape_idx, geometric_shape.clone());
+            }
         }
     }
     pub fn recover_poses(&self,
                          set_joint_state: Option<&RobotSetJointState>,
-                         pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>) -> Result<ShapeCollectionInputPoses, OptimaError> {
-        let mut out_poses = ShapeCollectionInputPoses::new(&self.shape_collection);
+                         pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>,
+                         robot_link_shape_representation: &RobotLinkShapeRepresentation) -> Result<ShapeCollectionInputPoses, OptimaError> {
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        let mut out_poses = ShapeCollectionInputPoses::new(shape_collection);
 
         let set_joint_state = match set_joint_state {
             None => { self.curr_robot_set_joint_state.clone() }
@@ -381,7 +437,7 @@ impl RobotGeometricShapeScene {
                 if let Some(pose) = link_entry.pose() {
                     let chain_base_link = robot_configuration_modules[robot_idx_in_set].robot_model_module().links()[link_idx_in_robot].is_chain_base_link();
                     if !chain_base_link {
-                        let shape_idxs = self.get_shape_idxs_from_robot_idx_and_link_idx(robot_idx_in_set, link_idx_in_robot).expect("error");
+                        let shape_idxs = self.get_shape_idxs_from_robot_idx_and_link_idx(robot_idx_in_set, link_idx_in_robot, robot_link_shape_representation).expect("error");
                         for shape_idx in shape_idxs {
                             out_poses.insert_or_replace_pose_by_idx(*shape_idx, pose.clone()).expect("error");
                         }
@@ -406,7 +462,7 @@ impl RobotGeometricShapeScene {
         }
 
         let mut loop_count = 0;
-        let num_env_objs = self.env_obj_count;
+        let num_env_objs = self.env_obj_info_blocks.len();
         let mut env_obj_is_done = vec![];
         for _ in 0..num_env_objs { env_obj_is_done.push(false); }
 
@@ -417,21 +473,21 @@ impl RobotGeometricShapeScene {
                 let pose_constraint = &pose_constraints[env_obj_idx];
                 match pose_constraint {
                     EnvObjPoseConstraint::Absolute(p) => {
-                        let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx)?;
+                        let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx, robot_link_shape_representation)?;
                         for shape_idx in shape_idxs {
                             out_poses.insert_or_replace_pose_by_idx(*shape_idx, p.clone())?;
                         }
                         env_obj_is_done[env_obj_idx] = true;
                     }
                     EnvObjPoseConstraint::RelativeOffset { parent_signature, offset } => {
-                        let parent_shape_idx = self.shape_collection.get_shape_idx_from_signature(parent_signature).expect("error");
+                        let parent_shape_idx = shape_collection.get_shape_idx_from_signature(parent_signature).expect("error");
                         OptimaError::new_check_for_idx_out_of_bound_error(parent_shape_idx, out_poses.poses().len(), file!(), line!()).expect("error");
                         let parent_shape_pose_option = out_poses.poses().get(parent_shape_idx).unwrap();
                         match parent_shape_pose_option {
                             None => { complete = false; }
                             Some(parent_shape_pose) => {
                                 let out_pose = parent_shape_pose.multiply(offset, true)?;
-                                let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx)?;
+                                let shape_idxs = self.get_shape_idxs_from_env_obj_idx(env_obj_idx, robot_link_shape_representation)?;
                                 for shape_idx in shape_idxs {
                                     out_poses.insert_or_replace_pose_by_idx(*shape_idx, out_pose.clone())?;
                                 }
@@ -452,13 +508,15 @@ impl RobotGeometricShapeScene {
     }
     pub fn shape_collection_query<'a>(&'a self,
                                       input: &'a RobotGeometricShapeSceneQuery,
+                                      robot_link_shape_representation: RobotLinkShapeRepresentation,
                                       stop_condition: StopCondition,
                                       log_condition: LogCondition,
                                       sort_outputs: bool) -> Result<GeometricShapeQueryGroupOutput, OptimaError> {
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(&robot_link_shape_representation).shape_collection;
         return match input {
             RobotGeometricShapeSceneQuery::ProjectPoint { robot_set_joint_state, env_obj_pose_constraint_group_input, point, solid, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::ProjectPoint {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::ProjectPoint {
                     poses: &poses,
                     point,
                     solid: *solid,
@@ -466,16 +524,16 @@ impl RobotGeometricShapeScene {
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::ContainsPoint { robot_set_joint_state, env_obj_pose_constraint_group_input, point, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::ContainsPoint {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::ContainsPoint {
                     poses: &poses,
                     point,
                     inclusion_list,
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::DistanceToPoint { robot_set_joint_state, env_obj_pose_constraint_group_input, point, solid, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::DistanceToPoint {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::DistanceToPoint {
                     poses: &poses,
                     point,
                     solid: *solid,
@@ -483,8 +541,8 @@ impl RobotGeometricShapeScene {
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::IntersectsRay { robot_set_joint_state, env_obj_pose_constraint_group_input, ray, max_toi, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectsRay {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectsRay {
                     poses: &poses,
                     ray: *ray,
                     max_toi: *max_toi,
@@ -492,8 +550,8 @@ impl RobotGeometricShapeScene {
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::CastRay { robot_set_joint_state, env_obj_pose_constraint_group_input, ray, max_toi, solid, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRay {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRay {
                     poses: &poses,
                     ray: *ray,
                     max_toi: *max_toi,
@@ -502,8 +560,8 @@ impl RobotGeometricShapeScene {
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::CastRayAndGetNormal { robot_set_joint_state, env_obj_pose_constraint_group_input, ray, max_toi, solid, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRayAndGetNormal {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::CastRayAndGetNormal {
                     poses: &poses,
                     ray: *ray,
                     max_toi: *max_toi,
@@ -512,39 +570,39 @@ impl RobotGeometricShapeScene {
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::IntersectionTest { robot_set_joint_state, env_obj_pose_constraint_group_input, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectionTest {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::IntersectionTest {
                     poses: &poses,
                     inclusion_list
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::Distance { robot_set_joint_state, env_obj_pose_constraint_group_input, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::Distance {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::Distance {
                     poses: &poses,
                     inclusion_list
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::ClosestPoints { robot_set_joint_state, env_obj_pose_constraint_group_input, max_dis, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::ClosestPoints {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::ClosestPoints {
                     poses: &poses,
                     max_dis: *max_dis,
                     inclusion_list
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::Contact { robot_set_joint_state, env_obj_pose_constraint_group_input, prediction, inclusion_list } => {
-                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input)?;
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::Contact {
+                let poses = self.recover_poses(*robot_set_joint_state, *env_obj_pose_constraint_group_input, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::Contact {
                     poses: &poses,
                     prediction: *prediction,
                     inclusion_list
                 }, stop_condition, log_condition, sort_outputs)
             }
             RobotGeometricShapeSceneQuery::CCD { robot_set_joint_state_t1, env_obj_pose_constraint_group_input_t1, robot_set_joint_state_t2, env_obj_pose_constraint_group_input_t2, inclusion_list } => {
-                let poses_t1 = self.recover_poses(*robot_set_joint_state_t1, *env_obj_pose_constraint_group_input_t1).expect("error");
-                let poses_t2 = self.recover_poses(Some(robot_set_joint_state_t2), *env_obj_pose_constraint_group_input_t2).expect("error");
-                self.shape_collection.shape_collection_query(&ShapeCollectionQuery::CCD {
+                let poses_t1 = self.recover_poses(*robot_set_joint_state_t1, *env_obj_pose_constraint_group_input_t1, &robot_link_shape_representation).expect("error");
+                let poses_t2 = self.recover_poses(Some(robot_set_joint_state_t2), *env_obj_pose_constraint_group_input_t2, &robot_link_shape_representation).expect("error");
+                shape_collection.shape_collection_query(&ShapeCollectionQuery::CCD {
                     poses_t1: &poses_t1,
                     poses_t2: &poses_t2,
                     inclusion_list
@@ -553,28 +611,34 @@ impl RobotGeometricShapeScene {
         }
     }
 
-    pub fn spawn_query_list(&self) -> ShapeCollectionQueryList {
-        return self.shape_collection.spawn_query_list();
+    pub fn spawn_query_list(&self, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> ShapeCollectionQueryList {
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        return shape_collection.spawn_query_list();
     }
-    pub fn spawn_query_pairs_list(&self, override_all_skips: bool) -> ShapeCollectionQueryPairsList {
-        return self.shape_collection.spawn_query_pairs_list(override_all_skips);
+    pub fn spawn_query_pairs_list(&self, override_all_skips: bool, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> ShapeCollectionQueryPairsList {
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        return shape_collection.spawn_query_pairs_list(override_all_skips);
     }
-    pub fn spawn_proxima_engine(&self, pairwise_mode: Option<ProximaPairwiseMode>) -> ProximaEngine {
-        return self.shape_collection.spawn_proxima_engine(pairwise_mode);
+    pub fn spawn_proxima_engine(&self, pairwise_mode: Option<ProximaPairwiseMode>, robot_link_shape_representation: &RobotLinkShapeRepresentation) -> ProximaEngine {
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        return shape_collection.spawn_proxima_engine(pairwise_mode);
     }
-    pub fn spawn_bvh<T: BVHCombinableShape>(&self, robot_set_joint_state: &RobotSetJointState, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>, branch_factor: usize) -> ShapeCollectionBVH<T> {
-        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input).expect("error");
+    pub fn spawn_bvh<T: BVHCombinableShape>(&self, robot_set_joint_state: &RobotSetJointState, robot_link_shape_representation: &RobotLinkShapeRepresentation, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>, branch_factor: usize) -> ShapeCollectionBVH<T> {
+        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input, robot_link_shape_representation).expect("error");
 
-        return self.shape_collection.spawn_bvh(&poses, branch_factor);
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        return shape_collection.spawn_bvh(&poses, branch_factor);
     }
-    pub fn update_bvh<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_set_joint_state: &RobotSetJointState, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>) {
-        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input).expect("error");
+    pub fn update_bvh<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_set_joint_state: &RobotSetJointState, robot_link_shape_representation: &RobotLinkShapeRepresentation, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>) {
+        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input, robot_link_shape_representation).expect("error");
 
-        self.shape_collection.update_bvh(bvh, &poses);
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        shape_collection.update_bvh(bvh, &poses);
     }
 
     pub fn proxima_proximity_query(&self,
                                    robot_set_joint_state: &RobotSetJointState,
+                                   robot_link_shape_representation: &RobotLinkShapeRepresentation,
                                    env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>,
                                    proxima_engine: &mut ProximaEngine,
                                    d_max: f64,
@@ -584,11 +648,13 @@ impl RobotGeometricShapeScene {
                                    r: f64,
                                    proxima_budget: ProximaBudget,
                                    inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaProximityOutput, OptimaError> {
-        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input)?;
-        return self.shape_collection.proxima_proximity_query(&poses, proxima_engine, d_max, a_max, loss_function, aggregator, r, proxima_budget, inclusion_list);
+        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input, robot_link_shape_representation).expect("error");
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        return shape_collection.proxima_proximity_query(&poses, proxima_engine, d_max, a_max, loss_function, aggregator, r, proxima_budget, inclusion_list);
     }
     pub fn proxima_scene_filter(&self,
                                 robot_set_joint_state: &RobotSetJointState,
+                                robot_link_shape_representation: &RobotLinkShapeRepresentation,
                                 env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>,
                                 proxima_engine: &mut ProximaEngine,
                                 d_max: f64,
@@ -596,13 +662,14 @@ impl RobotGeometricShapeScene {
                                 loss_function: SignedDistanceLossFunction,
                                 r: f64,
                                 inclusion_list: &Option<&ShapeCollectionQueryPairsList>) -> Result<ProximaSceneFilterOutput, OptimaError> {
-        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input)?;
-        return self.shape_collection.proxima_scene_filter(&poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list);
+        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input, robot_link_shape_representation).expect("error");
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        return shape_collection.proxima_scene_filter(&poses, proxima_engine, d_max, a_max, &loss_function, r, inclusion_list);
     }
-    pub fn bvh_scene_filter<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_set_joint_state: &RobotSetJointState, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>, visit: BVHVisit) -> BVHSceneFilterOutput {
-        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input).expect("error");
-
-        return self.shape_collection.bvh_scene_filter(bvh, &poses, visit);
+    pub fn bvh_scene_filter<T: BVHCombinableShape>(&self, bvh: &mut ShapeCollectionBVH<T>, robot_set_joint_state: &RobotSetJointState, robot_link_shape_representation: &RobotLinkShapeRepresentation, env_obj_pose_constraint_group_input: Option<&EnvObjPoseConstraintGroup>, visit: BVHVisit) -> BVHSceneFilterOutput {
+        let poses = self.recover_poses(Some(robot_set_joint_state), env_obj_pose_constraint_group_input, robot_link_shape_representation).expect("error");
+        let shape_collection = &self.robot_geometric_shape_scene_shape_collection(robot_link_shape_representation).shape_collection;
+        return shape_collection.bvh_scene_filter(bvh, &poses, visit);
     }
 
     pub fn env_obj_info_blocks(&self) -> &Vec<EnvObjInfoBlock> {
@@ -613,7 +680,7 @@ impl RobotGeometricShapeScene {
         self.robot_set.print_summary();
         optima_print_new_line();
 
-        let num_objects = self.env_obj_count;
+        let num_objects = self.env_obj_info_blocks.len();
         optima_print(&format!("{} objects.", num_objects), PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
         for i in 0..num_objects {
             optima_print(&format!(" Object {} ---> ", i), PrintMode::Println, PrintColor::Cyan, false, 0, None, vec![]);
@@ -638,9 +705,37 @@ impl GetRobotSet for RobotGeometricShapeScene {
         &self.robot_set
     }
 }
+/*
 impl GetRobotGeometricShapeScene for RobotGeometricShapeScene {
     fn get_robot_geometric_shape_scene(&self) -> &RobotGeometricShapeScene {
         self
+    }
+}
+*/
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RobotGeometricShapeSceneShapeCollection {
+    robot_link_shape_representation: RobotLinkShapeRepresentation,
+    shape_collection: ShapeCollection,
+    robot_and_link_idx_to_shape_idxs_mapping: Vec<Vec<Vec<usize>>>,
+    env_obj_idx_to_shape_idxs_mapping: Vec<Vec<usize>>,
+    last_robot_link_shape_idx: usize
+}
+impl RobotGeometricShapeSceneShapeCollection {
+    pub fn robot_link_shape_representation(&self) -> &RobotLinkShapeRepresentation {
+        &self.robot_link_shape_representation
+    }
+    pub fn shape_collection(&self) -> &ShapeCollection {
+        &self.shape_collection
+    }
+    pub fn robot_and_link_idx_to_shape_idxs_mapping(&self) -> &Vec<Vec<Vec<usize>>> {
+        &self.robot_and_link_idx_to_shape_idxs_mapping
+    }
+    pub fn env_obj_idx_to_shape_idxs_mapping(&self) -> &Vec<Vec<usize>> {
+        &self.env_obj_idx_to_shape_idxs_mapping
+    }
+    pub fn last_robot_link_shape_idx(&self) -> usize {
+        self.last_robot_link_shape_idx
     }
 }
 
@@ -649,9 +744,9 @@ impl GetRobotGeometricShapeScene for RobotGeometricShapeScene {
 #[pymethods]
 impl RobotGeometricShapeScene {
     #[new]
-    pub fn new_py(robot_set_py: RobotSetPy, robot_link_shape_representation: &str) -> Self {
+    pub fn new_py(robot_set_py: RobotSetPy) -> Self {
         let robot_set = robot_set_py.get_robot_set().clone();
-        let self_res = Self::new(robot_set, RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap(), None, vec![]);
+        let self_res = Self::new(robot_set, None);
         return self_res.unwrap();
     }
 }
@@ -668,9 +763,8 @@ pub struct RobotGeometricShapeScenePy {
 #[pymethods]
 impl RobotGeometricShapeScenePy {
     #[new]
-    #[args(robot_link_shape_representation="\"Cubes\"")]
-    pub fn new(robot_set_py: RobotSetPy, robot_link_shape_representation: &str, py: Python) -> Self {
-        let robot_geometric_shape_scene = RobotGeometricShapeScene::new_py(robot_set_py.clone(), robot_link_shape_representation);
+    pub fn new(robot_set_py: RobotSetPy, py: Python) -> Self {
+        let robot_geometric_shape_scene = RobotGeometricShapeScene::new_py(robot_set_py.clone());
         Self {
             robot_set_py: Py::new(py, robot_set_py).expect("error"),
             robot_geometric_shape_scene
@@ -709,8 +803,8 @@ impl RobotGeometricShapeScenePy {
     pub fn print_summary_py(&self) {
         self.robot_geometric_shape_scene.print_summary();
     }
-    #[args(stop_condition="\"None\"", log_condition="\"LogAll\"", sort_outputs="true", include_full_output_json_string="true")]
-    pub fn contact_query_py(&self, robot_set_joint_state: Vec<f64>, prediction: f64, stop_condition: &str, log_condition: &str, sort_outputs: bool, include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+    #[args(robot_link_shape_representation="\"Cubes\"", stop_condition="\"None\"", log_condition="\"LogAll\"", sort_outputs="true", include_full_output_json_string="true")]
+    pub fn contact_query_py(&self, robot_set_joint_state: Vec<f64>, prediction: f64, robot_link_shape_representation: &str, stop_condition: &str, log_condition: &str, sort_outputs: bool, include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
         let stop_condition = StopCondition::from_ron_string(stop_condition).expect("error");
         let log_condition = LogCondition::from_ron_string(log_condition).expect("error");
 
@@ -721,16 +815,19 @@ impl RobotGeometricShapeScenePy {
             prediction,
             inclusion_list: &None
         };
-        let res = self.robot_geometric_shape_scene.shape_collection_query(&input, stop_condition, log_condition, sort_outputs).expect("error");
+        let res = self.robot_geometric_shape_scene.shape_collection_query(&input, RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap(), stop_condition, log_condition, sort_outputs).expect("error");
         let py_output = res.convert_to_py_output(include_full_output_json_string);
         return py_output;
     }
 
-    pub fn spawn_proxima_engine_py(&self) -> ProximaEngine {
-        self.robot_geometric_shape_scene.spawn_proxima_engine(None)
+    #[args(robot_link_shape_representation="\"Cubes\"")]
+    pub fn spawn_proxima_engine_py(&self, robot_link_shape_representation: &str) -> ProximaEngine {
+        self.robot_geometric_shape_scene.spawn_proxima_engine(None, &RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap())
     }
+    #[args(robot_link_shape_representation="\"Cubes\"")]
     pub fn proxima_proximity_query_py(&self,
                                       robot_set_joint_state: Vec<f64>,
+                                      robot_link_shape_representation: &str,
                                       proxima_engine: &mut ProximaEngine,
                                       d_max: f64,
                                       a_max: f64,
@@ -741,6 +838,7 @@ impl RobotGeometricShapeScenePy {
         let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
         let res = self.robot_geometric_shape_scene.proxima_proximity_query(
             &robot_set_joint_state,
+            &RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap(),
             None,
             proxima_engine,
             d_max,
@@ -751,23 +849,29 @@ impl RobotGeometricShapeScenePy {
             ProximaBudget::from_ron_string(proxima_budget).expect("error"), &None).expect("error");
         return res;
     }
-    pub fn update_aabb_bvh(&self, bvh_aabb: &mut ShapeCollectionBVHAABB, robot_set_joint_state: Vec<f64>) {
+    #[args(robot_link_shape_representation="\"Cubes\"")]
+    pub fn update_aabb_bvh(&self, bvh_aabb: &mut ShapeCollectionBVHAABB, robot_set_joint_state: Vec<f64>, robot_link_shape_representation: &str) {
+        let robot_link_shape_representation = RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap();
         let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
-        let poses = self.robot_geometric_shape_scene.recover_poses(Some(&robot_set_joint_state), None).expect("error");
-        bvh_aabb.bvh.bvh_mut().update(&self.robot_geometric_shape_scene.shape_collection.shapes(), &poses);
+        let poses = self.robot_geometric_shape_scene.recover_poses(Some(&robot_set_joint_state), None, &robot_link_shape_representation).expect("error");
+        let shape_collection = &self.robot_geometric_shape_scene.robot_geometric_shape_scene_shape_collection(&robot_link_shape_representation).shape_collection;
+        bvh_aabb.bvh.bvh_mut().update(&shape_collection.shapes(), &poses);
     }
 
-    pub fn spawn_bvh_aabb_py(&self, robot_set_joint_state: Vec<f64>, branch_factor: usize) -> ShapeCollectionBVHAABB {
+    #[args(robot_link_shape_representation="\"Cubes\"")]
+    pub fn spawn_bvh_aabb_py(&self, robot_set_joint_state: Vec<f64>, robot_link_shape_representation: &str, branch_factor: usize) -> ShapeCollectionBVHAABB {
         let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
-        let bvh = self.robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, None, branch_factor);
+        let bvh = self.robot_geometric_shape_scene.spawn_bvh::<BVHCombinableShapeAABB>(&robot_set_joint_state, &RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap(), None, branch_factor);
         ShapeCollectionBVHAABB {
             bvh
         }
     }
-    #[args(stop_condition="\"None\"", log_condition="\"LogAll\"", sort_outputs="true", include_full_output_json_string="true")]
-    pub fn bvh_aabb_contact_query_py(&self, bvh_aabb: &mut ShapeCollectionBVHAABB, robot_set_joint_state: Vec<f64>, prediction: f64, stop_condition: &str, log_condition: &str, sort_outputs: bool, include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+    #[args(robot_link_shape_representation="\"Cubes\"", stop_condition="\"None\"", log_condition="\"LogAll\"", sort_outputs="true", include_full_output_json_string="true")]
+    pub fn bvh_aabb_contact_query_py(&self, bvh_aabb: &mut ShapeCollectionBVHAABB, robot_set_joint_state: Vec<f64>, robot_link_shape_representation: &str, prediction: f64, stop_condition: &str, log_condition: &str, sort_outputs: bool, include_full_output_json_string: bool) -> GeometricShapeQueryGroupOutputPy {
+        let robot_link_shape_representation = RobotLinkShapeRepresentation::from_ron_string(robot_link_shape_representation).unwrap();
+
         let robot_set_joint_state = self.robot_geometric_shape_scene.robot_set.robot_set_joint_state_module().spawn_robot_set_joint_state_try_auto_type(DVector::from_vec(robot_set_joint_state)).expect("error");
-        let filter = self.robot_geometric_shape_scene.bvh_scene_filter(&mut bvh_aabb.bvh, &robot_set_joint_state, None, BVHVisit::Distance { margin: prediction });
+        let filter = self.robot_geometric_shape_scene.bvh_scene_filter(&mut bvh_aabb.bvh, &robot_set_joint_state, &robot_link_shape_representation, None, BVHVisit::Distance { margin: prediction });
         let input = RobotGeometricShapeSceneQuery::Contact {
             robot_set_joint_state: Some(&robot_set_joint_state),
             env_obj_pose_constraint_group_input: None,
@@ -778,7 +882,7 @@ impl RobotGeometricShapeScenePy {
         let stop_condition = StopCondition::from_ron_string(stop_condition).expect("error");
         let log_condition = LogCondition::from_ron_string(log_condition).expect("error");
 
-        let res = self.robot_geometric_shape_scene.shape_collection_query(&input, stop_condition, log_condition, sort_outputs).expect("error");
+        let res = self.robot_geometric_shape_scene.shape_collection_query(&input, robot_link_shape_representation, stop_condition, log_condition, sort_outputs).expect("error");
         let py_output = res.convert_to_py_output(include_full_output_json_string);
         return py_output;
     }
@@ -875,6 +979,15 @@ pub struct EnvObjInfoBlock {
     pub pose_constraint: EnvObjPoseConstraint
 }
 impl EnvObjInfoBlock {
+    pub fn new(asset_name: &str, scale: Vector3<f64>, shape_representation: EnvObjShapeRepresentation, decomposition_resolution: ConvexDecompositionResolution, pose_constraint: EnvObjPoseConstraint) -> Self {
+        Self {
+            asset_name: asset_name.to_string(),
+            scale,
+            shape_representation,
+            decomposition_resolution,
+            pose_constraint
+        }
+    }
     pub fn new_default(asset_name: &str) -> Self {
         Self {
             asset_name: asset_name.to_string(),
@@ -934,7 +1047,7 @@ pub struct EnvObjPoseConstraintGroup {
 }
 impl EnvObjPoseConstraintGroup {
     pub fn new_empty_some(robot_geometric_shape_scene: &RobotGeometricShapeScene) -> Self {
-        let num_env_objects = robot_geometric_shape_scene.env_obj_count;
+        let num_env_objects = robot_geometric_shape_scene.env_obj_info_blocks.len();
         let mut out_vec = vec![];
         for _ in 0..num_env_objects { out_vec.push(None); }
 

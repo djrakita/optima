@@ -13,7 +13,7 @@ use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::load_object_from_json_string;
 use crate::utils::utils_robot::urdf_joint::{JointTypeWrapper, URDFJoint};
 use crate::utils::utils_se3::optima_se3_pose::{OptimaSE3PoseAll, OptimaSE3Pose, OptimaSE3PoseType};
-use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromJsonString, ToAndFromRonString};
+use crate::utils::utils_traits::{SaveAndLoadable, ToAndFromRonString};
 
 /// A Joint holds all necessary information about a robot joint (specified by a robot URDF file)
 /// in order to do kinematic and dynamic computations on a robot model.
