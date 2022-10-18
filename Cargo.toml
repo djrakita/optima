@@ -1,6 +1,6 @@
 [package]
 name = "optima"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 description = "An easy to set up and easy optimization and planning toolbox, particularly for robotics."
 keywords = ["robotics", "planning", "optimization", "motion", "kinematics"]
