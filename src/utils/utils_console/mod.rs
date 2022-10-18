@@ -4,7 +4,7 @@ use std::io::{BufRead, Stdout};
 #[cfg(not(target_arch = "wasm32"))]
 use pbr::ProgressBar;
 #[cfg(not(target_arch = "wasm32"))]
-use termion::{style, color::Rgb, color};
+use colored::Colorize;
 
 pub const NUM_SPACES_PER_TAB: usize = 10;
 
@@ -56,16 +56,25 @@ pub fn optima_print(s: &str, mode: PrintMode, color: PrintColor, bolded: bool, n
             string.replace_range(idx..idx+1,c);
         }
     }
+    /*
     if bolded { string += format!("{}", style::Bold).as_str() }
     if &color != &PrintColor::None {
         let c = color.get_color_triple();
         string += format!("{}", color::Fg(Rgb(c.0, c.1, c.2))).as_str();
     }
+    */
     string += s;
-    string += format!("{}", style::Reset).as_str();
+
+    let mut colored_string = string.normal();
+    if bolded { colored_string = colored_string.bold() };
+    if &color != &PrintColor::None {
+        let c = color.get_color_triple();
+        colored_string = colored_string.truecolor(c.0, c.1, c.2);
+    }
+    // string += format!("{}", style::Reset).as_str();
     match mode {
-        PrintMode::Println => { println!("{}", string); }
-        PrintMode::Print => { print!("{}", string); }
+        PrintMode::Println => { println!("{}", colored_string); }
+        PrintMode::Print => { print!("{}", colored_string); }
     }
 }
 

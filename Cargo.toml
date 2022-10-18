@@ -56,9 +56,9 @@ wasm-bindgen = { version="0.2.79", features = ["serde-serialize"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 pyo3 = { version = "0.16.2", features = ["extension-module"] }
-termion = "1.5.6"
+colored = "2.0.0"
 pbr = "1.0.4"
-nlopt = "0.5.4"
+nlopt = {version = "0.5.4", optional = true}
 
 [features]
 default = [ "do_not_embed_assets", "optima_bevy" ] # NOTE!  To turn off, must include --no-default-features.
@@ -67,6 +67,7 @@ do_not_embed_assets = [ "exclude_all_robot_asset_embedding" ]
 only_use_embedded_assets = [] # NOTE!  This will only work if you include --no-default-features.
 exclude_all_robot_asset_embedding = []
 exclude_robot_visual_meshes_embedding = []
+nlopt_optimization = [ "nlopt" ]
 # ----------- robot embeddeding groups -------- #
 all_robots = ["robot_group_3", "fetch"]
 robot_group_3 = ["robot_group_2", "hubo"]

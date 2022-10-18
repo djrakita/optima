@@ -9,6 +9,7 @@ use optimization_engine::panoc::{PANOCCache, PANOCOptimizer};
 use crate::optima_tensor_function::{OptimaTensor, OptimaTensorFunction, OTFImmutVars, OTFMutVars};
 use crate::optima_tensor_function::standard_functions::{OTFAddScalar, OTFComposition, OTFMaxZero, OTFMultiplyByScalar, OTFWeightedSum};
 #[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "nlopt_optimization")]
 use nlopt::*;
 use crate::utils::utils_console::OptimaDebug;
 
@@ -16,6 +17,7 @@ use crate::utils::utils_console::OptimaDebug;
 pub enum NonlinearOptimizer {
     OpEn(OpEnNonlinearOptimizer),
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     Nlopt(NLoptNonlinearOptimizer)
 }
 impl NonlinearOptimizer {
@@ -23,34 +25,48 @@ impl NonlinearOptimizer {
         return match t {
             NonlinearOptimizerType::OpEn => { Self::OpEn(OpEnNonlinearOptimizer::new(problem_size)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptGlobalNonderivativeDirect => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::DIRECT)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptGlobalNonderivativeDIRECTL => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::DIRECTL)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptGlobalNonderivativeCRS => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::CRS)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptGlobalDerivativeSTOGO => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::STOGO)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptGlobalDerivativeSTOGORAND => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::STOGORAND)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptGlobalNonderivativeISRES => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::ISRES)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptGlobalNonderivativeESCH => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::ESCH)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptLocalNonderivativeCOBYLA => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::COBYLA)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptLocalNonderivativeBOBYQA => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::BOBYQA)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptLocalDerivativeSLSQP => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::SLSQP)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptLocalDerivataiveMMA => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::MMA)) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizerType::NloptLocalDerivataiveCCSAQ => { Self::Nlopt(NLoptNonlinearOptimizer::new(problem_size, NloptAlgorithmWrapper::CCSAQ)) }
         }
     }
     pub fn add_cost_term<F: OptimaTensorFunction + Clone + 'static>(&mut self, f: F, weight: Option<f64>) {
         match self {
             NonlinearOptimizer::OpEn(n) => { n.add_cost_term(f, weight); }
+            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizer::Nlopt(n) => { n.add_cost_term(f, weight); }
         }
     }
@@ -58,6 +74,7 @@ impl NonlinearOptimizer {
         match self {
             NonlinearOptimizer::OpEn(n) => { n.add_equality_constraint(f); }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizer::Nlopt(n) => { n.add_equality_constraint(f); }
         }
     }
@@ -65,6 +82,7 @@ impl NonlinearOptimizer {
         match self {
             NonlinearOptimizer::OpEn(n) => { n.add_less_than_zero_inequality_constraint(f); }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizer::Nlopt(n) => { n.add_less_than_zero_inequality_constraint(f); }
         }
     }
@@ -97,6 +115,7 @@ impl NonlinearOptimizer {
         match self {
             NonlinearOptimizer::OpEn(n) => { n.set_bounds(bounds); }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizer::Nlopt(_) => {}
         }
     }
@@ -104,12 +123,15 @@ impl NonlinearOptimizer {
         return match self {
             NonlinearOptimizer::OpEn(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters, debug.clone()) }
             #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizer::Nlopt(n) => { n.optimize(init_condition, immut_vars, mut_vars, parameters, debug.clone()) }
         }
     }
     pub fn cost(&self) -> Box<&dyn OptimaTensorFunction> {
         return match self {
             NonlinearOptimizer::OpEn(o) => { Box::new(&o.cost_function) }
+            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(feature = "nlopt_optimization")]
             NonlinearOptimizer::Nlopt(o) => { Box::new(&o.cost_function) }
         }
     }
@@ -119,28 +141,40 @@ impl NonlinearOptimizer {
 pub enum NonlinearOptimizerType {
     OpEn,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptGlobalNonderivativeDirect,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptGlobalNonderivativeDIRECTL,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptGlobalNonderivativeCRS,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptGlobalDerivativeSTOGO,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptGlobalDerivativeSTOGORAND,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptGlobalNonderivativeISRES,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptGlobalNonderivativeESCH,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptLocalNonderivativeCOBYLA,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptLocalNonderivativeBOBYQA,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptLocalDerivativeSLSQP,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptLocalDerivataiveMMA,
     #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "nlopt_optimization")]
     NloptLocalDerivataiveCCSAQ
 }
 impl Default for NonlinearOptimizerType {
@@ -179,6 +213,7 @@ pub enum NloptAlgorithmWrapper {
     CCSAQ,
 }
 #[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "nlopt_optimization")]
 impl NloptAlgorithmWrapper {
     fn map_to_algorithm(&self) -> Algorithm {
         match self {
@@ -473,6 +508,7 @@ impl OpEnNonlinearOptimizer {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "nlopt_optimization")]
 #[derive(Clone)]
 pub struct NLoptNonlinearOptimizer {
     algorithm: Algorithm,
@@ -484,6 +520,7 @@ pub struct NLoptNonlinearOptimizer {
     bounds: Option<(Vec<f64>, Vec<f64>)>
 }
 #[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "nlopt_optimization")]
 impl NLoptNonlinearOptimizer {
     pub fn new(problem_size: usize, algorithm: NloptAlgorithmWrapper) -> Self {
         Self {
