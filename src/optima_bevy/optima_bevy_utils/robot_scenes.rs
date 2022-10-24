@@ -25,6 +25,7 @@ use crate::robot_set_modules::robot_set::RobotSet;
 use crate::robot_set_modules::robot_set_joint_state_module::{RobotSetJointState, RobotSetJointStateType};
 use crate::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
 use crate::utils::utils_files::optima_path::{OptimaAssetLocation, OptimaPathMatchingPattern, OptimaPathMatchingStopCondition, OptimaStemCellPath, path_buf_from_string_components};
+use crate::utils::utils_robot::joint::JointAxisPrimitiveType;
 use crate::utils::utils_robot::link::Link;
 use crate::utils::utils_robot::robot_generic_structures::GenericRobotJointState;
 use crate::utils::utils_se3::optima_rotation::OptimaRotationType;
@@ -214,11 +215,6 @@ impl RobotSceneActions {
             }
         }
     }
-    /*
-    pub fn action_set_env_obj_constraint(query: &mut Query<&mut EnvObjSpawn>,
-                                         robot_geometric_shape_scene: &mut RobotGeometricShapeScene) {}
-
-    */
     pub fn action_robot_set_joint_sliders_egui(ui: &mut Ui,
                                                robot_set: &RobotSet,
                                                query: &mut Query<&mut RobotSetJointStateBevyComponent>) {
@@ -515,7 +511,7 @@ impl RobotSceneSystems {
             }
 
             ui.label("Robot Link Shape Representation: ");
-            EguiActions::action_egui_selection_over_enum::<RobotLinkShapeRepresentation>(ui, "robot_link_shape_representation", EguiSelectionMode::Checkboxes, &mut egui_selection_block_container, &keys, false);
+            EguiActions::action_egui_selection_over_enum::<RobotLinkShapeRepresentation>(ui, "robot_link_shape_representation", EguiSelectionMode::Checkboxes, None, 400.0, &mut egui_selection_block_container, &keys, false);
             let selection_block = egui_selection_block_container.get_selection_mut_ref("robot_link_shape_representation");
             let selection_vec = selection_block.unwrap_selections::<RobotLinkShapeRepresentation>();
             if selection_vec.is_empty() { return; }
@@ -622,8 +618,6 @@ impl RobotSceneSystems {
                                                     robot_geometric_shape_module.set_skip_between_link_pair(signature0, signature1, selection);
                                                 }
                                             });
-
-
                                         });
                                     });
 
@@ -637,20 +631,153 @@ impl RobotSceneSystems {
 
         EguiActions::action_egui_container_generic(f, &EguiContainerMode::LeftPanel { resizable: true, default_width: 300.0 }, "robot_self_collision_calibrator", &windows, &mut egui_context, &mut egui_window_state_container, &mut gui_global_info);
     }
-    /*
-    pub fn system_robot_self_collision_calibrator_egui(robot: Res<Robot>,
-                                                       mut robot_geometric_shape_module: ResMut<RobotGeometricShapeModule>,
-                                                       query: Query<(&RobotSetJointStateBevyComponent)>,
-                                                       windows: Res<Windows>,
-                                                       mut egui_context: ResMut<EguiContext>,
-                                                       mut egui_engine: ResMut<EguiEngine>,
-                                                       mut gui_global_info: ResMut<GuiGlobalInfo>,
-                                                       mut material_change_request_container: ResMut<MaterialChangeRequestContainer>) {
-        let f = |ui: &mut Ui| { RobotSceneActions::action_robot_self_collision_calibrator_egui(ui, &robot, &mut robot_geometric_shape_module, &query); };
+    pub fn system_robot_jacobian_visualization_egui(robot: Res<Robot>,
+                                                    query: Query<&RobotSetJointStateBevyComponent>,
+                                                    windows: Res<Windows>,
+                                                    mut egui_selection_block_container: ResMut<EguiSelectionBlockContainer>,
+                                                    mut egui_context: ResMut<EguiContext>,
+                                                    mut egui_window_state_container: ResMut<EguiWindowStateContainer>,
+                                                    mut gui_global_info: ResMut<GuiGlobalInfo>,
+                                                    mut material_change_request_container: ResMut<MaterialChangeRequestContainer>,
+                                                    keys: Res<Input<KeyCode>>,
+                                                    mut lines: ResMut<DebugLines>) {
+        let f = |ui: &mut Ui| {
+            ui.heading("Jacobian Vis");
 
-        EguiActions::action_egui_container_generic(f, &EguiContainerMode::LeftPanel { resizable: true, default_width: 300.0 }, "self_collision_calibrator", &windows, &mut egui_context, &mut egui_engine, &mut gui_global_info);
+            let links = robot.robot_configuration_module().robot_model_module().links();
+            let mut start_link_display_strings = vec![];
+            let mut start_link_idxs = vec![];
+            for (idx, link) in links.iter().enumerate() {
+                start_link_display_strings.push(format!("{}: {}", idx, link.name()));
+                start_link_idxs.push(idx);
+            }
+
+            let mut end_link_display_strings = vec![];
+            let mut end_link_idxs = vec![];
+            for (idx, link) in links.iter().enumerate() {
+                end_link_display_strings.push(format!("{}: {}", idx, link.name()));
+                end_link_idxs.push(idx);
+            }
+
+            let joints = robot.robot_configuration_module().robot_model_module().joints();
+            let mut dof_display_strings = vec![];
+            let mut dof_idxs = vec![];
+            let mut count = 0;
+            for joint in joints {
+                for axis in joint.joint_axes() {
+                    dof_display_strings.push(format!("DOF idx {}", count));
+                    dof_idxs.push((joint.joint_idx(), axis.joint_sub_dof_idx()));
+                    count += 1;
+                }
+            }
+
+            ui.label("Link start point: ");
+            EguiActions::action_egui_selection_over_given_items(ui, "jacobian_vis_start_link", EguiSelectionMode::Checkboxes, start_link_idxs, Some(start_link_display_strings), 150.0, &mut egui_selection_block_container, &keys, false);
+            ui.label("Link end point: ");
+            EguiActions::action_egui_selection_over_given_items(ui, "jacobian_vis_end_link", EguiSelectionMode::Checkboxes, end_link_idxs, Some(end_link_display_strings), 150.0, &mut egui_selection_block_container, &keys, false);
+            ui.label("DOF Column: ");
+            ui.horizontal(|ui| {
+                if ui.button("Select All").clicked() {
+                    egui_selection_block_container
+                        .get_selection_mut_ref("jacobian_vis_dofs")
+                        .set_selections(dof_idxs.clone());
+                }
+
+                if ui.button("Deselect All").clicked() {
+                    egui_selection_block_container
+                        .get_selection_mut_ref("jacobian_vis_dofs")
+                        .flush_selections();
+                }
+            });
+            EguiActions::action_egui_selection_over_given_items(ui, "jacobian_vis_dofs", EguiSelectionMode::Checkboxes, dof_idxs, Some(dof_display_strings), 150.0, &mut egui_selection_block_container, &keys, true);
+
+            let jacobian_types = vec!["Full".to_string(), "Translational".to_string(), "Rotational".to_string()];
+            ui.label("Jacobian Type: ");
+            EguiActions::action_egui_selection_combobox_dropdown_over_strings(ui, "jacobian_types", jacobian_types, None, &mut egui_selection_block_container);
+
+            let start_link_selections = egui_selection_block_container.get_selection_mut_ref("jacobian_vis_start_link").unwrap_selections::<usize>();
+            if start_link_selections.is_empty() { return; }
+            let start_link_idx = start_link_selections[0];
+
+            let end_link_selections = egui_selection_block_container.get_selection_mut_ref("jacobian_vis_end_link").unwrap_selections::<usize>();
+            if end_link_selections.is_empty() { return; }
+            let end_link_idx = end_link_selections[0];
+
+            let chain = robot.robot_configuration_module().robot_model_module().get_link_chain(start_link_idx, end_link_idx).expect("error");
+            if chain.is_none() { return; }
+            let chain = chain.unwrap();
+
+            let dof_columns = egui_selection_block_container.get_selection_mut_ref("jacobian_vis_dofs").unwrap_selections::<(usize, usize)>();
+
+            let jacobian_type = egui_selection_block_container.get_selection_mut_ref("jacobian_types").unwrap_selections::<String>()[0].clone();
+
+            for robot_set_joint_state_bevy_component in query.iter() {
+                let robot_set_joint_state = &robot_set_joint_state_bevy_component.joint_state;
+                let robot_joint_state = robot.spawn_robot_joint_state(robot_set_joint_state.concatenated_state().clone()).expect("error");
+                let fk_res = robot.robot_kinematics_module().compute_fk(&robot_joint_state, &OptimaSE3PoseType::RotationMatrixAndTranslation).expect("error");
+
+                let start_link_entry = fk_res.get_robot_fk_result_link_entry(start_link_idx);
+                let end_link_entry = fk_res.get_robot_fk_result_link_entry(end_link_idx);
+
+                // let start_frame = start_link_entry.pose().as_ref().unwrap().unwrap_rotation_and_translation().expect("error");
+                let end_frame = end_link_entry.pose().as_ref().unwrap().unwrap_rotation_and_translation().expect("error");
+
+                // let start_location = start_frame.translation();
+                let end_location = end_frame.translation();
+                // let start_rotation = start_frame.rotation().unwrap_rotation_matrix().expect("error");
+                // let end_rotation = end_frame.rotation().unwrap_rotation_matrix().expect("error");
+
+                let joints = robot.robot_configuration_module().robot_model_module().joints();
+                for joint in joints {
+                    // let parent_link = joint.preceding_link_idx().unwrap();
+                    let child_link = joint.child_link_idx().unwrap();
+                    if chain.contains(&child_link) {
+                        for joint_axis in joint.joint_axes() {
+                            if dof_columns.contains(&(joint.joint_idx(), joint_axis.joint_sub_dof_idx())) {
+                                let parent_link_entry = fk_res.get_robot_fk_result_link_entry(child_link);
+                                let parent_frame = parent_link_entry.pose().as_ref().unwrap().unwrap_rotation_and_translation().expect("error");
+
+                                let parent_location = parent_frame.translation();
+                                let parent_rotation = parent_frame.rotation().unwrap_rotation_matrix().expect("error");
+
+                                let axis = joint_axis.axis();
+
+                                if &jacobian_type == "Full" || &jacobian_type == "Translational" {
+                                    match joint_axis.axis_primitive_type() {
+                                        JointAxisPrimitiveType::Rotation => {
+                                            let global_axis = parent_rotation * axis;
+                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(parent_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(parent_location + global_axis)), 0.0, Color::rgb(1.0, 0.55, 0.01));
+                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(parent_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), 0.0, Color::rgb(0.23, 0.79, 1.0));
+
+                                            let connector = end_location - parent_location;
+                                            let c = global_axis.cross(&connector);
+                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + c)), 0.0, Color::rgb(0.25, 1.0, 0.49));
+                                        }
+                                        JointAxisPrimitiveType::Translation => {
+                                            let local_axis = parent_rotation * axis;
+                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + local_axis)), 0.0, Color::rgb(0.25, 1.0, 0.49));
+                                        }
+                                    }
+                                }
+
+                                if &jacobian_type == "Full" || &jacobian_type == "Rotational" {
+                                    match joint_axis.axis_primitive_type() {
+                                        JointAxisPrimitiveType::Rotation => {
+                                            let local_axis = parent_rotation * axis;
+                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + local_axis)), 0.0, Color::rgb(0.97, 1.0, 0.1));
+                                        }
+                                        JointAxisPrimitiveType::Translation => { }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        EguiActions::action_egui_container_generic(f,&EguiContainerMode::RightPanel { resizable: true, default_width: 300.0 }, "bevy_robot_jacobian_visualization", &windows, &mut egui_context, &mut egui_window_state_container, &mut gui_global_info);
     }
-    */
 }
 
 #[derive(Component)]

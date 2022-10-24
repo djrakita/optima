@@ -89,119 +89,136 @@ impl EguiActions {
     pub fn action_egui_selection_over_enum<T: IntoEnumIterator + ToAndFromRonString>(ui: &mut Ui,
                                                                                      name: &str,
                                                                                      selection_mode: EguiSelectionMode,
+                                                                                     selection_display_strings: Option<Vec<String>>,
+                                                                                     vertical_scroll_height: f64,
                                                                                      egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>,
                                                                                      keys: &Res<Input<KeyCode>>,
                                                                                      allow_multiple_selections: bool) {
         let selection_choices = EnumUtils::convert_all_variants_of_enum_into_ron_strings::<T>();
-        Self::action_egui_selection_generic(ui, name, selection_mode, selection_choices, egui_selection_block_container, keys, allow_multiple_selections);
+        Self::action_egui_selection_generic(ui, name, selection_mode, selection_choices, selection_display_strings, vertical_scroll_height, egui_selection_block_container, keys, allow_multiple_selections);
     }
     pub fn action_egui_selection_over_strings(ui: &mut Ui,
                                               name: &str,
                                               selection_mode: EguiSelectionMode,
                                               selection_choices_as_strings: Vec<String>,
+                                              selection_display_strings: Option<Vec<String>>,
+                                              vertical_scroll_height: f64,
                                               egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>,
                                               keys: &Res<Input<KeyCode>>,
                                               allow_multiple_selections: bool) {
         let mut ron_strings = vec![];
         for s in &selection_choices_as_strings { ron_strings.push(s.to_ron_string()); }
 
-        Self::action_egui_selection_generic(ui, name, selection_mode, ron_strings, egui_selection_block_container, keys, allow_multiple_selections);
+        Self::action_egui_selection_generic(ui, name, selection_mode, ron_strings, selection_display_strings, vertical_scroll_height, egui_selection_block_container, keys, allow_multiple_selections);
     }
     pub fn action_egui_selection_over_given_items<T: ToAndFromRonString>(ui: &mut Ui,
                                                                          name: &str,
                                                                          selection_mode: EguiSelectionMode,
                                                                          selection_choices: Vec<T>,
+                                                                         selection_display_strings: Option<Vec<String>>,
+                                                                         vertical_scroll_height: f64,
                                                                          egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>,
                                                                          keys: &Res<Input<KeyCode>>,
                                                                          allow_multiple_selections: bool) {
         let mut ron_strings = vec![];
         for s in &selection_choices { ron_strings.push(s.to_ron_string()); }
 
-        Self::action_egui_selection_generic(ui, name, selection_mode, ron_strings, egui_selection_block_container, keys, allow_multiple_selections);
+        Self::action_egui_selection_generic(ui, name, selection_mode, ron_strings, selection_display_strings, vertical_scroll_height, egui_selection_block_container, keys, allow_multiple_selections);
     }
     fn action_egui_selection_generic(ui: &mut Ui,
                                          name: &str,
                                          selection_mode: EguiSelectionMode,
                                          selection_choices_as_ron_strings: Vec<String>,
+                                         selection_display_strings: Option<Vec<String>>,
+                                         vertical_scroll_height: f64,
                                          egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>,
                                          keys: &Res<Input<KeyCode>>,
                                          allow_multiple_selections: bool) {
         let selection_block = egui_selection_block_container.get_selection_mut_ref(name);
 
         ui.group(|ui| {
-            for selection_choice in &selection_choices_as_ron_strings {
-                let currently_selected = selection_block.selections.contains(selection_choice);
-                let mut currently_selected_copy = currently_selected.clone();
-                let selection_code = match &selection_mode {
-                    EguiSelectionMode::RadioButtons => {
-                        if ui.radio(currently_selected_copy, selection_choice.clone()).clicked() {
-                            if !currently_selected { 1 } else { -1 }
-                        } else { 0 }
-                    }
-                    EguiSelectionMode::Checkboxes => {
-                        if ui.checkbox(&mut currently_selected_copy, selection_choice.clone()).clicked() {
-                            if !currently_selected { 1 } else { -1 }
-                        } else { 0 }
-                    }
-                    EguiSelectionMode::SelectionText => {
-                        if ui.selectable_label(currently_selected_copy, selection_choice.clone()).clicked() {
-                            if !currently_selected { 1 } else { -1 }
-                        } else { 0 }
-                    }
-                };
+            egui::ScrollArea::vertical()
+                .max_height(vertical_scroll_height as f32)
+                .id_source(format!("{}_scroll_area", name))
+                .show(ui, |ui| {
+                for (idx, selection_choice) in selection_choices_as_ron_strings.iter().enumerate() {
+                    let display_string = if let Some(selection_display_strings) = &selection_display_strings {
+                        selection_display_strings[idx].clone()
+                    } else {
+                        selection_choice.clone()
+                    };
+                    let currently_selected = selection_block.selections.contains(selection_choice);
+                    let mut currently_selected_copy = currently_selected.clone();
+                    let selection_code = match &selection_mode {
+                        EguiSelectionMode::RadioButtons => {
+                            if ui.radio(currently_selected_copy, display_string.clone()).clicked() {
+                                if !currently_selected { 1 } else { -1 }
+                            } else { 0 }
+                        }
+                        EguiSelectionMode::Checkboxes => {
+                            if ui.checkbox(&mut currently_selected_copy, display_string.clone()).clicked() {
+                                if !currently_selected { 1 } else { -1 }
+                            } else { 0 }
+                        }
+                        EguiSelectionMode::SelectionText => {
+                            if ui.selectable_label(currently_selected_copy, display_string.clone()).clicked() {
+                                if !currently_selected { 1 } else { -1 }
+                            } else { 0 }
+                        }
+                    };
 
-                if selection_code == -1 && (keys.pressed(KeyCode::RShift) || keys.pressed(KeyCode::LShift)) && allow_multiple_selections {
-                    selection_block.remove_selection_by_string(selection_choice);
+                    if selection_code == -1 && (keys.pressed(KeyCode::RShift) || keys.pressed(KeyCode::LShift)) && allow_multiple_selections {
+                        selection_block.remove_selection_by_string(selection_choice);
+                    } else if selection_code == -1 {
+                        selection_block.flush_selections();
+                        selection_block.insert_selection_by_string(selection_choice.clone());
+                    } else if selection_code == 1 && selection_block.selections.len() == 0 {
+                        selection_block.insert_selection_by_string(selection_choice.clone());
+                    } else if selection_code == 1 && selection_block.selections.len() >= 1 && allow_multiple_selections && (keys.pressed(KeyCode::RShift) || keys.pressed(KeyCode::LShift)) {
+                        selection_block.insert_selection_by_string(selection_choice.clone());
+                    } else if selection_code == 1 && selection_block.selections.len() >= 1 && allow_multiple_selections && !(keys.pressed(KeyCode::RShift) || keys.pressed(KeyCode::LShift)) {
+                        selection_block.flush_selections();
+                        selection_block.insert_selection_by_string(selection_choice.clone());
+                    } else if selection_code == 1 && selection_block.selections.len() >= 1 {
+                        selection_block.flush_selections();
+                        selection_block.insert_selection_by_string(selection_choice.clone());
+                    }
                 }
-                else if selection_code == -1 {
-                    selection_block.flush_selections();
-                    selection_block.insert_selection_by_string(selection_choice.clone());
-                }
-                else if selection_code == 1 && selection_block.selections.len() == 0 {
-                    selection_block.insert_selection_by_string(selection_choice.clone());
-                }
-                else if selection_code == 1 && selection_block.selections.len() >= 1 && allow_multiple_selections && (keys.pressed(KeyCode::RShift) || keys.pressed(KeyCode::LShift)) {
-                    selection_block.insert_selection_by_string(selection_choice.clone());
-                }
-                else if selection_code == 1 && selection_block.selections.len() >= 1 && allow_multiple_selections && !(keys.pressed(KeyCode::RShift) || keys.pressed(KeyCode::LShift)) {
-                    selection_block.flush_selections();
-                    selection_block.insert_selection_by_string(selection_choice.clone());
-                }
-                else if selection_code == 1 && selection_block.selections.len() >= 1 {
-                    selection_block.flush_selections();
-                    selection_block.insert_selection_by_string(selection_choice.clone());
-                }
-            }
+            });
         });
     }
 
     pub fn action_egui_selection_combobox_dropdown_over_enum<T: IntoEnumIterator + ToAndFromRonString>(ui: &mut Ui,
                                                                                                        name: &str,
+                                                                                                       selection_display_strings: Option<Vec<String>>,
                                                                                                        egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>) {
         let strings = EnumUtils::convert_all_variants_of_enum_into_ron_strings::<T>();
-        Self::action_egui_selection_combobox_dropdown_generic(ui, name, strings, egui_selection_block_container);
+        Self::action_egui_selection_combobox_dropdown_generic(ui, name, strings, selection_display_strings, egui_selection_block_container);
     }
     pub fn action_egui_selection_combobox_dropdown_over_strings(ui: &mut Ui,
                                                                 name: &str,
                                                                 selection_choices_as_strings: Vec<String>,
+                                                                selection_display_strings: Option<Vec<String>>,
                                                                 egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>) {
         let mut ron_strings = vec![];
         for s in &selection_choices_as_strings { ron_strings.push(s.to_ron_string()); }
 
-        Self::action_egui_selection_combobox_dropdown_generic(ui, name, ron_strings, egui_selection_block_container);
+        Self::action_egui_selection_combobox_dropdown_generic(ui, name, ron_strings, selection_display_strings, egui_selection_block_container);
     }
     pub fn action_egui_selection_combobox_dropdown_over_given_items<T: ToAndFromRonString>(ui: &mut Ui,
                                                                                            name: &str,
                                                                                            selection_choices: Vec<T>,
+                                                                                           selection_display_strings: Option<Vec<String>>,
                                                                                            egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>) {
         let mut ron_strings = vec![];
         for s in &selection_choices { ron_strings.push(s.to_ron_string()); }
 
-        Self::action_egui_selection_combobox_dropdown_generic(ui, name, ron_strings, egui_selection_block_container);
+        Self::action_egui_selection_combobox_dropdown_generic(ui, name, ron_strings, selection_display_strings, egui_selection_block_container);
     }
     fn action_egui_selection_combobox_dropdown_generic(ui: &mut Ui,
                                                        name: &str,
                                                        selection_choices_as_ron_strings: Vec<String>,
+                                                       selection_display_strings: Option<Vec<String>>,
                                                        egui_selection_block_container: &mut ResMut<EguiSelectionBlockContainer>) {
         assert!(selection_choices_as_ron_strings.len() > 0);
 
@@ -213,12 +230,24 @@ impl EguiActions {
             selection_choices_as_ron_strings[0].clone()
         };
 
+        let selected_idx = selection_choices_as_ron_strings.iter().position(|x| &selected == x).unwrap();
+        let selected_display = if let Some(selection_display_strings) = &selection_display_strings {
+            selection_display_strings[selected_idx].clone()
+        } else {
+            selected.clone()
+        };
+
         egui::ComboBox::new(format!("{}_combobox", name), "")
-            .selected_text(format!("{}", selected))
+            .selected_text(format!("{}", selected_display))
             .show_ui(ui, |ui| {
-                for selection_choice in &selection_choices_as_ron_strings {
-                    let mut ss = selection_choice.clone();
-                    if ui.selectable_value(&mut ss, selected.clone(), selection_choice.as_str()).clicked() {
+                for (idx, selection_choice) in selection_choices_as_ron_strings.iter().enumerate() {
+                    let display_string = if let Some(selection_display_strings) = &selection_display_strings {
+                        selection_display_strings[idx].clone()
+                    } else {
+                        selection_choice.clone()
+                    };
+                    let mut ss = display_string.clone();
+                    if ui.selectable_value(&mut ss, selected_display.clone(), display_string).clicked() {
                         selection_block.flush_selections();
                         selection_block.insert_selection_by_string(selection_choice.clone());
                     }

@@ -45,6 +45,23 @@ pub fn bevy_robot_sliders(robot_geometric_shape_scene: &RobotGeometricShapeScene
     app.run();
 }
 
+pub fn bevy_robot_jacobian_visualization(robot: &Robot) {
+    let mut app = App::new();
+    optima_bevy_base(&mut app);
+    optima_bevy_starter_lights(&mut app);
+    optima_bevy_pan_orbit_camera(&mut app);
+    optima_bevy_robotics_scene_visuals_starter(&mut app);
+    optima_bevy_egui_starter(&mut app);
+    optima_bevy_debug_lines(&mut app, false);
+    optima_bevy_spawn_robot_and_robot_geometric_shape_module(&mut app, robot);
+
+    app.add_system(RobotSceneSystems::system_robot_set_joint_sliders_egui.label("gui").label("joint_sliders"));
+    app.add_system(RobotSceneSystems::system_robot_set_link_info_egui.label("gui").before("joint_sliders"));
+    app.add_system(RobotSceneSystems::system_robot_jacobian_visualization_egui.label("gui").after("joint_sliders"));
+
+    app.run();
+}
+
 pub fn bevy_robot_self_collisions_calibrator(robot: &Robot) {
     let mut app = App::new();
     optima_bevy_base(&mut app);
