@@ -638,7 +638,6 @@ impl RobotSceneSystems {
                                                     mut egui_context: ResMut<EguiContext>,
                                                     mut egui_window_state_container: ResMut<EguiWindowStateContainer>,
                                                     mut gui_global_info: ResMut<GuiGlobalInfo>,
-                                                    mut material_change_request_container: ResMut<MaterialChangeRequestContainer>,
                                                     keys: Res<Input<KeyCode>>,
                                                     mut lines: ResMut<DebugLines>) {
         let f = |ui: &mut Ui| {
@@ -716,7 +715,7 @@ impl RobotSceneSystems {
                 let robot_joint_state = robot.spawn_robot_joint_state(robot_set_joint_state.concatenated_state().clone()).expect("error");
                 let fk_res = robot.robot_kinematics_module().compute_fk(&robot_joint_state, &OptimaSE3PoseType::RotationMatrixAndTranslation).expect("error");
 
-                let start_link_entry = fk_res.get_robot_fk_result_link_entry(start_link_idx);
+                // let start_link_entry = fk_res.get_robot_fk_result_link_entry(start_link_idx);
                 let end_link_entry = fk_res.get_robot_fk_result_link_entry(end_link_idx);
 
                 // let start_frame = start_link_entry.pose().as_ref().unwrap().unwrap_rotation_and_translation().expect("error");
