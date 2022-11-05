@@ -1,3 +1,5 @@
+#![allow(unknown_lints)]
+
 use vfs::*;
 #[cfg(not(feature = "do_not_embed_assets"))]
 use rust_embed::RustEmbed;
