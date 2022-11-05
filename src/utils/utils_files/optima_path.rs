@@ -522,6 +522,7 @@ impl OptimaPath {
             }
         }
     }
+    #[allow(for_loops_over_fallibles)]
     pub fn walk_directory_and_match(&self, pattern: OptimaPathMatchingPattern, stop_condition: OptimaPathMatchingStopCondition) -> Vec<OptimaPath> {
         let mut out_vec = vec![];
 
@@ -890,7 +891,7 @@ impl OptimaPath {
     fn auto_create_optima_asset_path_json_file() -> bool {
         optima_print("Searching for Optima assets folder...", PrintMode::Println, PrintColor::Cyan, true, 0, None, vec![]);
         let mut home_dir = Self::new_home_path().expect("error");
-        let walk_vec = home_dir.walk_directory_and_match(OptimaPathMatchingPattern::FileOrDirName("optima_assets".to_string()), OptimaPathMatchingStopCondition::First);
+        let walk_vec = home_dir.walk_directory_and_match(OptimaPathMatchingPattern::FileOrDirName("optima_assets".to_string()), OptimaPathMatchingStopCondition::All);
         return if walk_vec.is_empty() {
             optima_print("WARNING: optima_assets folder not found on your computer.", PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
             let mut lock_path = Self::new_home_path().expect("error");
@@ -900,7 +901,16 @@ impl OptimaPath {
             optima_print(&format!("If you would like to use a local optima_assets directory on your computer, please delete the lock file once the assets directory is on your computer"), PrintMode::Println, PrintColor::Yellow, true, 0, None, vec![]);
             false
         } else {
-            let found_path = walk_vec[0].clone();
+            let mut found_path = walk_vec[0].clone();
+            let mut split_vec = found_path.split_path_into_string_components();
+            for p in &walk_vec {
+                let sv = p.split_path_into_string_components();
+                if sv.len() < split_vec.len() || split_vec.contains(&".git".to_string()) {
+                    found_path = p.clone();
+                    split_vec = sv.clone();
+                }
+            }
+
             match &found_path {
                 OptimaPath::Path(p) => {
                     optima_print(&format!("Optima assets folder found at {:?}", p), PrintMode::Println, PrintColor::Green, true, 0, None, vec![]);
