@@ -30,3 +30,4 @@ src/bin/*
 !src/bin/preprocess_robot.rs
 !src/bin/robot_jacobian_visualization.rs
 !src/bin/robot_self_collision_calibrator.rs
+!src/bin/robot_joint_sliders.rs
