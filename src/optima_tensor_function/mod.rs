@@ -759,9 +759,9 @@ impl OptimaTensor {
         let dimensions = match dimensions {
             OTFDimensions::Any => {
                 let mut dimensions = vec![];
-                let num_dimensions = SimpleSamplers::uniform_samples_i32(&vec![(1,5)])[0] as usize;
+                let num_dimensions = SimpleSamplers::uniform_samples_i32(&vec![(1,5)], None)[0] as usize;
                 for _ in 0..num_dimensions {
-                    dimensions.push( SimpleSamplers::uniform_samples_i32(&vec![(1,7)])[0] as usize );
+                    dimensions.push( SimpleSamplers::uniform_samples_i32(&vec![(1,7)], None)[0] as usize );
                 }
                 dimensions
             }
@@ -770,7 +770,7 @@ impl OptimaTensor {
 
                 for dd in d {
                     match dd {
-                        OTFDimension::Any => { dimensions.push( SimpleSamplers::uniform_samples_i32(&vec![(1,7)])[0] as usize ); }
+                        OTFDimension::Any => { dimensions.push( SimpleSamplers::uniform_samples_i32(&vec![(1,7)], None)[0] as usize ); }
                         OTFDimension::Fixed(a) => { dimensions.push(a); }
                     }
                 }
@@ -783,7 +783,7 @@ impl OptimaTensor {
         let mut out = Self::new_zeros(dimensions);
         let v = out.vectorized_data_mut();
         for vv in v {
-            *vv = SimpleSamplers::uniform_sample((-1.0,1.0));
+            *vv = SimpleSamplers::uniform_sample((-1.0,1.0), None);
         }
         out
     }
@@ -1189,7 +1189,7 @@ impl OptimaTensor0D {
     pub fn new(value: f64) -> Self {
         Self {
             value: [value],
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
     pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
@@ -1314,7 +1314,7 @@ impl Clone for OptimaTensor0D {
     fn clone(&self) -> Self {
         Self {
             value: self.value.clone(),
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
 }
@@ -1331,7 +1331,7 @@ impl OptimaTensor1D {
     pub fn new(vector: DVector<f64>) -> Self {
         Self {
             vector,
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
     pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
@@ -1463,7 +1463,7 @@ impl Clone for OptimaTensor1D {
     fn clone(&self) -> Self {
         Self {
             vector: self.vector.clone(),
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
 }
@@ -1481,7 +1481,7 @@ impl OptimaTensor2D {
     pub fn new(matrix: DMatrix<f64>) -> Self {
         Self {
             matrix,
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
     pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
@@ -1656,7 +1656,7 @@ impl Clone for OptimaTensor2D {
     fn clone(&self) -> Self {
         Self {
             matrix: self.matrix.clone(),
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
 }
@@ -1674,7 +1674,7 @@ impl OptimaTensorND {
     pub fn new(tensor: ArrayD<f64>) -> Self {
         Self {
             tensor,
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
     pub fn convert(&self, target: &OptimaTensorSignature) -> OptimaTensor {
@@ -1924,7 +1924,7 @@ impl Clone for OptimaTensorND {
     fn clone(&self) -> Self {
         Self {
             tensor: self.tensor.clone(),
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
 }

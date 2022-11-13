@@ -310,7 +310,7 @@ impl RobotJointStateModule {
             let fixed_value = axis.fixed_value();
             match fixed_value {
                 None => {
-                    let sample = SimpleSamplers::uniform_samples(&vec![axis.bounds()]);
+                    let sample = SimpleSamplers::uniform_samples(&vec![axis.bounds()], None);
                     out_dvec[i] = sample[0];
                 }
                 Some(fixed_value) => {

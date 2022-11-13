@@ -52,7 +52,7 @@ impl ShapeCollection {
             skips: SquareArray2D::new(0, true, None),
             average_distances: SquareArray2D::new(0, true, None),
             sorted_signatures_with_shape_idxs: vec![],
-            id: SimpleSamplers::uniform_sample((-1.0, 1.0))
+            id: SimpleSamplers::uniform_sample((-1.0, 1.0), None)
         }
     }
     pub fn add_geometric_shape(&mut self, geometric_shape: GeometricShape) -> usize {
@@ -63,7 +63,7 @@ impl ShapeCollection {
         self.shapes.push(geometric_shape);
         self.skips.append_new_row_and_column(Some(MemoryCell::new(false)));
         self.average_distances.append_new_row_and_column(Some(MemoryCell::new(1.0)));
-        self.id = SimpleSamplers::uniform_sample((-1.0, 1.0));
+        self.id = SimpleSamplers::uniform_sample((-1.0, 1.0), None);
         return add_idx;
     }
     /// Shapes are removed by setting all pairs that include the given shape idx as a skip.
@@ -765,7 +765,7 @@ impl SaveAndLoadable for ShapeCollection {
             skips,
             average_distances,
             sorted_signatures_with_shape_idxs,
-            id: SimpleSamplers::uniform_sample((-1.0,1.0))
+            id: SimpleSamplers::uniform_sample((-1.0,1.0), None)
         })
     }
 }

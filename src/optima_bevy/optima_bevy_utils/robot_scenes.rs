@@ -17,6 +17,7 @@ use crate::optima_bevy::optima_bevy_utils::generic_item::{GenericItemSignature};
 use crate::optima_bevy::optima_bevy_utils::gui::GuiGlobalInfo;
 use crate::optima_bevy::optima_bevy_utils::materials::{MaterialChangeRequest, MaterialChangeRequestContainer, MaterialChangeRequestType, OptimaBevyMaterial, OptimaBevyMaterialComponent};
 use crate::optima_bevy::optima_bevy_utils::transform::TransformUtils;
+use crate::optima_bevy::optima_bevy_utils::viewport_visuals::ViewportVisualsActions;
 use crate::optima_tensor_function::OTFImmutVars;
 use crate::robot_modules::robot::Robot;
 use crate::robot_modules::robot_geometric_shape_module::{RobotGeometricShapeModule, RobotLinkShapeRepresentation, RobotShapeCollectionQuery};
@@ -349,9 +350,9 @@ impl RobotSceneActions {
                     let y_end_bevy = TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(Vec3::new(y_end[0] as f32, y_end[1] as f32, y_end[2] as f32));
                     let z_end_bevy = TransformUtils::util_convert_z_up_vec3_to_y_up_bevy_vec3(Vec3::new(z_end[0] as f32, z_end[1] as f32, z_end[2] as f32));
 
-                    lines.line_colored(center_bevy, x_end_bevy, 0.0, Color::rgb(1.0, 0.0, 0.0));
-                    lines.line_colored(center_bevy, y_end_bevy, 0.0, Color::rgb(0.0, 1.0, 0.0));
-                    lines.line_colored(center_bevy, z_end_bevy, 0.0, Color::rgb(0.0, 0.0, 1.0));
+                    ViewportVisualsActions::action_draw_gpu_line_bevy_space(lines, center_bevy, x_end_bevy, Color::rgb(1.0, 0.0, 0.0), 4.0, 10, 3, 0.0);
+                    ViewportVisualsActions::action_draw_gpu_line_bevy_space(lines, center_bevy, y_end_bevy, Color::rgb(0.0, 1.0, 0.0), 4.0, 10, 3, 0.0);
+                    ViewportVisualsActions::action_draw_gpu_line_bevy_space(lines, center_bevy, z_end_bevy, Color::rgb(0.0, 0.0, 1.0), 4.0, 10, 3, 0.0);
                 }
             });
         };
@@ -745,16 +746,18 @@ impl RobotSceneSystems {
                                     match joint_axis.axis_primitive_type() {
                                         JointAxisPrimitiveType::Rotation => {
                                             let global_axis = parent_rotation * axis;
-                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(parent_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(parent_location + global_axis)), 0.0, Color::rgb(1.0, 0.55, 0.01));
-                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(parent_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), 0.0, Color::rgb(0.23, 0.79, 1.0));
+
+                                            ViewportVisualsActions::action_draw_gpu_line_bevy_space(&mut lines, TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(parent_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(parent_location + global_axis)), Color::rgb(1.0, 0.55, 0.01), 0.5, 6, 2, 0.0);
+                                            ViewportVisualsActions::action_draw_gpu_line_bevy_space(&mut lines, TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(parent_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), Color::rgb(0.23, 0.79, 1.0), 0.5, 6, 2, 0.0);
 
                                             let connector = end_location - parent_location;
                                             let c = global_axis.cross(&connector);
-                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + c)), 0.0, Color::rgb(0.25, 1.0, 0.49));
+                                            ViewportVisualsActions::action_draw_gpu_line_bevy_space(&mut lines, TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + c)), Color::rgb(0.25, 1.0, 0.49), 5.0, 10, 3, 0.0);
+
                                         }
                                         JointAxisPrimitiveType::Translation => {
                                             let local_axis = parent_rotation * axis;
-                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + local_axis)), 0.0, Color::rgb(0.25, 1.0, 0.49));
+                                            ViewportVisualsActions::action_draw_gpu_line_bevy_space(&mut lines, TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + local_axis)), Color::rgb(0.25, 1.0, 0.49), 5.0, 10, 3, 0.0);
                                         }
                                     }
                                 }
@@ -763,7 +766,7 @@ impl RobotSceneSystems {
                                     match joint_axis.axis_primitive_type() {
                                         JointAxisPrimitiveType::Rotation => {
                                             let local_axis = parent_rotation * axis;
-                                            lines.line_colored(TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + local_axis)), 0.0, Color::rgb(0.97, 1.0, 0.1));
+                                            ViewportVisualsActions::action_draw_gpu_line_bevy_space(&mut lines, TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(end_location), TransformUtils::util_convert_z_up_vector3_to_y_up_bevy_vec3(&(end_location + local_axis)), Color::rgb(0.97, 1.0, 0.1), 5.0, 10, 3, 0.0);
                                         }
                                         JointAxisPrimitiveType::Translation => { }
                                     }
