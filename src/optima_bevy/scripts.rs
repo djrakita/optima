@@ -2,7 +2,10 @@ use bevy::app::App;
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin};
+use bevy_mod_picking::{DefaultPickingPlugins};
 use bevy_prototype_debug_lines::{DebugLinesPlugin};
+use bevy_transform_gizmo::{TransformGizmoPlugin, TransformGizmoSystem};
+use nalgebra::DVector;
 use crate::optima_bevy::optima_bevy_utils::camera::CameraSystems;
 use crate::optima_bevy::optima_bevy_utils::egui::{EguiSelectionBlockContainer, EguiSystems, EguiWindowStateContainer};
 use crate::optima_bevy::optima_bevy_utils::engine::{EngineSystems, FrameCount};
@@ -10,11 +13,14 @@ use crate::optima_bevy::optima_bevy_utils::gui::{GuiGlobalInfo, GuiSystems};
 use crate::optima_bevy::optima_bevy_utils::lights::LightSystems;
 use crate::optima_bevy::optima_bevy_utils::materials::{MaterialChangeRequestContainer, MaterialSystems};
 use crate::optima_bevy::optima_bevy_utils::robot_scenes::{RobotLinkInfoVars, RobotSceneSystems};
+use crate::optima_bevy::optima_bevy_utils::splines::SplineSystems;
 use crate::optima_bevy::optima_bevy_utils::viewport_visuals::{ViewportVisualsSystems};
 use crate::optima_tensor_function::{OTFImmutVars, OTFImmutVarsObject};
 use crate::robot_modules::robot::Robot;
 use crate::robot_set_modules::robot_set::RobotSet;
 use crate::scenes::robot_geometric_shape_scene::RobotGeometricShapeScene;
+use crate::utils::utils_sampling::SimpleSamplers;
+use crate::utils::utils_splines::InterpolatingSpline;
 
 pub fn bevy_display_robot_geometric_shape_scene(robot_geometric_shape_scene: &RobotGeometricShapeScene) {
     let mut app = App::new();
@@ -78,6 +84,47 @@ pub fn bevy_robot_self_collisions_calibrator(robot: &Robot) {
     app.run();
 }
 
+pub fn bevy_interpolating_spline_visualization(interpolating_spline: InterpolatingSpline) {
+    let mut app = App::new();
+    optima_bevy_base(&mut app);
+    optima_bevy_starter_lights(&mut app);
+    optima_bevy_pan_orbit_camera(&mut app);
+    optima_bevy_robotics_scene_visuals_starter(&mut app);
+    optima_bevy_egui_starter(&mut app);
+    optima_bevy_debug_lines(&mut app, false);
+    optima_bevy_transform_gizmo_plugin(&mut app);
+    app.add_plugins(DefaultPickingPlugins);
+    app.insert_resource(interpolating_spline);
+    app.add_startup_system(SplineSystems::interpolating_spline_startup_system);
+    app.add_system(SplineSystems::interpolating_spline_system.before(TransformGizmoSystem::Place));
+
+    app.run();
+}
+
+pub fn bevy_bspline_visualization(num_points: usize) {
+    let mut app = App::new();
+    optima_bevy_base(&mut app);
+    optima_bevy_starter_lights(&mut app);
+    optima_bevy_pan_orbit_camera(&mut app);
+    optima_bevy_robotics_scene_visuals_starter(&mut app);
+    optima_bevy_egui_starter(&mut app);
+    optima_bevy_debug_lines(&mut app, false);
+    optima_bevy_transform_gizmo_plugin(&mut app);
+    app.add_plugins(DefaultPickingPlugins);
+
+    let mut control_points = vec![];
+    for _ in 0..num_points {
+        let s = SimpleSamplers::uniform_samples(&vec![(-2.,2.); 2], None);
+        control_points.push( DVector::from_vec(vec![s[0], s[1], 0.0]));
+    }
+
+    app.insert_resource(control_points);
+    app.add_startup_system(SplineSystems::bspline_startup_system);
+    app.add_system(SplineSystems::bspline_system.before(TransformGizmoSystem::Place));
+
+    app.run();
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 fn optima_bevy_base(app: &mut App) {
@@ -118,6 +165,9 @@ fn optima_bevy_egui_starter(app: &mut App) {
 }
 fn optima_bevy_debug_lines(app: &mut App, with_depth_test: bool) {
     app.add_plugin(DebugLinesPlugin::with_depth_test(with_depth_test));
+}
+fn optima_bevy_transform_gizmo_plugin(app: &mut App) {
+    app.add_plugin(TransformGizmoPlugin::new(Quat::from_euler(EulerRot::XYZ, -std::f32::consts::FRAC_PI_2, 0.0, 0.0)));
 }
 fn optima_bevy_robotics_scene_visuals_starter(app: &mut App) {
     app

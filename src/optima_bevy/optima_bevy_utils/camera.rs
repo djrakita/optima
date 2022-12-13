@@ -2,6 +2,8 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::math::Vec3;
 use bevy::prelude::*;
 use bevy::render::camera::Projection;
+use bevy_mod_picking::PickingCameraBundle;
+use bevy_transform_gizmo::GizmoPickSource;
 use crate::optima_bevy::optima_bevy_utils::gui::GuiGlobalInfo;
 use crate::optima_bevy::optima_bevy_utils::transform::TransformUtils;
 use crate::optima_bevy::optima_bevy_utils::window::WindowUtils;
@@ -19,7 +21,9 @@ impl CameraActions {
         }).insert(PanOrbitCamera {
             radius,
             ..Default::default()
-        });
+        })
+            .insert_bundle(PickingCameraBundle::default())
+            .insert(GizmoPickSource::default());
     }
 }
 

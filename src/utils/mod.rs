@@ -13,3 +13,4 @@ pub mod utils_algorithms;
 pub mod utils_combinations;
 pub mod utils_math;
 pub mod utils_enums;
+pub mod utils_splines;

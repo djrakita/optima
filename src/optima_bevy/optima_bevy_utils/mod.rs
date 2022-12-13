@@ -9,3 +9,4 @@ pub mod egui;
 pub mod gui;
 pub mod materials;
 pub mod generic_item;
+pub mod splines;
