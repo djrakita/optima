@@ -9,7 +9,7 @@ use bevy_prototype_debug_lines::DebugLines;
 use nalgebra::DVector;
 use crate::optima_bevy::optima_bevy_utils::transform::TransformUtils;
 use crate::optima_bevy::optima_bevy_utils::viewport_visuals::ViewportVisualsActions;
-use crate::utils::utils_splines::{BSpline, InterpolatingSpline, InterpolatingSplineType};
+use crate::utils::utils_splines::{ArclengthParameterizedSpline, BSpline, InterpolatingSpline, InterpolatingSplineType, Spline};
 
 pub struct SplineActions;
 impl SplineActions {
@@ -394,11 +394,16 @@ impl SplineSystems {
         }
 
         let mut splines = vec![];
-        splines.push(BSpline::new(control_points.clone(), 2));
-        splines.push(BSpline::new(control_points.clone(), 3));
-        splines.push(BSpline::new(control_points.clone(), 4));
-        splines.push(BSpline::new(control_points.clone(), 5));
-        splines.push(BSpline::new(control_points.clone(), 6));
+        // splines.push(BSpline::new(control_points.clone(), 2));
+        // splines.push(BSpline::new(control_points.clone(), 3));
+        // splines.push(BSpline::new(control_points.clone(), 4));
+        // splines.push(BSpline::new(control_points.clone(), 5));
+        // splines.push(BSpline::new(control_points.clone(), 6));
+        splines.push(ArclengthParameterizedSpline::new(Spline::BSpline(BSpline::new(control_points.clone(), 2)), 300));
+        splines.push(ArclengthParameterizedSpline::new(Spline::BSpline(BSpline::new(control_points.clone(), 3)), 300));
+        splines.push(ArclengthParameterizedSpline::new(Spline::BSpline(BSpline::new(control_points.clone(), 4)), 300));
+        splines.push(ArclengthParameterizedSpline::new(Spline::BSpline(BSpline::new(control_points.clone(), 5)), 300));
+        splines.push(ArclengthParameterizedSpline::new(Spline::BSpline(BSpline::new(control_points.clone(), 6)), 300));
 
         let colors = vec![
             Color::rgb(1.0, 0.47, 0.0),
@@ -410,9 +415,11 @@ impl SplineSystems {
 
         for (idx, spline) in splines.iter().enumerate() {
             let stride = 0.01;
+            // let mut t = 0.0 + stride;
             let mut t = 0.0 + stride;
 
-            while t < (control_points.len() - 1) as f64 {
+            // while t < (control_points.len() - 1) as f64 {
+            while t < 1.0 {
                 let p0 = spline.interpolate(t - stride);
                 let p1 = spline.interpolate(t);
 

@@ -1,5 +1,99 @@
+use std::fmt::Debug;
 use nalgebra::{DVector};
 use crate::utils::utils_sampling::SimpleSamplers;
+
+#[derive(Clone, Debug)]
+pub struct ArclengthParameterizedSpline {
+    spline: Spline,
+    /// Each element takes the form of (length, t_value)
+    arclength_markers: Vec<(f64, f64)>,
+    total_arclength: f64
+}
+impl ArclengthParameterizedSpline {
+    pub fn new(spline: Spline, num_arclength_markers: usize) -> Self {
+        assert!(num_arclength_markers > 10);
+
+        let mut arclength_markers = vec![];
+
+        let mut t = 0.0;
+        let max_allowable_t_value = spline.max_allowable_t_value();
+        let step_size = max_allowable_t_value / num_arclength_markers as f64;
+        let mut accumulated_distance = 0.0;
+
+        let mut prev_point = spline.interpolate(0.0);
+
+        let mut passed_m = false;
+        while !passed_m {
+            if t >= max_allowable_t_value {
+                passed_m = true;
+                t = max_allowable_t_value;
+            }
+            let curr_point = spline.interpolate(t);
+            let dis = (&curr_point - &prev_point).norm();
+            accumulated_distance += dis;
+
+            arclength_markers.push((accumulated_distance, t));
+
+            prev_point = curr_point;
+            t += step_size;
+        }
+
+        Self {
+            spline,
+            arclength_markers,
+            total_arclength: accumulated_distance
+        }
+    }
+    pub fn interpolate(&self, s: f64) -> DVector<f64> {
+        assert!( 0.0 <= s && s <= 1.0 );
+
+        let r = s * self.total_arclength;
+
+        let binary_search_res = self.arclength_markers.binary_search_by(|x| x.0.partial_cmp(&r).unwrap());
+
+        return match binary_search_res {
+            Ok(idx) => {
+                self.spline.interpolate(self.arclength_markers[idx].1)
+            }
+            Err(idx) => {
+                let upper_bound_idx = idx + 1;
+                let lower_bound_idx = idx;
+
+                let upper_bound_dis = self.arclength_markers[upper_bound_idx].0;
+                let lower_bound_dis = self.arclength_markers[lower_bound_idx].0;
+
+                let upper_bound_t = self.arclength_markers[upper_bound_idx].1;
+                let lower_bound_t = self.arclength_markers[lower_bound_idx].1;
+
+                let dis_ratio = (r - lower_bound_dis) / (upper_bound_dis - lower_bound_dis);
+
+                let t = lower_bound_t + dis_ratio * (upper_bound_t - lower_bound_t);
+
+                self.spline.interpolate(t)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Spline {
+    InterpolatingSpline(InterpolatingSpline),
+    BSpline(BSpline)
+}
+impl Spline {
+    pub fn interpolate(&self, t: f64) -> DVector<f64> {
+        match self {
+            Spline::InterpolatingSpline(s) => { s.interpolate(t) }
+            Spline::BSpline(s) => { s.interpolate(t) }
+        }
+    }
+    pub fn max_allowable_t_value(&self) -> f64 {
+        match self {
+            Spline::InterpolatingSpline(s) => { s.max_allowable_t_value() }
+            Spline::BSpline(s) => { s.max_allowable_t_value() }
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct InterpolatingSpline {
@@ -77,10 +171,12 @@ impl InterpolatingSpline {
     }
     #[inline]
     pub fn interpolate(&self, t: f64) -> DVector<f64> {
+        if t == self.max_allowable_t_value() { return self.interpolate(t - 0.00000001); }
+
         assert!(t >= 0.0);
         let rt = t.fract();
         let spline_segment_idx = t.floor() as usize;
-        assert!(spline_segment_idx < self.num_spline_segments);
+        assert!(spline_segment_idx < self.num_spline_segments, "t: {}", t);
 
         let a_vecs = &self.spline_segment_a_coefficients[spline_segment_idx];
 
@@ -212,6 +308,10 @@ impl InterpolatingSpline {
     #[inline]
     pub fn control_points(&self) -> &Vec<DVector<f64>> {
         &self.control_points
+    }
+    #[inline]
+    pub fn max_allowable_t_value(&self) -> f64 {
+        return self.num_spline_segments as f64;
     }
 }
 
@@ -359,5 +459,9 @@ impl BSpline {
     #[inline]
     pub fn control_points(&self) -> &Vec<DVector<f64>> {
         &self.control_points
+    }
+    #[inline]
+    pub fn max_allowable_t_value(&self) -> f64 {
+        return self.control_points.len() as f64 - 1.0;
     }
 }
