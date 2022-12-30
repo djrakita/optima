@@ -1,4 +1,5 @@
 use std::vec;
+use f64ad_core::f64ad::f64ad;
 #[cfg(not(target_arch = "wasm32"))]
 use pyo3::*;
 
@@ -8,10 +9,10 @@ use wasm_bindgen::prelude::*;
 use nalgebra::{Isometry3, Matrix3, Matrix4, Quaternion, Rotation3, Unit, UnitQuaternion, Vector3};
 use serde::{Serialize, Deserialize};
 use crate::utils::utils_errors::OptimaError;
-use crate::utils::utils_se3::homogeneous_matrix::HomogeneousMatrix;
-use crate::utils::utils_se3::implicit_dual_quaternion::ImplicitDualQuaternion;
-use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationType};
-use crate::utils::utils_se3::rotation_and_translation::RotationAndTranslation;
+use crate::utils::utils_se3::homogeneous_matrix::{HomogeneousMatrix, HomogeneousMatrixAD};
+use crate::utils::utils_se3::implicit_dual_quaternion::{ImplicitDualQuaternion, ImplicitDualQuaternionAD};
+use crate::utils::utils_se3::optima_rotation::{OptimaRotation, OptimaRotationAD, OptimaRotationType};
+use crate::utils::utils_se3::rotation_and_translation::{RotationAndTranslation, RotationAndTranslationAD};
 #[cfg(target_arch = "wasm32")]
 use crate::utils::utils_wasm::JsMatrix;
 #[cfg(target_arch = "wasm32")]
@@ -579,6 +580,568 @@ impl Default for OptimaSE3Pose {
     }
 }
 
+/// An enum used to represent a rotation or orientation.  The enum affords easy conversion between
+/// rotation types and functions over singular or pairs of rotations.
+/// This is the main object that should be used for representing an SE(3) pose due to its
+/// flexibility and interoperability.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OptimaSE3PoseAD {
+    ImplicitDualQuaternion { data: ImplicitDualQuaternionAD, pose_type: OptimaSE3PoseType },
+    HomogeneousMatrix { data: HomogeneousMatrixAD, pose_type: OptimaSE3PoseType },
+    RotationAndTranslation { data: RotationAndTranslationAD, pose_type: OptimaSE3PoseType },
+    EulerAnglesAndTranslation { euler_angles: Vector3<f64ad>, translation: Vector3<f64ad>, phantom_data: ImplicitDualQuaternionAD, pose_type: OptimaSE3PoseType }
+}
+impl OptimaSE3PoseAD {
+    pub fn new_from_euler_angles(rx: f64ad, ry: f64ad, rz: f64ad, x: f64ad, y: f64ad, z: f64ad, t: &OptimaSE3PoseType) -> Self {
+        match t {
+            OptimaSE3PoseType::ImplicitDualQuaternion => {
+                Self::new_implicit_dual_quaternion_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+            OptimaSE3PoseType::HomogeneousMatrix => {
+                Self::new_homogeneous_matrix_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => {
+                Self::new_unit_quaternion_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => {
+                Self::new_rotation_matrix_and_translation_from_euler_angles(rx, ry, rz, x, y, z)
+            }
+            OptimaSE3PoseType::EulerAnglesAndTranslation => {
+                let phantom_data = ImplicitDualQuaternionAD::new_from_euler_angles(rx, ry, rz, x, y, z);
+                let euler_angles_and_translation = phantom_data.to_euler_angles_and_translation();
+                Self::EulerAnglesAndTranslation {
+                    euler_angles: euler_angles_and_translation.0,
+                    translation: euler_angles_and_translation.1,
+                    phantom_data,
+                    pose_type: OptimaSE3PoseType::EulerAnglesAndTranslation
+                }
+            }
+        }
+    }
+    pub fn new_from_axis_angle(axis: &Unit<Vector3<f64ad>>, angle: f64ad, x: f64ad, y: f64ad, z: f64ad, t: &OptimaSE3PoseType) -> Self {
+        match t {
+            OptimaSE3PoseType::ImplicitDualQuaternion => {
+                Self::new_implicit_dual_quaternion_from_axis_angle(axis, angle, x, y, z)
+            }
+            OptimaSE3PoseType::HomogeneousMatrix => {
+                Self::new_homogeneous_matrix_from_axis_angle(axis, angle, x, y, z)
+            }
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => {
+                Self::new_unit_quaternion_and_translation_from_axis_angle(axis, angle, x, y, z)
+            }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => {
+                Self::new_rotation_matrix_and_translation_from_axis_angle(axis, angle, x, y, z)
+            }
+            OptimaSE3PoseType::EulerAnglesAndTranslation => {
+                let phantom_data = ImplicitDualQuaternionAD::new_from_axis_angle(axis, angle, x, y, z);
+                let euler_angles_and_translation = phantom_data.to_euler_angles_and_translation();
+                Self::EulerAnglesAndTranslation {
+                    euler_angles: euler_angles_and_translation.0,
+                    translation: euler_angles_and_translation.1,
+                    phantom_data,
+                    pose_type: OptimaSE3PoseType::EulerAnglesAndTranslation
+                }
+            }
+        }
+    }
+    pub fn new_identity() -> Self {
+        Self::new_from_euler_angles(f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.), &OptimaSE3PoseType::ImplicitDualQuaternion)
+    }
+
+    pub fn new_homogeneous_matrix(data: HomogeneousMatrixAD) -> Self {
+        Self::HomogeneousMatrix { data, pose_type: OptimaSE3PoseType::HomogeneousMatrix }
+    }
+    pub fn new_homogeneous_matrix_from_euler_angles(rx: f64ad, ry: f64ad, rz: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_homogeneous_matrix(HomogeneousMatrixAD::new_from_euler_angles(rx, ry, rz, x, y, z))
+    }
+    pub fn new_homogeneous_matrix_from_axis_angle(axis: &Unit<Vector3<f64ad>>, angle: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_homogeneous_matrix(HomogeneousMatrixAD::new_from_axis_angle(axis, angle, x, y, z))
+    }
+
+    pub fn new_rotation_and_translation(data: RotationAndTranslationAD) -> Self {
+        match data.rotation() {
+            OptimaRotationAD::RotationMatrix { .. } => {
+                Self::RotationAndTranslation { data, pose_type: OptimaSE3PoseType::RotationMatrixAndTranslation }
+            }
+            OptimaRotationAD::UnitQuaternion { .. } => {
+                Self::RotationAndTranslation { data, pose_type: OptimaSE3PoseType::UnitQuaternionAndTranslation }
+            }
+        }
+    }
+    pub fn new_rotation_and_translation_from_euler_angles(rx: f64ad, ry: f64ad, rz: f64ad, x: f64ad, y: f64ad, z: f64ad, rotation_type: &OptimaRotationType) -> Self {
+        Self::new_rotation_and_translation(RotationAndTranslationAD::new_from_euler_angles(rx, ry, rz, x, y, z, rotation_type))
+    }
+    pub fn new_rotation_and_translation_from_axis_angle(axis: &Unit<Vector3<f64ad>>, angle: f64ad, x: f64ad, y: f64ad, z: f64ad, rotation_type: &OptimaRotationType) -> Self {
+        Self::new_rotation_and_translation(RotationAndTranslationAD::new_from_axis_angle(axis, angle, x, y, z, rotation_type))
+    }
+
+    pub fn new_unit_quaternion_and_translation(q: UnitQuaternion<f64ad>, t: Vector3<f64ad>) -> Self {
+        Self::new_rotation_and_translation(RotationAndTranslationAD::new(OptimaRotationAD::new_unit_quaternion(q), t))
+    }
+    pub fn new_unit_quaternion_and_translation_from_euler_angles(rx: f64ad, ry: f64ad, rz: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_rotation_and_translation_from_euler_angles(rx, ry, rz, x, y, z, &OptimaRotationType::UnitQuaternion)
+    }
+    pub fn new_unit_quaternion_and_translation_from_axis_angle(axis: &Unit<Vector3<f64ad>>, angle: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_rotation_and_translation_from_axis_angle(axis, angle, x, y, z, &OptimaRotationType::UnitQuaternion)
+    }
+
+    pub fn new_rotation_matrix_and_translation(m: Rotation3<f64ad>, t: Vector3<f64ad>) -> Self {
+        Self::new_rotation_and_translation(RotationAndTranslationAD::new(OptimaRotationAD::new_rotation_matrix(m), t))
+    }
+    pub fn new_rotation_matrix_and_translation_from_euler_angles(rx: f64ad, ry: f64ad, rz: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_rotation_and_translation_from_euler_angles(rx, ry, rz, x, y, z, &OptimaRotationType::RotationMatrix)
+    }
+    pub fn new_rotation_matrix_and_translation_from_axis_angle(axis: &Unit<Vector3<f64ad>>, angle: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_rotation_and_translation_from_axis_angle(axis, angle, x, y, z, &OptimaRotationType::RotationMatrix)
+    }
+
+    pub fn new_implicit_dual_quaternion(data: ImplicitDualQuaternionAD) -> Self {
+        Self::ImplicitDualQuaternion { data, pose_type: OptimaSE3PoseType::ImplicitDualQuaternion }
+    }
+    pub fn new_implicit_dual_quaternion_from_euler_angles(rx: f64ad, ry: f64ad, rz: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_implicit_dual_quaternion(ImplicitDualQuaternionAD::new_from_euler_angles(rx, ry, rz, x, y, z))
+    }
+    pub fn new_implicit_dual_quaternion_from_axis_angle(axis: &Unit<Vector3<f64ad>>, angle: f64ad, x: f64ad, y: f64ad, z: f64ad) -> Self {
+        Self::new_implicit_dual_quaternion(ImplicitDualQuaternionAD::new_from_axis_angle(axis, angle, x, y, z))
+    }
+
+    pub fn new_euler_angles_and_translation(data: ImplicitDualQuaternionAD) -> Self {
+        let euler_angles_and_translation = data.to_euler_angles_and_translation();
+        Self::EulerAnglesAndTranslation {
+            euler_angles: euler_angles_and_translation.0,
+            translation: euler_angles_and_translation.1,
+            phantom_data: data,
+            pose_type: OptimaSE3PoseType::EulerAnglesAndTranslation
+        }
+    }
+
+    /// Converts the SE(3) pose to other supported pose types.
+    pub fn convert(&self, target_type: &OptimaSE3PoseType) -> OptimaSE3PoseAD {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { data.convert(target_type) }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => { data.convert(target_type) }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => { data.convert(target_type) }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles: _, translation: _, phantom_data, pose_type: _ } => {
+                Self::new_implicit_dual_quaternion(phantom_data.clone()).convert(target_type)
+            }
+        }
+    }
+    /// The inverse transform such that T * T^-1 = I.
+    pub fn inverse(&self) -> OptimaSE3PoseAD {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { Self::new_implicit_dual_quaternion(data.inverse()) }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => { Self::new_homogeneous_matrix(data.inverse()) }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => { Self::new_rotation_and_translation(data.inverse()) }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                Self::new_implicit_dual_quaternion(phantom_data.inverse()).convert(&OptimaSE3PoseType::EulerAnglesAndTranslation)
+            }
+        }
+    }
+    /// Transform multiplication.
+    pub fn multiply(&self, other: &OptimaSE3PoseAD, conversion_if_necessary: bool) -> Result<OptimaSE3PoseAD, OptimaError> {
+        let c = Self::are_types_compatible(self, other);
+        if !c {
+            return if conversion_if_necessary {
+                let new_operand = other.convert(self.map_to_pose_type());
+                self.multiply(&new_operand, conversion_if_necessary)
+            } else {
+                Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!()))
+            }
+        }
+
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                        Ok(OptimaSE3PoseAD::new_implicit_dual_quaternion(data0.multiply_shortcircuit(data)))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                        Ok(OptimaSE3PoseAD::new_homogeneous_matrix(data0.multiply(data)))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                        Ok(OptimaSE3PoseAD::new_rotation_and_translation(data0.multiply(data, conversion_if_necessary)?))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in multiply.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                let data0 = phantom_data;
+                match other {
+                    OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                        Ok(OptimaSE3PoseAD::new_implicit_dual_quaternion(data0.multiply_shortcircuit(phantom_data)).convert(&OptimaSE3PoseType::EulerAnglesAndTranslation))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
+                }
+            }
+        }
+    }
+
+    pub fn multiply_separate_rotation_and_translation(&self, other: &OptimaSE3PoseAD, conversion_if_necessary: bool) -> Result<OptimaSE3PoseAD, OptimaError> {
+        let self_translation = self.translation();
+        let self_rotation = self.rotation();
+        let other_translation = other.translation();
+        let other_rotation = other.rotation();
+
+        let multiplied_translation = self_translation + other_translation;
+        let multiplied_rotation = self_rotation.multiply(&other_rotation, conversion_if_necessary).expect("error");
+
+        let combined = Self::new_rotation_and_translation(RotationAndTranslationAD::new(multiplied_rotation, multiplied_translation));
+        let res = combined.convert(&self.map_to_pose_type());
+        return Ok(res);
+    }
+    /// Multiplication by a point.
+    pub fn multiply_by_point(&self, point: &Vector3<f64ad>) -> Vector3<f64ad> {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { data.multiply_by_point(point) }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => { data.multiply_by_point(point) }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => { data.multiply_by_point(point) }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => { phantom_data.inverse_multiply_by_point_shortcircuit(point) }
+        }
+    }
+    /// Inverse multiplies by the given point.  inverse multiplication is useful for placing the
+    /// given point in the transform's local coordinate system.
+    pub fn inverse_multiply_by_point(&self, point: &Vector3<f64ad>) -> Vector3<f64ad> {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { data.inverse_multiply_by_point_shortcircuit(point) }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => { data.inverse_multiply_by_point(point) }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => { data.inverse_multiply_by_point(point) }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => { phantom_data.inverse_multiply_by_point_shortcircuit(point) }
+        }
+    }
+    /// The displacement transform such that T_self * T_disp = T_other.
+    pub fn displacement(&self, other: &OptimaSE3PoseAD, conversion_if_necessary: bool) -> Result<OptimaSE3PoseAD, OptimaError> {
+        let c = Self::are_types_compatible(self, other);
+        if !c {
+            return if conversion_if_necessary {
+                let new_operand = other.convert(self.map_to_pose_type());
+                self.displacement(&new_operand, conversion_if_necessary)
+            } else {
+                Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!()))
+            }
+        }
+
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                        Ok(OptimaSE3PoseAD::new_implicit_dual_quaternion(data0.displacement(data)))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                        Ok(OptimaSE3PoseAD::new_homogeneous_matrix(data0.displacement(data)))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                        Ok(OptimaSE3PoseAD::new_rotation_and_translation(data0.displacement(data, conversion_if_necessary)?))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                let data0 = phantom_data;
+                match other {
+                    OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                        Ok(OptimaSE3PoseAD::new_implicit_dual_quaternion(data0.displacement(phantom_data)).convert(&OptimaSE3PoseType::EulerAnglesAndTranslation))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement.", file!(), line!())) }
+                }
+            }
+        }
+    }
+
+    pub fn displacement_separate_rotation_and_translation(&self, other: &OptimaSE3PoseAD, conversion_if_necessary: bool) -> Result<(OptimaRotationAD, Vector3<f64ad>), OptimaError> {
+        let c = Self::are_types_compatible(self, other);
+        if !c {
+            return if conversion_if_necessary {
+                let new_operand = other.convert(self.map_to_pose_type());
+                self.displacement_separate_rotation_and_translation(&new_operand, conversion_if_necessary)
+            } else {
+                Err(OptimaError::new_generic_error_str("incompatible pose types in displacement_separate_rotation_and_translation.", file!(), line!()))
+            }
+        }
+
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                        Ok(data0.displacement_separate_rotation_and_translation(data))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement_separate_rotation_and_translation.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                        Ok(data0.displacement_separate_rotation_and_translation(data))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement_separate_rotation_and_translation.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                        Ok(data0.displacement_separate_rotation_and_translation(data))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement_separate_rotation_and_translation.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                let data0 = phantom_data;
+                match other {
+                    OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                        Ok(data0.displacement_separate_rotation_and_translation(phantom_data))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in displacement_separate_rotation_and_translation.", file!(), line!())) }
+                }
+            }
+        }
+    }
+
+    pub fn slerp(&self, other: &OptimaSE3PoseAD, t: f64ad, conversion_if_necessary: bool) -> Result<OptimaSE3PoseAD, OptimaError> {
+        let c = Self::are_types_compatible(self, other);
+        if !c {
+            return if conversion_if_necessary {
+                let new_operand = other.convert(self.map_to_pose_type());
+                self.slerp(&new_operand, t, conversion_if_necessary)
+            } else {
+                Err(OptimaError::new_generic_error_str("incompatible pose types in slerp.", file!(), line!()))
+            }
+        }
+
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                        Ok(Self::new_implicit_dual_quaternion(data0.slerp(data, t)))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in slerp.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                        Ok(Self::new_homogeneous_matrix(data0.slerp(data, t)))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in slerp.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                        Ok(Self::new_rotation_and_translation(data0.slerp(data, t, conversion_if_necessary)?))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in slerp.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                let data0 = phantom_data;
+                match other {
+                    OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                        Ok(Self::new_euler_angles_and_translation( data0.slerp(phantom_data, t) ))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in slerp.", file!(), line!())) }
+                }
+            }
+        }
+    }
+    /// Distance function between transforms.  This may be approximate.
+    /// In the case of the implicit dual quaternion, this is smooth, differentiable, and exact (one
+    /// of the benefits of that representation).
+    pub fn distance_function(&self, other: &OptimaSE3PoseAD, conversion_if_necessary: bool) -> Result<f64ad, OptimaError> {
+        let c = Self::are_types_compatible(self, other);
+        if !c {
+            return if conversion_if_necessary {
+                let new_operand = other.convert(self.map_to_pose_type());
+                self.distance_function(&new_operand, conversion_if_necessary)
+            } else {
+                Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!()))
+            }
+        }
+
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                        Ok(data0.displacement(data).ln_l2_magnitude())
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                        Ok(data0.approximate_distance(&data))
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                let data0 = data;
+                match other {
+                    OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                        data0.approximate_distance(&data, conversion_if_necessary)
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
+                }
+            }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                let data0 = phantom_data;
+                match other {
+                    OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles:_, translation:_, phantom_data, pose_type:_ } => {
+                        Ok(data0.displacement(phantom_data).ln_l2_magnitude())
+                    }
+                    _ => { Err(OptimaError::new_generic_error_str("incompatible pose types in distance function.", file!(), line!())) }
+                }
+            }
+        }
+    }
+    /// Unwraps homogeneous matrix.  Returns error if the underlying representation is not homogeneous matrix.
+    pub fn unwrap_homogeneous_matrix(&self) -> Result<&HomogeneousMatrixAD, OptimaError> {
+        return match self {
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                Ok(data)
+            }
+            _ => {
+                Err(OptimaError::new_generic_error_str("tried to unwrap homogenous matrix on incompatible type.", file!(), line!()))
+            }
+        }
+    }
+    /// Unwraps implicit dual quaternion.  Returns error if the underlying representation is not IDQ.
+    pub fn unwrap_implicit_dual_quaternion(&self) -> Result<&ImplicitDualQuaternionAD, OptimaError> {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                Ok(data)
+            }
+            _ => {
+                Err(OptimaError::new_generic_error_str("tried to unwrap implicit dual quaternion on incompatible type.", file!(), line!()))
+            }
+        }
+    }
+    /// Unwraps rotation and translation.  Returns error if the underlying representation is not R&T.
+    pub fn unwrap_rotation_and_translation(&self) -> Result<&RotationAndTranslationAD, OptimaError> {
+        return match self {
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                Ok(data)
+            }
+            _ => {
+                Err(OptimaError::new_generic_error_str("tried to unwrap rotation and translation on incompatible type.", file!(), line!()))
+            }
+        }
+    }
+    /// Returns an euler angle and vector representation of the SE(3) pose.
+    pub fn to_euler_angles_and_translation(&self) -> (Vector3<f64ad>, Vector3<f64ad>) {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => {
+                data.to_euler_angles_and_translation()
+            }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => {
+                data.to_euler_angles_and_translation()
+            }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => {
+                data.to_euler_angles_and_translation()
+            }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles, translation, .. } => {
+                return (euler_angles.clone(), translation.clone())
+            }
+        }
+    }
+    /// Returns an axis angle and translation representation of the SE(3) pose.
+    pub fn to_axis_angle_and_translation(&self) -> (Vector3<f64ad>, f64ad, Vector3<f64ad>) {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { data.to_axis_angle_and_translation() }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => { data.to_axis_angle_and_translation() }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => { data.to_axis_angle_and_translation() }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles: _, translation: _, phantom_data, pose_type: _ } => { phantom_data.to_axis_angle_and_translation() }
+        }
+    }
+    /// Outputs an Isometry3 object in the Nalgebra library that corresponds to the SE(3) pose.
+    pub fn to_nalgebra_isometry(&self) -> Isometry3<f64ad> {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { data.to_nalgebra_isometry() }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => { data.to_nalgebra_isometry() }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => { data.to_nalgebra_isometry() }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles: _, translation: _, phantom_data, pose_type: _ } => { phantom_data.to_nalgebra_isometry() }
+        }
+    }
+    /// Converts to vector representation.
+    pub fn to_vec_representation(&self) -> Vec<Vec<f64ad>> {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { data.to_vec_representation() }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, .. } => { data.to_vec_representation() }
+            OptimaSE3PoseAD::RotationAndTranslation { data, .. } => { data.to_vec_representation() }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles, translation, .. } => {
+                let e = euler_angles;
+                let t = translation;
+                return vec![ vec![e[0], e[1], e[2]], vec![t[0], t[1], t[2]] ];
+            }
+        }
+    }
+    pub fn map_to_pose_type(&self) -> &OptimaSE3PoseType {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data: _, pose_type } => { pose_type }
+            OptimaSE3PoseAD::HomogeneousMatrix { data: _, pose_type } => { pose_type }
+            OptimaSE3PoseAD::RotationAndTranslation { data: _, pose_type } => { pose_type }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { euler_angles: _, translation: _, phantom_data: _, pose_type } => { pose_type }
+        }
+    }
+    pub fn translation(&self) -> Vector3<f64ad> {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { data.translation().clone() }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, ..} => { data.translation().clone() }
+            OptimaSE3PoseAD::RotationAndTranslation { data, ..} => { data.translation().clone() }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { translation, .. } => { translation.clone() }
+        }
+    }
+    pub fn rotation(&self) -> OptimaRotationAD {
+        return match self {
+            OptimaSE3PoseAD::ImplicitDualQuaternion { data, .. } => { OptimaRotationAD::new_unit_quaternion(data.rotation().clone()) }
+            OptimaSE3PoseAD::HomogeneousMatrix { data, ..} => { OptimaRotationAD::new_rotation_matrix(data.rotation()) }
+            OptimaSE3PoseAD::RotationAndTranslation { data, ..} => { data.rotation().clone() }
+            OptimaSE3PoseAD::EulerAnglesAndTranslation { phantom_data, .. } => { OptimaRotationAD::new_unit_quaternion(phantom_data.rotation().clone()) }
+        }
+    }
+    fn are_types_compatible(a: &OptimaSE3PoseAD, b: &OptimaSE3PoseAD) -> bool {
+        return if a.map_to_pose_type() == b.map_to_pose_type() { true } else { false }
+    }
+}
+impl Default for OptimaSE3PoseAD {
+    fn default() -> Self {
+        Self::new_identity()
+    }
+}
+
 /// An Enum that encodes a pose type.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OptimaSE3PoseType {
@@ -616,6 +1179,43 @@ impl OptimaSE3PoseAll {
     }
 
     pub fn get_pose_by_type(&self, t: &OptimaSE3PoseType) -> &OptimaSE3Pose {
+        return match t {
+            OptimaSE3PoseType::ImplicitDualQuaternion => { &self.implicit_dual_quaternion }
+            OptimaSE3PoseType::HomogeneousMatrix => { &self.homogeneous_matrix }
+            OptimaSE3PoseType::UnitQuaternionAndTranslation => { &self.unit_quaternion_and_translation }
+            OptimaSE3PoseType::RotationMatrixAndTranslation => { &self.rotation_matrix_and_translation }
+            OptimaSE3PoseType::EulerAnglesAndTranslation => { &self.euler_angles_and_translation }
+        }
+    }
+}
+
+/// A container object that holds all OPtimaSE3 types.  This is useful for functions that may need
+/// to handle many pose types, so this allows all to be initialized and saved at once to avoid
+/// many transform conversions at run-time.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct OptimaSE3PoseAllAD {
+    implicit_dual_quaternion: OptimaSE3PoseAD,
+    homogeneous_matrix: OptimaSE3PoseAD,
+    unit_quaternion_and_translation: OptimaSE3PoseAD,
+    rotation_matrix_and_translation: OptimaSE3PoseAD,
+    euler_angles_and_translation: OptimaSE3PoseAD
+}
+impl OptimaSE3PoseAllAD {
+    pub fn new(p: &OptimaSE3PoseAD) -> Self {
+        Self {
+            implicit_dual_quaternion: p.convert(&OptimaSE3PoseType::ImplicitDualQuaternion),
+            homogeneous_matrix: p.convert(&OptimaSE3PoseType::HomogeneousMatrix),
+            unit_quaternion_and_translation: p.convert(&OptimaSE3PoseType::UnitQuaternionAndTranslation),
+            rotation_matrix_and_translation: p.convert(&OptimaSE3PoseType::RotationMatrixAndTranslation),
+            euler_angles_and_translation: p.convert(&OptimaSE3PoseType::EulerAnglesAndTranslation)
+        }
+    }
+
+    pub fn new_identity() -> Self {
+        return Self::new(&OptimaSE3PoseAD::new_unit_quaternion_and_translation_from_euler_angles(f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.),f64ad::f64(0.)));
+    }
+
+    pub fn get_pose_by_type(&self, t: &OptimaSE3PoseType) -> &OptimaSE3PoseAD {
         return match t {
             OptimaSE3PoseType::ImplicitDualQuaternion => { &self.implicit_dual_quaternion }
             OptimaSE3PoseType::HomogeneousMatrix => { &self.homogeneous_matrix }

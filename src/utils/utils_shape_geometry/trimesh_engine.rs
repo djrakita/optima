@@ -6,7 +6,7 @@ use serde::{Serialize, Deserialize};
 use collada::document::ColladaDocument;
 use dae_parser::{Document, Transform};
 use nalgebra::{Matrix4, Point3, Unit, UnitQuaternion, Vector3};
-use parry3d_f64::transformation::convex_hull;
+use parry3d_f64::transformation::{convex_hull};
 use parry3d_f64::transformation::vhacd::{VHACD, VHACDParameters};
 use stl_io::IndexedMesh;
 use crate::utils::utils_errors::OptimaError;

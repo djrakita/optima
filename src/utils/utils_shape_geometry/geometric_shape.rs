@@ -8,7 +8,9 @@ use std::vec;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use nalgebra::{Isometry3, Point3, Unit, Vector3};
 use parry3d_f64::query::{ClosestPoints, Contact, NonlinearRigidMotion, PointProjection, Ray, RayIntersection};
+use parry3d_f64ad::query::{ClosestPoints as ClosestPointsAS, Contact as ContactAD, NonlinearRigidMotion as NonlinearRigidMotionAD, PointProjection as PointProjectionAD, Ray as RayAD, RayIntersection as RayIntersectionAD};
 use parry3d_f64::shape::{Ball, ConvexPolyhedron, Cuboid, Shape, TriMesh};
+use parry3d_f64ad::shape::{Ball as BallAD, ConvexPolyhedron as ConvexPolyhedronAD, Cuboid as CuboidAD, Shape as ShapeAD, TriMesh as TriMeshAD};
 use crate::utils::utils_console::{optima_print, PrintColor, PrintMode};
 use crate::utils::utils_errors::OptimaError;
 use crate::utils::utils_files::optima_path::{load_object_from_json_string, OptimaStemCellPath};
@@ -249,6 +251,15 @@ impl SaveAndLoadable for GeometricShape {
         let spawner: Self::SaveType = load_object_from_json_string(json_str)?;
         return Ok(spawner.spawn());
     }
+}
+
+pub struct GeometricShapeAD {
+    shape: Box<Arc<dyn ShapeAD>>,
+    signature: GeometricShapeSignature,
+    initial_pose_of_shape: Option<OptimaSE3PoseAll>,
+    /// The farthest distance from any point on the shape to the shape's local origin point
+    f: f64,
+    spawner: GeometricShapeSpawner
 }
 
 /// Utility class that holds important geometric shape query functions.
@@ -513,6 +524,14 @@ impl GeometricShapeSpawner {
             GeometricShapeSpawner::TriangleMesh { path_string_components: _, trimesh_engine: _, signature } => { *signature = input_signature.clone() }
         }
     }
+}
+
+/// A `GeometricShapeSpawner` is the main object that allows a `GeometricShape` to be serializable
+/// and deserializable.  This spawner object contains all necessary information in order to construct
+/// a `GeometricShape` from scratch.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum GeometricShapeSpawnerAD {
+
 }
 
 /// Holds all possible inputs into the `GeometricShapeQueries::generic_group_query` and
