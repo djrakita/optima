@@ -1,8 +1,76 @@
-use nalgebra::{DVector, Vector2, Vector3};
+
+use nalgebra::{DMatrix, DVector, SVD, Unit, Vector2, Vector3};
 use crate::utils::utils_math::interpolation::get_range;
 use crate::utils::utils_math::vector::get_orthonormal_basis;
 use crate::utils::utils_nalgebra::conversions::NalgebraConversions;
 
+pub fn closest_point_to_lines2(lines: &[(DVector<f64>, DVector<f64>)]) -> DVector<f64> {
+    let dim = lines[0].0.len();
+    let mut a = DMatrix::zeros(lines.len(), dim);
+    let mut b = DVector::zeros(lines.len());
+
+    for (i, (p, q)) in lines.iter().enumerate() {
+        let line_dir = q - p;
+        let line_dir_norm = line_dir.normalize();
+
+        for j in 0..dim {
+            a[(i, j)] = line_dir_norm[j];
+        }
+
+        let t = line_dir_norm.dot(&p);
+        b[i] = t;
+    }
+
+    let svd = SVD::new(a, true, true);
+    svd.solve(&b, 1e-6).unwrap()
+}
+
+pub fn closest_point_to_lines(lines: &[(DVector<f64>, DVector<f64>)]) -> DVector<f64> {
+    let mut a_data = Vec::new();
+    let mut b_data = Vec::new();
+
+    for (p, q) in lines {
+        let line_dir = q - p;
+        let line_dir_norm = line_dir.normalize();
+
+        a_data.push(line_dir_norm.clone().transpose());
+        b_data.push(line_dir_norm.dot(&p));
+    }
+
+    let a = DMatrix::from_rows(&a_data);
+    let b = DVector::from_vec(b_data);
+
+    let svd = SVD::new(a, true, true);
+    svd.solve(&b, 0.0).unwrap()
+}
+
+pub fn closest_point_between_lines(u1: &DVector<f64>, u2: &DVector<f64>, v1: &DVector<f64>, v2: &DVector<f64>) -> (DVector<f64>, f64) {
+    let u = u2 - u1;
+    let v = v2 - v1;
+    let w = u1 - v1;
+
+    let a = u.dot(&u);
+    let b = u.dot(&v);
+    let c = v.dot(&v);
+    let d = u.dot(&w);
+    let e = v.dot(&w);
+
+    let denominator = a * c - b * b;
+    let sc = if denominator != 0.0 {
+        (b * e - c * d) / denominator
+    } else {
+        0.0
+    };
+
+    let tc = (a * e - b * d) / denominator;
+
+    let dp = w + u.scale(sc) - v.scale(tc);
+
+    let distance = dp.norm();
+    let closest_point = u1 + u.scale(sc);
+
+    (closest_point, distance)
+}
 
 pub fn closest_point_on_2_lines_dvecs(u1: &DVector<f64>, u2: &DVector<f64>, v1: &DVector<f64>, v2: &DVector<f64>) -> (f64, f64) {
     let u = u2 - u1;
@@ -14,8 +82,14 @@ pub fn closest_point_on_2_lines_dvecs(u1: &DVector<f64>, u2: &DVector<f64>, v1: 
     let urho = u.dot(&rho);
     let vrho = v.dot(&rho);
 
-    let vt = (vrho*uu - urho*uv) / (uv*uv - vv*uu).max(0.00000000001);
-    let ut = (uv * vt + urho) / uu.max(0.00000000001);
+    let d1 = uv*uv - vv*uu;
+    let d2 = uu;
+
+    let vt = if d1 == 0.0 { panic!("uh oh") } else if d1 < 0.0 { (vrho*uu - urho*uv) / d1 } else { -(vrho*uu - urho*uv) / d1 };
+    let ut = if d2 == 0.0 { panic!("uh oh") } else if d2 < 0.0 { -(uv * vt + urho) / d2 } else { (uv * vt + urho) / d2 };
+
+    // let vt = (vrho*uu - urho*uv) / (uv*uv - vv*uu).abs().max(0.00000000001);
+    // let ut = (uv * vt + urho) / uu.abs().max(0.00000000001);
 
     // ut = ut.max(0.0).min(1.0);
     // vt = vt.max(0.0).min(1.0);

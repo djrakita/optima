@@ -20,6 +20,8 @@
 //! ## Documentation
 //! Further documentation including setup instructions, tutorials, etc. for Optima can be found at [https://djrakita.github.io/optima_toolbox/](https://djrakita.github.io/optima_toolbox/).
 
+extern crate core;
+
 pub mod inverse_kinematics;
 pub mod optimization;
 pub mod optima_tensor_function;

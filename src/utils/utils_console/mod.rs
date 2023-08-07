@@ -218,6 +218,7 @@ pub fn get_default_progress_bar(max_total_of_bar: usize) -> ProgressBar<Stdout> 
     out_self.format(&get_progress_bar_format_string());
     out_self
 }
+
 #[cfg(not(target_arch = "wasm32"))]
 fn get_progress_bar_format_string() -> String {
     // return "".to_string();
